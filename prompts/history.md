@@ -109,3 +109,9 @@
 > vercel과 supabae 연동해줘.
 
 - 결과: Supabase `aicrm` 프로젝트에 leads 테이블/샘플 데이터/RLS 생성, 앱 전용 최소 권한 역할 `crm_app` + RLS 정책 생성. Vercel `aicrm` 프로젝트 link, `POSTGRES_URL`(Supabase pooler, Sensitive)을 Production/Preview에 등록. Vercel 모드로 로컬 빌드를 Supabase에 붙여 CRUD/이동 테스트 통과. 배포는 git push로 진행
+
+## 19. 2026-11-23 — CLAUDE.md 작성
+
+> 아래 claude.md 파일 참조해서 현재 프로젝트 CLAUDE.MD 작성해줘. (참조 템플릿 첨부)
+
+- 결과: 템플릿 구조를 따라 실제 스택(Next 16, pg, 일반 CSS, npm, Vercel+Supabase)과 규칙(프롬프트 기록, 환경별 DB, 보안)을 반영한 루트 `CLAUDE.md` 작성

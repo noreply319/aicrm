@@ -1,0 +1,153 @@
+# CLAUDE.md
+
+> 이 파일은 Claude가 이 저장소에서 작업할 때 매번 읽는 프로젝트 가이드입니다.
+> 짧고 구체적으로 유지하세요.
+
+## 프로젝트 개요
+
+- **서비스**: Pipeline CRM — 세일즈 리드를 칸반 보드(Funnel)로 관리하는 웹앱. 카드를 Drag & Drop으로 단계 이동
+- **주요 사용자**: 영업 담당자
+- **핵심 도메인 용어**:
+  - 리드(Lead): 영업 대상 회사 + 담당자 + 예상 금액
+  - 단계(Stage): `new`(신규 리드) → `contacted`(첫 컨택) → `qualified`(니즈 확인) → `proposal`(제안/견적) → `negotiation`(협상) → `won`(수주) / `lost`(실주)
+  - 우선순위(Priority): `high` / `mid` / `low`
+  - 파이프라인: `won`·`lost`를 제외한 진행 중 리드의 금액 합계
+
+## 기술 스택
+
+- **프레임워크**: Next.js 16 (App Router, Turbopack), React 19
+- **언어**: TypeScript (strict 모드)
+- **스타일**: 일반 CSS — `web/app/globals.css` 한 파일, CSS 변수(디자인 토큰) + 라이트/다크 테마
+- **상태/데이터**: React `useState` + 커스텀 훅 `useLeads` (fetch로 API 호출, 낙관적 업데이트)
+- **검증**: 직접 작성한 검증 함수 (`web/lib/validate.ts`)
+- **DB**: PostgreSQL + `pg` 드라이버 (ORM 없음, SQL 직접 작성)
+  - 로컬: 로컬 PostgreSQL `ai_crm` DB
+  - 배포: Supabase (`aicrm` 프로젝트, 도쿄 리전)
+- **배포**: Vercel (`aicrm` 프로젝트, Root Directory = `web`, GitHub push 시 자동 배포)
+- **인증**: 없음 (아래 보안 항목 참고)
+- **테스트/린트**: 아직 없음
+- **패키지 매니저**: npm
+- **Node**: nvm으로 설치 (`nvm use node`)
+
+## 자주 쓰는 명령어
+
+앱 명령어는 모두 `web/` 폴더에서 실행합니다.
+
+```bash
+cd web
+npm install          # 의존성 설치
+npm run dev          # 개발 서버 (http://localhost:3000)
+npm run build        # 프로덕션 빌드 (타입 체크 포함) — 작업 후 반드시 실행
+npm run start        # 빌드 결과 실행
+npm run db:init      # 테이블 생성 + 샘플 데이터 (테이블이 비어 있을 때만 시드)
+```
+
+```bash
+# Supabase(배포 DB)에 SQL 실행 — 프로젝트 루트에서
+npx supabase db query --remote=hwxuufpaupnpawlgnyvx --read-only "select count(*) from leads"
+npx supabase db query --remote=hwxuufpaupnpawlgnyvx --yes -f web/db/schema.sql
+```
+
+## 디렉터리 구조
+
+```
+AI CRM/                      # git 저장소 루트
+├── CLAUDE.md
+├── prompts/history.md       # 사용자 프롬프트 기록 (아래 작업 규칙 참고)
+├── index.html               # 초기 단독 HTML 프로토타입 (localStorage). 앱에서 사용 안 함
+├── package.json             # 루트: Supabase CLI 전용 (앱 의존성 아님)
+└── web/                     # Next.js 앱 (Vercel Root Directory)
+    ├── app/
+    │   ├── layout.tsx       # 폰트, 테마 깜빡임 방지 스크립트
+    │   ├── page.tsx
+    │   ├── globals.css      # 모든 스타일
+    │   └── api/leads/       # Route Handlers
+    │       ├── route.ts             # GET 목록, POST 생성
+    │       ├── [id]/route.ts        # PATCH 수정, DELETE 삭제
+    │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
+    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast
+    ├── lib/
+    │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
+    │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
+    │   ├── validate.ts      # API 입력 검증
+    │   ├── types.ts · constants.ts · format.ts
+    └── db/
+        ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
+        ├── seed.sql         # 샘플 데이터
+        └── init.mjs         # npm run db:init
+```
+
+## 코딩 컨벤션
+
+### 일반
+- 컴포넌트는 `components/PascalCase.tsx`에 `export default function`으로 작성 (기존 패턴 유지).
+- `lib/` 파일은 camelCase (`useLeads.ts`, `validate.ts`).
+- `any` 사용 금지. 불가피하면 `unknown` 후 타입 가드.
+- import 경로는 `@/` 별칭 사용 (`@/lib/...`, `@/components/...`).
+- 단계·우선순위·색상 등 상수는 `lib/constants.ts`에 둠. 단계를 추가/변경하면 `db/schema.sql`의 CHECK 제약도 함께 수정.
+
+### React / Next.js
+- Next.js 16은 학습 데이터와 API가 다를 수 있음. 코드 작성 전 `web/node_modules/next/dist/docs/`의 해당 가이드를 확인 (`web/AGENTS.md` 참고).
+- Route Handler의 `params`는 `Promise` — `const { id } = await params`.
+- 상태·이벤트·브라우저 API가 필요한 컴포넌트만 `"use client"`.
+- 클라이언트에서 DB 직접 접근 금지. 데이터 변경은 `app/api` Route Handler → `useLeads` 경유.
+- `lib/db.ts`는 `server-only` — 클라이언트 컴포넌트에서 import 금지.
+
+### 스타일
+- `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--prio-*` 등)만 사용. 색상 하드코딩 지양.
+- 새 색상 토큰은 라이트(`:root`)와 다크(두 군데: `prefers-color-scheme` 블록, `[data-theme="dark"]`) 모두에 정의.
+
+### 데이터 / API
+- 모든 API 입력은 `lib/validate.ts`로 검증. id는 `UUID_RE`로 확인.
+- SQL은 항상 파라미터 바인딩(`$1, $2`) 사용. 문자열 연결로 SQL 작성 금지.
+- 응답 형식: 성공 시 데이터 그대로(`Lead`, `Lead[]`), 실패 시 `{ error: "한국어 메시지" }` + 적절한 상태 코드.
+- 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
+- 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
+
+## 환경 변수 / DB 연결
+
+| 환경 | 변수 | 대상 |
+|---|---|---|
+| 로컬 | `DATABASE_URL` (`web/.env.local`) | 로컬 PostgreSQL `ai_crm` (사용자 `crm_app`) |
+| Vercel | `POSTGRES_URL` (Vercel 환경 변수, Sensitive) | Supabase pooler (`aws-0-ap-northeast-1.pooler.supabase.com:6543`, 사용자 `crm_app.<ref>`) |
+
+- 선택 로직은 `lib/db.ts`의 `connectionConfig()`. Vercel에서는 `POSTGRES_URL` 우선.
+- 원격 DB는 SSL 사용, URL의 `sslmode` 파라미터는 제거 후 `ssl` 옵션으로 지정 (pg가 검증 모드로 해석해 실패하므로).
+- Supabase 직접 호스트(`db.<ref>.supabase.co`)는 IPv6 전용이라 Vercel에서 접속 불가 → 반드시 pooler 사용.
+- 새 환경 변수는 `web/.env.example`에 키만 추가.
+
+## 테스트
+
+- 자동화된 테스트는 아직 없음. 작업 완료 전 최소한 `npm run build`(타입 체크 포함) 통과 확인.
+- API 변경 시 curl로 `/api/leads` 엔드포인트 동작 확인.
+
+## Git / 작업 규칙
+
+- 현재 `main` 브랜치에 직접 커밋, GitHub `noreply319/aicrm`에 push → Vercel 자동 배포.
+- commit·push는 사용자가 요청할 때만. 기본적으로 사용자가 직접 실행하므로 명령어를 안내.
+- zsh 사용 — 명령어 안내 시 `!`가 들어간 문자열은 작은따옴표로 감쌀 것 (히스토리 확장 에러 방지).
+- **사용자의 모든 프롬프트를 `prompts/history.md`에 기록**: 번호, 날짜, 제목, 프롬프트 원문 인용, 결과 한 줄.
+
+## 보안 / 하지 말아야 할 것
+
+- `.env*` 파일, DB 비밀번호, 토큰을 커밋하거나 코드에 하드코딩하지 않음. 출력에 비밀번호를 노출하지 않음.
+- **인증이 없음**: 배포 URL을 아는 누구나 리드를 수정·삭제 가능. 실제 영업 데이터 투입 전 인증 추가 필요.
+- Supabase `leads` 테이블은 RLS 활성화 + `crm_app` 역할 전용 정책만 존재 (anon/authenticated 차단). 새 테이블도 RLS를 켜고 정책을 명시.
+- Supabase(운영 DB)에 쓰기 SQL 실행, 테이블 삭제, 데이터 삭제, 비밀번호 변경 등 되돌리기 어려운 작업은 실행 전 반드시 확인 요청. 조회는 `--read-only` 사용.
+- 새 패키지 추가 전 기존 의존성으로 해결 가능한지 검토하고, 추가 시 이유를 설명. 버전은 정확히 고정(`--save-exact`)하고 `npm audit` 확인.
+- 자동 생성 파일(`web/next-env.d.ts`, `web/AGENTS.md`의 Next.js 블록, `.vercel/`)은 직접 수정하지 않음.
+
+## Claude 작업 방식
+
+- 큰 변경 전에는 계획을 먼저 짧게 제시하고 진행.
+- 기존 코드 패턴을 먼저 찾아보고 그와 일관되게 작성.
+- 확실하지 않은 요구사항은 추측하지 말고 질문.
+- 사용자가 "명령어만 알려줘"처럼 범위를 정하면 그 범위만 답변.
+- 작업 후 변경한 파일과 확인 방법을 간단히 요약.
+- 답변과 코드 주석은 한국어, 변수·함수명은 영어.
+
+## 참고 문서
+
+- Next.js 16 문서: `web/node_modules/next/dist/docs/`
+- Vercel 모범 사례: 루트 `AGENTS.md`
+- 배포: Vercel 프로젝트 `aicrm` (팀 `no-margin`), Supabase 프로젝트 `aicrm` (ref `hwxuufpaupnpawlgnyvx`)
