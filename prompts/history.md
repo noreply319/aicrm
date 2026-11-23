@@ -79,3 +79,15 @@
 > 로컬 커밋을 왜 없애야해. 쉽게 설명해줘.
 
 - 결과: git은 모든 커밋을 통째로 올리므로, 첫 커밋 안의 111MB 파일 때문에 push가 거부된다는 점을 비유로 설명
+
+## 14. 2026-11-23 — push rejected (fetch first)
+
+> 아래 처럼 에러가 났는데 원인 알려줘. (git push -u origin main → ! [rejected] main -> main (fetch first))
+
+- 결과: GitHub 저장소 생성 시 만들어진 LICENSE 커밋이 로컬에 없어서 거부됨. `git pull --rebase origin main` 후 push 안내
+
+## 15. 2026-11-23 — push 해결 방법
+
+> 어떻게 해결해? / 명령어만 알려줘.
+
+- 결과: history.md 변경분 커밋 → pull --rebase → push 명령어 안내
