@@ -91,3 +91,21 @@
 > 어떻게 해결해? / 명령어만 알려줘.
 
 - 결과: history.md 변경분 커밋 → pull --rebase → push 명령어 안내
+
+## 16. 2026-11-23 — Vercel ↔ Supabase 연동 방법
+
+> vercel에 github 연결 했는데, vercel과 supabase 연동하는 방법 알려줘.
+
+- 결과: Supabase 접속을 위한 코드 수정(SSL, Vercel 연결 수 제한, RLS 활성화) 및 연동 절차 안내
+
+## 17. 2026-11-23 — 환경별 DB 분리
+
+> 로컬에서는 local postgres db 연결하고, vercel에 배포하면 supabase에 연결되도록 구현해줘.
+
+- 결과: `lib/db.ts`에서 로컬은 `DATABASE_URL`(.env.local → 로컬 PostgreSQL), Vercel은 `POSTGRES_URL`(Supabase 연동이 자동 설정)을 사용하도록 분리. `.env.example` 추가. 빌드 및 로컬 DB 연결 확인
+
+## 18. 2026-11-23 — Vercel ↔ Supabase 연동 실행
+
+> vercel과 supabae 연동해줘.
+
+- 결과: Supabase `aicrm` 프로젝트에 leads 테이블/샘플 데이터/RLS 생성, 앱 전용 최소 권한 역할 `crm_app` + RLS 정책 생성. Vercel `aicrm` 프로젝트 link, `POSTGRES_URL`(Supabase pooler, Sensitive)을 Production/Preview에 등록. Vercel 모드로 로컬 빌드를 Supabase에 붙여 CRUD/이동 테스트 통과. 배포는 git push로 진행

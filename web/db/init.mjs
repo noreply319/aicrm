@@ -2,13 +2,22 @@
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
+const raw = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+if (!raw) {
   console.error("DATABASE_URL is not set (web/.env.local 확인)");
   process.exit(1);
 }
 
-const client = new pg.Client({ connectionString: url });
+// lib/db.ts와 동일한 규칙: 로컬이 아니면 SSL, sslmode 파라미터는 제거
+const url = new URL(raw);
+const isLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+url.searchParams.delete("sslmode");
+url.searchParams.delete("supa");
+
+const client = new pg.Client({
+  connectionString: url.toString(),
+  ssl: isLocal ? undefined : { rejectUnauthorized: false },
+});
 await client.connect();
 try {
   for (const file of ["schema.sql", "seed.sql"]) {
