@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY } from "@/lib/constants";
 import type { Me } from "@/lib/types";
 import { Avatar, Badge, Icon, type IconName } from "./ui";
 
@@ -20,8 +21,43 @@ interface Props {
   onLogout: () => void;
 }
 
-/** 왼쪽 메뉴: 브랜드 · 메뉴 · 프로필. 1024px 이하 아이콘 레일, 640px 이하 하단 탭 바 */
+/**
+ * 메뉴 접힘 상태: 사용자가 접었거나(저장) 화면이 좁으면(1024px 이하) <html>에 sb-collapsed.
+ * 첫 페인트 전 적용은 app/layout.tsx의 스크립트, 이후 변경은 여기서 한다.
+ */
+function useSidebarCollapse() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "collapsed");
+    } catch {}
+    const mq = window.matchMedia(SIDEBAR_AUTO_RAIL_QUERY);
+    setNarrow(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("sb-collapsed", collapsed || narrow);
+  }, [collapsed, narrow]);
+
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, next ? "collapsed" : "expanded");
+    } catch {}
+  };
+  return { collapsed, toggle };
+}
+
+/** 왼쪽 메뉴: 브랜드 · 메뉴 · 접기 · 프로필. 1024px 이하 자동 아이콘 레일, 640px 이하 하단 탭 바 */
 export default function Sidebar({ view, me, onLogout }: Props) {
+  const { collapsed, toggle } = useSidebarCollapse();
+  const toggleLabel = collapsed ? "메뉴 펼치기" : "메뉴 접기";
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -44,6 +80,17 @@ export default function Sidebar({ view, me, onLogout }: Props) {
         ))}
       </nav>
       <div className="sidebar-foot">
+        <button
+          type="button"
+          className="side-link side-toggle"
+          title={toggleLabel}
+          aria-label={toggleLabel}
+          aria-expanded={!collapsed}
+          onClick={toggle}
+        >
+          <Icon name={collapsed ? "panelLeftOpen" : "panelLeft"} size={18} />
+          <span className="side-label" aria-hidden>{toggleLabel}</span>
+        </button>
         <UserMenu me={me} onLogout={onLogout} />
       </div>
     </aside>
