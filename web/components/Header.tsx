@@ -5,7 +5,7 @@ import Link from "next/link";
 import { THEME_KEY } from "@/lib/constants";
 import type { Me } from "@/lib/types";
 
-export type View = "pipeline" | "meetings" | "calendar" | "settings";
+export type View = "pipeline" | "companies" | "meetings" | "calendar" | "settings";
 
 interface Props {
   view: View;
@@ -32,14 +32,16 @@ function toggleTheme() {
 
 const NAV: { view: View; href: string; label: string }[] = [
   { view: "pipeline", href: "/", label: "파이프라인" },
+  { view: "companies", href: "/companies", label: "회사" },
   { view: "meetings", href: "/meetings", label: "미팅 노트" },
   { view: "calendar", href: "/calendar", label: "캘린더" },
   { view: "settings", href: "/settings", label: "설정" },
 ];
 
-const ADD_LABEL: Partial<Record<View, string>> = { pipeline: "새 리드", meetings: "노트 작성", calendar: "일정 추가" };
+const ADD_LABEL: Partial<Record<View, string>> = { pipeline: "새 리드", companies: "회사 등록", meetings: "노트 작성", calendar: "일정 추가" };
 const SEARCH_PLACEHOLDER: Partial<Record<View, string>> = {
   pipeline: "회사, 담당자, 메모 검색…",
+  companies: "회사명, 업종, 도메인, 태그 검색…",
   meetings: "제목, 본문, 회사명 검색…",
   calendar: "일정 제목, 장소, 회사명 검색…",
 };

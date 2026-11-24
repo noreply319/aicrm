@@ -19,3 +19,6 @@ SELECT l.id, l.company, 'created',
        l.created_at
 FROM leads l
 WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);
+
+-- 샘플 리드를 회사에 연결 (schema.sql의 마이그레이션과 같은 함수)
+SELECT crm_link_lead_companies();

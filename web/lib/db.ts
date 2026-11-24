@@ -49,7 +49,7 @@ export const pool =
 if (process.env.NODE_ENV !== "production") globalForPg.pgPool = pool;
 
 export const LEAD_COLUMNS = `
-  id, company, contact, title, email, phone, value,
+  id, company_id AS "companyId", company, contact, title, email, phone, value,
   close_date AS "closeDate", stage, priority, notes,
   (extract(epoch FROM created_at) * 1000)::bigint AS "createdAt"`;
 

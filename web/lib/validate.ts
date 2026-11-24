@@ -1,5 +1,11 @@
-import { NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix } from "./constants";
-import type { CalendarEventInput, ChatMessage, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId } from "./types";
+import { businessDigits, isFreeMailDomain, normalizeDomain } from "./company";
+import {
+  COMPANY_NAME_MAX, COMPANY_NOTES_MAX, COMPANY_SIZES, COMPANY_TAG_LEN, COMPANY_TAG_MAX, COMPANY_TIERS,
+  NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix,
+} from "./constants";
+import type {
+  CalendarEventInput, ChatMessage, CompanyInput, CompanySize, CompanyTier, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId,
+} from "./types";
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
 const PRIORITIES = new Set<string>(["high", "mid", "low"]);
@@ -13,8 +19,11 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
   if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
   const b = body as Record<string, unknown>;
 
-  const company = str(b.company, 200);
-  if (!company) return { ok: false, error: "회사명은 필수입니다" };
+  // 회사는 companyId로 지정한다. companyId 없이 회사명만 오면 서버가 같은 이름의 회사를 찾거나 만든다.
+  const companyId = typeof b.companyId === "string" && b.companyId !== "" ? b.companyId : null;
+  if (companyId !== null && !UUID_RE.test(companyId)) return { ok: false, error: "회사가 올바르지 않습니다" };
+  const company = str(b.company, COMPANY_NAME_MAX);
+  if (!companyId && !company) return { ok: false, error: "회사명은 필수입니다" };
 
   const value = Number(b.value ?? 0);
   if (!Number.isFinite(value) || value < 0) return { ok: false, error: "금액이 올바르지 않습니다" };
@@ -28,6 +37,7 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
   return {
     ok: true,
     data: {
+      companyId,
       company,
       contact: str(b.contact, 100),
       title: str(b.title, 100),
@@ -43,6 +53,74 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const SIZES = new Set<string>(COMPANY_SIZES);
+const TIERS = new Set<string>(COMPANY_TIERS);
+
+/** 회사 요청 본문 검증. 이름만 보내도 된다 (리드 모달에서 바로 생성). */
+export function parseCompanyInput(body: unknown): { ok: true; data: CompanyInput } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+
+  const name = str(b.name, 1000).replace(/\s+/g, " ");
+  if (!name) return { ok: false, error: "회사명은 필수입니다" };
+  if (name.length > COMPANY_NAME_MAX) return { ok: false, error: `회사명은 ${COMPANY_NAME_MAX}자 이하로 입력하세요` };
+
+  let website = str(b.website, 500);
+  if (website && !/^https?:\/\//i.test(website)) website = `https://${website}`;
+
+  const rawDomain = str(b.emailDomain, 253);
+  let emailDomain: string | null = null;
+  if (rawDomain) {
+    emailDomain = normalizeDomain(rawDomain);
+    if (!emailDomain) return { ok: false, error: "이메일 도메인 형식이 올바르지 않습니다 (예: acme.co.kr)" };
+    if (isFreeMailDomain(emailDomain)) return { ok: false, error: "무료 메일 도메인은 회사 도메인으로 등록할 수 없습니다" };
+  }
+
+  const size = b.size === null || b.size === undefined || b.size === "" ? null : SIZES.has(b.size as string) ? (b.size as CompanySize) : false;
+  if (size === false) return { ok: false, error: "회사 규모가 올바르지 않습니다" };
+  const tier = b.tier === null || b.tier === undefined || b.tier === "" ? null : TIERS.has(b.tier as string) ? (b.tier as CompanyTier) : false;
+  if (tier === false) return { ok: false, error: "등급이 올바르지 않습니다" };
+
+  // 사업자등록번호: 숫자 10자리만 강제 (검증 숫자가 틀리면 화면에서 경고만)
+  const businessNumber = businessDigits(str(b.businessNumber, 30));
+  if (businessNumber && businessNumber.length !== 10) return { ok: false, error: "사업자등록번호는 숫자 10자리로 입력하세요" };
+
+  const ownerId = typeof b.ownerId === "string" && b.ownerId !== "" ? b.ownerId : null;
+  if (ownerId !== null && !UUID_RE.test(ownerId)) return { ok: false, error: "담당 영업이 올바르지 않습니다" };
+
+  const tags: string[] = [];
+  if (b.tags !== undefined && b.tags !== null && !Array.isArray(b.tags)) return { ok: false, error: "태그가 올바르지 않습니다" };
+  for (const t of (b.tags as unknown[] | undefined) ?? []) {
+    const tag = str(t, 1000);
+    if (!tag) continue;
+    if (tag.length > COMPANY_TAG_LEN) return { ok: false, error: `태그는 ${COMPANY_TAG_LEN}자 이하로 입력하세요` };
+    if (!tags.includes(tag)) tags.push(tag);
+  }
+  if (tags.length > COMPANY_TAG_MAX) return { ok: false, error: `태그는 ${COMPANY_TAG_MAX}개까지 등록할 수 있습니다` };
+
+  const notes = typeof b.notes === "string" ? b.notes.trim() : "";
+  if (notes.length > COMPANY_NOTES_MAX) return { ok: false, error: `메모는 ${COMPANY_NOTES_MAX.toLocaleString()}자 이하로 입력하세요` };
+
+  return {
+    ok: true,
+    data: {
+      name,
+      website,
+      emailDomain,
+      industry: str(b.industry, 50),
+      size,
+      phone: str(b.phone, 30),
+      address: str(b.address, 300),
+      businessNumber,
+      ceoName: str(b.ceoName, 50),
+      ownerId,
+      tier,
+      tags,
+      notes,
+    },
+  };
+}
 
 const MAX_CHAT_MESSAGES = 20;
 const MAX_CHAT_CHARS = 2000;

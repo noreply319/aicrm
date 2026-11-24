@@ -8,7 +8,7 @@ export async function resetDb() {
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
   await c.connect();
   try {
-    await c.query("TRUNCATE meeting_notes, lead_events, leads RESTART IDENTITY CASCADE");
+    await c.query("TRUNCATE meeting_notes, lead_events, leads, companies RESTART IDENTITY CASCADE");
   } finally {
     await c.end();
   }
@@ -66,4 +66,9 @@ export async function fakeNoteAi(page: Page) {
   await page.route("**/api/meetings/*/schedule-candidates", (route) =>
     route.fulfill({ json: { registered: [], candidates: [] } })
   );
+}
+
+export async function createCompany(request: APIRequestContext, data: Record<string, unknown>) {
+  const res = await request.post("/api/companies", { data });
+  return (await res.json()) as { id: string; name: string };
 }

@@ -16,6 +16,8 @@ export { AiError as AssistantError } from "./openai";
 const MAX_EVENTS = 500;
 // 미팅 노트: 최근 N건, 질문에 언급된 리드의 노트만 본문 포함 (토큰 비용 제한)
 const MAX_NOTES = 100;
+const MAX_COMPANIES = 500;
+const COMPANY_NOTE_CHARS = 1000;
 const NOTE_BODY_CHARS = 4000;
 const NOTE_BODY_TOTAL_CHARS = 40000;
 const TIME_ZONE = "Asia/Seoul";
@@ -71,12 +73,24 @@ interface NoteContextRow {
   body: string;
 }
 
+interface CompanyContextRow {
+  id: string;
+  name: string;
+  industry: string;
+  size: string | null;
+  tier: string | null;
+  tags: string[];
+  notes: string;
+  emailDomain: string | null;
+  owner: string | null;
+}
+
 /**
  * DB에서 현재 리드 + 변경 이력 + 미팅 노트를 읽어 모델 컨텍스트 문자열을 만든다.
  * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
  */
 async function buildContext(question: string, emails: EmailContext[] = []): Promise<string> {
-  const [leadsRes, eventsRes, notesRes, schedulesRes] = await Promise.all([
+  const [leadsRes, eventsRes, notesRes, schedulesRes, companiesRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
     pool.query<LeadEvent & { by: string | null }>(
       `SELECT e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
@@ -100,11 +114,19 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
        ORDER BY m.starts_at LIMIT $1`,
       [MAX_SCHEDULES]
     ),
+    // 회사 정보: 전화·주소·사업자번호·대표자명은 보내지 않는다 (개인정보 최소화)
+    pool.query<CompanyContextRow>(
+      `SELECT c.id, c.name, c.industry, c.size, c.tier, c.tags, c.notes, c.email_domain AS "emailDomain", u.name AS "owner"
+       FROM companies c LEFT JOIN users u ON u.id = c.owner_id
+       ORDER BY c.name LIMIT $1`,
+      [MAX_COMPANIES]
+    ),
   ]);
 
   // 이메일·전화번호는 외부 API로 보내지 않는다 (개인정보 최소화)
   const leads = leadsRes.rows.map(toLead).map((l) => ({
     id: l.id,
+    companyId: l.companyId,
     company: l.company,
     contact: l.contact,
     title: l.title,
@@ -160,8 +182,21 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     };
   });
 
+  // 회사 메모는 질문에 회사명이 나온 회사만 (나머지는 기본 정보만)
+  const companies = companiesRes.rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    industry: c.industry || undefined,
+    size: c.size ?? undefined,
+    tier: c.tier ?? undefined,
+    tags: c.tags.length ? c.tags : undefined,
+    owner: c.owner ?? undefined,
+    emailDomain: c.emailDomain ?? undefined,
+    ...(c.notes && q.includes(c.name.toLowerCase()) ? { notes: maskPii(c.notes.slice(0, COMPANY_NOTE_CHARS)) } : {}),
+  }));
+
   // 질문과 관련된 저장 메일(제목·AI 요약)만. 본문은 넣지 않는다
-  return JSON.stringify({ leads, events, meetingNotes, scheduledMeetings, emails });
+  return JSON.stringify({ companies, leads, events, meetingNotes, scheduledMeetings, emails });
 }
 
 type CalendarState = ConnectionState;
@@ -202,6 +237,8 @@ function systemPrompt(context: string, state: CalendarState = "none", userName =
 - 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())} (${"일월화수목금토"[new Date(kst(Date.now()).slice(0, 10) + "T00:00:00Z").getUTCDay()]}요일)
 - 금액은 원화(₩)이며 천 단위 구분 기호를 붙이세요.
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
+- companies는 회사 목록입니다(업종·규모(직원 수)·등급 A/B/C·태그·담당 영업 owner). leads.companyId로 연결됩니다.
+  회사 단위 질문(이 회사 리드 전체, 회사별 파이프라인 등)은 companyId로 묶어 답하세요. notes는 질문에 회사명이 나온 회사만 포함됩니다.
 - events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
   note_created/note_updated/note_deleted(미팅 노트 작성/수정/삭제).
 - meetingNotes는 리드별 미팅 노트입니다(최근 ${MAX_NOTES}건, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.

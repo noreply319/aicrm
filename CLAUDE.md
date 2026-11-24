@@ -69,7 +69,7 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
+    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, CompanyList, CompanyDetail, CompanyModal, CompanyCombobox
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
     │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
@@ -80,6 +80,8 @@ AI CRM/                      # git 저장소 루트
     │   ├── meetings.ts      # 서버 전용: 미팅 노트 컬럼/매핑/이력 diff, AI 요약
     │   ├── useMeetings.ts   # 클라이언트 미팅 노트 훅 · api.ts: fetch 헬퍼
     │   ├── audioFile.ts     # 클라이언트: 녹음 파일 → 업로드 가능한 WAV 구간으로 분할
+    │   ├── companies.ts     # 서버 전용: 회사 컬럼/매핑, 리드 회사 결정, 중복(409) 처리
+    │   ├── company.ts       # 공용 순수 함수: 회사명 정규화, 사업자번호·도메인, 검색, 회사별 집계 · useCompanies.ts: 클라이언트 훅
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -142,7 +144,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 
 - 위치: `web/test/unit`, `web/test/integration`, `web/e2e`. 설정: `vitest.config.mts`, `playwright.config.ts`.
 - **테스트 DB**: 로컬 `ai_crm_test` (없으면 자동 생성 + `schema.sql` 적용, 테스트마다 TRUNCATE).
-  `TEST_DATABASE_URL`로 변경 가능하지만 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
+  `TEST_DATABASE_URL`로 변경 가능하지만(다른 worktree·세션이 동시에 테스트하면 데이터가 서로 지워지므로 `ai_crm_test_<작업명>`처럼 따로 쓰는 것을 권장) 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
 - OpenAI는 실제로 호출하지 않는다: unit·integration은 `fetch`를, e2e는 `page.route`로 API 응답을 가짜로 대체. e2e 녹음은 가짜 마이크(`getUserMedia` 대체) 사용.
 - e2e는 설치된 Chrome(`channel: "chrome"`)을 쓰므로 브라우저 다운로드 불필요. 순서대로 1개씩 실행(같은 DB).
 - e2e 로그인: `e2e/global-setup.ts`가 테스트 DB에 테스트 사용자·세션을 만들고 모든 요청에 세션 쿠키를 붙인다(서버 `ALLOWED_EMAILS`=테스트 계정). 노트 저장 후 자동 요약·다음 미팅 추출은 `fakeNoteAi`로 가짜 응답.
@@ -210,6 +212,17 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(GET 저장된 목록, Gmail 호출 없음), `.../emails/sync`(POST 새 메일 저장, `{pageToken}`이면 이전 페이지), `.../emails/summarize`(POST pending 요약, 최대 20건, `{retryFailed}`), `.../emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
 - 화면: 리드 상세 `이메일` 탭(`LeadEmails`: 저장 목록 즉시 표시 → sync → summarize, 목록에 AI 요약), 설정 Gmail 카드.
 - AI Assistant: 컨텍스트 `emails`에 **질문과 관련된 저장 메일만**(`findRelevantEmails`: 질문에 나온 회사·담당자의 메일 + 제목·요약 키워드 일치, 최대 30건, 제목·요약만). `search_lead_emails` 도구는 저장된 요약 검색(leadId면 새 메일 동기화·요약 후). 이메일 주소는 이름만 남기고 제목·요약은 `maskPii` 후 전송.
+
+## 회사
+
+- 문서: `docs/companies/requirements.md`(13장: 구현하면서 바뀐 점), `docs/companies/wireframe.html`
+- 테이블 `companies`(정규화 키 `name_key` 유니크, `email_domain` 유니크), `leads.company_id`(FK `ON DELETE RESTRICT` → 리드가 있는 회사는 삭제 불가).
+  `leads.company`는 **회사명 사본**으로 유지 — 회사명을 바꾸면 `PATCH /api/companies/[id]`가 같은 트랜잭션에서 연결 리드의 사본을 바꾸고 리드마다 `updated {company}` 이력을 남긴다.
+- 정규화: SQL `crm_company_key()` = `lib/company.ts` `companyKey()` (소문자, 공백 제거, (주)·㈜·주식회사·(유)·유한회사 제거). 바꾸면 둘 다 수정 (integration 테스트로 비교).
+- 리드 API: `companyId`로 회사 지정(회사명은 서버가 채움). `companyId` 없이 `company`만 오면 같은 이름의 회사를 찾거나 만든다(`resolveLeadCompany`). 마이그레이션은 `crm_link_lead_companies()`(schema.sql·seed.sql 끝에서 호출, 재실행 안전).
+- API: `/api/companies`(GET·POST, 409면 `{ error, company: 기존 회사 }`), `/api/companies/[id]`(GET·PATCH·DELETE), `/api/team`(담당 영업 선택용 팀원 id·이름).
+- 화면: 헤더 `회사`(`/companies` CompanyList, `/companies/[id]` CompanyDetail), CompanyModal(등록·수정), 리드 모달 CompanyCombobox(검색·키보드 선택·이름만으로 바로 생성). 회사별 리드 수·금액은 클라이언트 `leads`로 계산(`statsByCompany`).
+- AI Assistant 컨텍스트 `companies`: 이름·업종·규모·등급·태그·담당 영업·도메인, 메모는 질문에 회사명이 나온 회사만. 전화·주소·사업자번호·대표자명은 보내지 않음.
 
 ## 참고 문서
 

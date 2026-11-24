@@ -696,3 +696,133 @@ a.btn { text-decoration: none; }
   background: var(--surface-2); color: var(--text-3);
 }
 .email-status { font-size: 12px; margin-right: 8px; }
+
+/* ───────── 회사 ───────── */
+.field-hint { font-size: 12px; color: var(--text-3); }
+.field-error { font-size: 12px; color: var(--danger); font-weight: 500; }
+.field-warn { font-size: 12px; color: var(--prio-mid-fg); }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* 리드 모달: 회사 콤보박스 */
+.company-combo { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.company-combo input { width: 100%; }
+.combo-pop {
+  position: absolute; left: 0; right: 0; top: 42px; z-index: 5; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden;
+  max-height: 320px; overflow-y: auto;
+}
+.combo-meta { padding: 7px 12px; font-size: 11.5px; color: var(--text-3); border-bottom: 1px solid var(--border); }
+.combo-opt { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; font-size: 13.5px; }
+.combo-opt.on { background: var(--primary-soft); }
+.combo-opt .muted { font-size: 11.5px; }
+.combo-name b { color: var(--primary); }
+.combo-create { border-top: 1px solid var(--border); color: var(--primary); font-weight: 600; }
+.combo-error { padding: 8px 12px; font-size: 12px; color: var(--danger); border-top: 1px solid var(--border); }
+.company-chip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--primary); background: var(--primary-soft); font-size: 13.5px; min-height: 40px;
+}
+.company-chip-x { border: none; background: none; color: var(--text-2); padding: 2px 4px; border-radius: 6px; }
+.company-chip-x:hover { background: var(--surface); }
+.company-suggest {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 10px; border-radius: 9px;
+  border: 1px dashed var(--border); font-size: 12.5px; color: var(--text-2);
+}
+
+/* 회사 등록·수정 모달 */
+.company-modal { max-width: 640px; }
+.company-modal .modal-warn, .company-modal .modal-error { margin: 0 22px 8px; }
+.form-legend {
+  grid-column: 1 / -1; font-size: 12.5px; font-weight: 700; color: var(--text-2);
+  padding-bottom: 4px; border-bottom: 1px solid var(--border); margin-top: 4px;
+}
+.seg-choice { display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.seg-choice button { flex: 1; padding: 8px 0; border: none; background: var(--surface); color: var(--text-2); font: inherit; }
+.seg-choice button + button { border-left: 1px solid var(--border); }
+.seg-choice button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.tag-input {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--surface);
+}
+.tag-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.field .tag-input input { flex: 1; min-width: 100px; border: none; padding: 3px 2px; box-shadow: none; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 500; margin-right: 4px;
+}
+.tag-chip button { border: none; background: none; color: var(--text-3); padding: 0; font-size: 11px; }
+.tier-badge {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  font-size: 11.5px; font-weight: 700;
+}
+.tier-A { background: var(--prio-high-bg); color: var(--prio-high-fg); }
+.tier-B { background: var(--prio-mid-bg); color: var(--prio-mid-fg); }
+.tier-C { background: var(--prio-low-bg); color: var(--prio-low-fg); }
+
+/* 회사 목록 */
+.companies { flex: 1; padding: 16px 24px 24px; max-width: 1200px; width: 100%; }
+.companies .meetings-toolbar select {
+  padding: 7px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit;
+}
+.company-table {
+  width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; font-size: 13.5px;
+}
+.company-table th {
+  text-align: left; font-size: 12px; font-weight: 600; color: var(--text-3); padding: 10px 12px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2); white-space: nowrap;
+}
+.company-table td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.company-table tbody tr:last-child td { border-bottom: none; }
+.company-table tbody tr { cursor: pointer; }
+.company-table tbody tr:hover td, .company-table tbody tr:focus-visible td { background: var(--surface-2); }
+.company-table tbody tr:focus-visible { outline: none; }
+.company-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.company-name-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.company-cards { display: none; }
+.company-card {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font: inherit;
+}
+.company-card-foot { display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px; }
+
+/* 회사 상세 */
+.company-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.company-head > a { text-decoration: none; }
+.company-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.company-title h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+.company-title a { text-decoration: none; }
+.company-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.company-cols { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
+.company-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px;
+}
+.company-panel h2 { margin: 0 0 10px; font-size: 14px; }
+.company-panel-head { display: flex; align-items: center; margin-bottom: 10px; }
+.company-panel-head h2 { margin: 0; }
+.company-info { margin: 0; display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 13.5px; }
+.company-info div { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
+.company-info dt { color: var(--text-3); font-size: 12.5px; }
+.company-info dd { margin: 0; word-break: break-word; }
+.company-info .pre { white-space: pre-wrap; }
+.company-meta { margin-top: 12px; }
+.company-leads { display: flex; flex-direction: column; }
+.company-lead {
+  display: flex; align-items: center; gap: 10px; padding: 10px 6px; border: none; border-bottom: 1px solid var(--border);
+  background: none; color: var(--text); font: inherit; font-size: 13.5px; text-align: left; border-radius: 0;
+}
+.company-lead:last-child { border-bottom: none; }
+.company-lead:hover { background: var(--surface-2); }
+.company-lead-value { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 960px) {
+  .company-cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .companies { padding: 12px 12px 88px; }
+  .company-table { display: none; }
+  .company-cards { display: flex; flex-direction: column; gap: 8px; }
+  .company-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-lead { flex-wrap: wrap; }
+  .company-lead .ellipsis { flex-basis: 100%; order: 5; }
+}
