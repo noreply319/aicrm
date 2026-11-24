@@ -28,6 +28,7 @@ import CalendarView from "./CalendarView";
 import EventModal, { type EventModalMode } from "./EventModal";
 import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
+import ContractsView from "./ContractsView";
 import CompanyList from "./CompanyList";
 import CompanyDetail from "./CompanyDetail";
 import CompanyModal from "./CompanyModal";
@@ -70,6 +71,7 @@ type EventModalState =
 const viewOf = (pathname: string): View =>
   pathname.startsWith("/companies") ? "companies"
   : pathname.startsWith("/meetings") ? "meetings"
+    : pathname.startsWith("/contracts") ? "contracts"
     : pathname.startsWith("/calendar") ? "calendar"
         : "pipeline";
 
@@ -292,7 +294,7 @@ export default function CrmApp() {
 
   // 'N' 키: 파이프라인에서는 새 리드, 미팅 노트에서는 노트 작성
   // 모달이 늘어나도 의존성 배열 크기가 바뀌지 않게 하나의 값으로 합친다 (HMR 경고 방지)
-  const anyModalOpen = modal.open || noteModal.open || eventModal.open || settingsOpen || companyModal.open;
+  const anyModalOpen = modal.open || noteModal.open || eventModal.open || companyModal.open || settingsOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
@@ -615,6 +617,8 @@ export default function CrmApp() {
                   onDismissCandidate={dismissSchedule}
                   onExpired={auth.reload}
                 />
+              ) : view === "contracts" ? (
+                <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
               ) : (
                 <MeetingList
                   notes={meetings.notes}
@@ -627,7 +631,10 @@ export default function CrmApp() {
               )}
             </div>
             {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-            <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+            {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant(다시 열기 탭 포함)를 숨긴다 */}
+            <div className="assistant-slot" hidden={view === "contracts"}>
+              <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+            </div>
           </div>
         </div>
         {modal.open && (

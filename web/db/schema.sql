@@ -61,7 +61,7 @@ WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);
 ALTER TABLE lead_events DROP CONSTRAINT IF EXISTS lead_events_type_check;
 ALTER TABLE lead_events ADD CONSTRAINT lead_events_type_check
   CHECK (type IN ('created','updated','moved','deleted','note_created','note_updated','note_deleted',
-                  'meeting_scheduled','meeting_rescheduled','meeting_canceled'));
+                  'meeting_scheduled','meeting_rescheduled','meeting_canceled','document_sent'));
 
 -- 미팅 노트: 리드에 연결(나중에 지정 가능 → NULL 허용), 리드 삭제 시 함께 삭제
 -- 녹음 원본은 저장하지 않고 전사 텍스트만 body에 저장한다
@@ -232,6 +232,90 @@ BEGIN
       CREATE POLICY lead_emails_crm_app ON lead_emails FOR ALL TO crm_app USING (true) WITH CHECK (true);
     END IF;
     GRANT SELECT, INSERT, UPDATE, DELETE ON lead_emails TO crm_app;
+  END IF;
+END $$;
+
+-- ───────────────────────── 계약서·견적서 ─────────────────────────
+
+-- 문서 템플릿 (팀 공유). body의 {{항목}}이 문서마다 바뀌는 부분, fields는 항목 설정(유형·질문·필수·리드 자동 채움)
+CREATE TABLE IF NOT EXISTS document_templates (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind           text NOT NULL CHECK (kind IN ('contract','quote')),
+  name           text NOT NULL CHECK (length(trim(name)) > 0 AND length(name) <= 100),
+  description    text NOT NULL DEFAULT '',
+  body           text NOT NULL CHECK (length(trim(body)) > 0 AND length(body) <= 50000),
+  fields         jsonb NOT NULL DEFAULT '[]'::jsonb,
+  line_items     jsonb,                                  -- 견적서 품목 표 설정 { spec, vat }. 계약서는 NULL
+  email_subject  text NOT NULL DEFAULT '',
+  email_body     text NOT NULL DEFAULT '',
+  archived       boolean NOT NULL DEFAULT false,
+  created_by     uuid REFERENCES users(id) ON DELETE SET NULL,
+  updated_by     uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS document_templates_kind_idx ON document_templates (archived, kind, updated_at DESC);
+
+-- 작성한 문서: 생성 시점의 템플릿 본문·항목을 복사(snapshot)해 두므로 템플릿을 고쳐도 영향이 없다
+CREATE TABLE IF NOT EXISTS documents (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id        uuid REFERENCES document_templates(id) ON DELETE SET NULL,
+  kind               text NOT NULL CHECK (kind IN ('contract','quote')),
+  title              text NOT NULL CHECK (length(trim(title)) > 0),
+  doc_number         text NOT NULL UNIQUE,              -- C-2026-0001 / Q-2026-0001
+  lead_id            uuid REFERENCES leads(id) ON DELETE SET NULL,
+  body               text NOT NULL,
+  fields             jsonb NOT NULL DEFAULT '[]'::jsonb,
+  line_items_config  jsonb,
+  email_subject      text NOT NULL DEFAULT '',
+  email_body         text NOT NULL DEFAULT '',
+  field_values       jsonb NOT NULL DEFAULT '{}'::jsonb, -- { 항목: 값 }
+  line_items         jsonb NOT NULL DEFAULT '[]'::jsonb, -- [{ name, spec, qty, unitPrice }]
+  skipped            jsonb NOT NULL DEFAULT '[]'::jsonb, -- 건너뛴 항목
+  messages           jsonb NOT NULL DEFAULT '[]'::jsonb, -- Assistant 대화 기록
+  step               jsonb NOT NULL DEFAULT '{"type":"lead"}'::jsonb, -- Assistant가 기다리는 입력
+  status             text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','completed','sent')),
+  rev                integer NOT NULL DEFAULT 0,          -- 저장할 때마다 +1 (동시 수정 감지)
+  created_by         uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  completed_at       timestamptz,
+  sent_at            timestamptz
+);
+CREATE INDEX IF NOT EXISTS documents_updated_idx ON documents (updated_at DESC);
+CREATE INDEX IF NOT EXISTS documents_lead_idx ON documents (lead_id);
+CREATE INDEX IF NOT EXISTS documents_template_idx ON documents (template_id);
+
+-- 발송 기록 (재발송 가능). 메일 본문은 저장하지 않는다
+CREATE TABLE IF NOT EXISTS document_sends (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id       uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  user_id           uuid REFERENCES users(id) ON DELETE SET NULL,
+  to_addrs          text[] NOT NULL,
+  cc_addrs          text[] NOT NULL DEFAULT '{}',
+  subject           text NOT NULL,
+  file_name         text NOT NULL,
+  gmail_message_id  text NOT NULL DEFAULT '',
+  sent_at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS document_sends_doc_idx ON document_sends (document_id, sent_at DESC);
+
+ALTER TABLE document_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_sends ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'document_templates' AND policyname = 'document_templates_crm_app') THEN
+      CREATE POLICY document_templates_crm_app ON document_templates FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'documents' AND policyname = 'documents_crm_app') THEN
+      CREATE POLICY documents_crm_app ON documents FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'document_sends' AND policyname = 'document_sends_crm_app') THEN
+      CREATE POLICY document_sends_crm_app ON document_sends FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON document_templates, documents, document_sends TO crm_app;
   END IF;
 END $$;
 

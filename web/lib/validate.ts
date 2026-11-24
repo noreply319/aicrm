@@ -3,8 +3,10 @@ import {
   COMPANY_NAME_MAX, COMPANY_NOTES_MAX, COMPANY_SIZES, COMPANY_TAG_LEN, COMPANY_TAG_MAX, COMPANY_TIERS,
   NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix,
 } from "./constants";
+import { cleanItem, ITEM_LIMITS, syncFields, TEMPLATE_LIMITS } from "./docTemplate";
 import type {
-  CalendarEventInput, ChatMessage, CompanyInput, CompanySize, CompanyTier, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId,
+  CalendarEventInput, ChatMessage, CompanyInput, CompanySize, CompanyTier, DocAction, DocKind, DocTemplateInput, FieldType,
+  LeadInput, LeadSource, LineItem, LineItemsConfig, MeetingNoteInput, NoteSource, Priority, StageId, TemplateField,
 } from "./types";
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
@@ -259,3 +261,145 @@ export function parseDateRange(start: string | null, end: string | null, maxDays
 
 /** Gmail 목록 다음 페이지 토큰 (영숫자) */
 export const PAGE_TOKEN_RE = /^[A-Za-z0-9_-]{1,200}$/;
+
+// ───────────────────────── 계약서·견적서 ─────────────────────────
+
+const FIELD_TYPES = new Set<string>(["text", "multiline", "number", "money", "date", "period", "email", "phone", "choice"]);
+const LEAD_SOURCES = new Set<string>(["", "company", "contact", "email", "phone", "value"]);
+const oneLine = (v: unknown, max: number) => str(v, max).replace(/[\r\n]+/g, " ");
+/** 줄바꿈을 보존하는 긴 텍스트 (앞뒤 공백만 제거) */
+const longText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").trim().slice(0, max) : "");
+
+export const isDocKind = (v: unknown): v is DocKind => v === "contract" || v === "quote";
+
+function parseField(raw: unknown): TemplateField | null {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!r) return null;
+  const key = oneLine(r.key, TEMPLATE_LIMITS.key + 10);
+  if (!key || key.length > TEMPLATE_LIMITS.key || /[{}]/.test(key)) return null;
+  const options = Array.isArray(r.options)
+    ? [...new Set(r.options.map((o) => oneLine(o, 50)).filter(Boolean))].slice(0, TEMPLATE_LIMITS.options)
+    : [];
+  return {
+    key,
+    type: (FIELD_TYPES.has(r.type as string) ? r.type : "text") as FieldType,
+    question: oneLine(r.question, 200),
+    hint: oneLine(r.hint, 200),
+    required: r.required !== false,
+    defaultValue: oneLine(r.defaultValue, 200),
+    leadSource: (LEAD_SOURCES.has(r.leadSource as string) ? r.leadSource : "") as LeadSource,
+    options,
+  };
+}
+
+/** 템플릿 등록·수정 검증. 항목은 본문·메일 양식의 {{항목}}에 맞춰 정리한다 */
+export function parseTemplateInput(body: unknown): { ok: true; data: DocTemplateInput } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+  if (!isDocKind(b.kind)) return { ok: false, error: "문서 종류를 선택하세요" };
+  const name = oneLine(b.name, TEMPLATE_LIMITS.name);
+  if (!name) return { ok: false, error: "템플릿 이름을 입력하세요" };
+  const text = longText(b.body, TEMPLATE_LIMITS.body + 1);
+  if (!text) return { ok: false, error: "본문을 입력하세요" };
+  if (text.length > TEMPLATE_LIMITS.body) return { ok: false, error: `본문은 ${TEMPLATE_LIMITS.body.toLocaleString()}자 이하로 입력하세요` };
+  const emailSubject = oneLine(b.emailSubject, 200);
+  const emailBody = longText(b.emailBody, TEMPLATE_LIMITS.email);
+
+  const parsed: TemplateField[] = [];
+  for (const raw of Array.isArray(b.fields) ? b.fields : []) {
+    const f = parseField(raw);
+    if (!f) return { ok: false, error: "항목 이름이 올바르지 않습니다 (40자 이하, 중괄호 불가)" };
+    if (parsed.some((p) => p.key === f.key)) return { ok: false, error: `항목 이름이 중복됩니다: ${f.key}` };
+    parsed.push(f);
+  }
+  const fields = syncFields([text, emailSubject, emailBody], parsed);
+  if (fields.length > TEMPLATE_LIMITS.fields) return { ok: false, error: `항목은 ${TEMPLATE_LIMITS.fields}개 이하로 만드세요` };
+  const noOptions = fields.find((f) => f.type === "choice" && f.options.length === 0);
+  if (noOptions) return { ok: false, error: `"${noOptions.key}" 선택지 보기를 1개 이상 입력하세요` };
+
+  const li = b.lineItems && typeof b.lineItems === "object" ? (b.lineItems as Record<string, unknown>) : {};
+  const lineItems: LineItemsConfig | null =
+    b.kind === "quote"
+      ? { spec: li.spec !== false, vat: li.vat === "included" || li.vat === "none" ? li.vat : "excluded" }
+      : null;
+
+  return {
+    ok: true,
+    data: { kind: b.kind, name, description: oneLine(b.description, TEMPLATE_LIMITS.description), body: text, fields, lineItems, emailSubject, emailBody },
+  };
+}
+
+const DOC_ACTIONS = new Set<string>([
+  "select_lead", "no_lead", "answer", "skip", "items_done", "remove_last_item",
+  "complete", "complete_blank", "fill_missing", "reopen", "move_stage", "keep_stage",
+]);
+
+/** Assistant 입력: { message } 또는 { action, value } */
+export function parseDocChatInput(body: unknown):
+  { ok: true; data: { message: string; action: DocAction | null; value: string } } | { ok: false; error: string } {
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const message = typeof b.message === "string" ? b.message.trim() : "";
+  if (message.length > MAX_CHAT_CHARS) return { ok: false, error: `메시지는 ${MAX_CHAT_CHARS}자 이하로 입력하세요` };
+  const action = DOC_ACTIONS.has(b.action as string) ? (b.action as DocAction) : null;
+  if (b.action !== undefined && !action) return { ok: false, error: "잘못된 요청입니다" };
+  if (!message && !action) return { ok: false, error: "답변을 입력하세요" };
+  return { ok: true, data: { message, action, value: typeof b.value === "string" ? b.value.trim().slice(0, 500) : "" } };
+}
+
+/** 문서 직접 수정: { values?, lineItems?, title? } */
+export function parseDocPatch(body: unknown):
+  { ok: true; data: { values?: Record<string, string>; lineItems?: LineItem[]; title?: string } } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+  const data: { values?: Record<string, string>; lineItems?: LineItem[]; title?: string } = {};
+  if (b.values !== undefined) {
+    if (!b.values || typeof b.values !== "object" || Array.isArray(b.values)) return { ok: false, error: "잘못된 요청입니다" };
+    const entries = Object.entries(b.values as Record<string, unknown>);
+    if (entries.length > TEMPLATE_LIMITS.fields) return { ok: false, error: "잘못된 요청입니다" };
+    data.values = {};
+    for (const [k, v] of entries) {
+      if (typeof v !== "string") return { ok: false, error: "잘못된 요청입니다" };
+      data.values[k.slice(0, TEMPLATE_LIMITS.key)] = v.slice(0, 2000);
+    }
+  }
+  if (b.lineItems !== undefined) {
+    if (!Array.isArray(b.lineItems) || b.lineItems.length > ITEM_LIMITS.count) return { ok: false, error: `품목은 ${ITEM_LIMITS.count}개 이하로 입력하세요` };
+    const items = b.lineItems.map(cleanItem);
+    if (items.some((i) => i === null)) return { ok: false, error: "품목 이름·수량·단가를 확인하세요" };
+    data.lineItems = items as LineItem[];
+  }
+  if (b.title !== undefined) {
+    const title = oneLine(b.title, 200);
+    if (!title) return { ok: false, error: "문서 제목을 입력하세요" };
+    data.title = title;
+  }
+  return { ok: true, data };
+}
+
+/** 메일 주소 (헤더에 그대로 들어가므로 엄격하게) */
+const MAIL_RE = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
+export const isMailAddress = (v: string) => v.length <= 254 && MAIL_RE.test(v);
+
+function addressList(v: unknown): string[] | null {
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,;\s]+/) : [];
+  const list = [...new Set(raw.map((x) => (typeof x === "string" ? x.trim().toLowerCase() : "")).filter(Boolean))];
+  return list.every(isMailAddress) ? list : null;
+}
+
+/** 문서 메일 발송: { to[], cc[], subject, body, fileName } */
+export function parseSendInput(body: unknown):
+  { ok: true; data: { to: string[]; cc: string[]; subject: string; body: string; fileName: string } } | { ok: false; error: string } {
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const to = addressList(b.to);
+  const cc = addressList(b.cc ?? []);
+  if (!to || !cc) return { ok: false, error: "이메일 주소 형식을 확인하세요" };
+  if (to.length === 0) return { ok: false, error: "받는 사람을 입력하세요" };
+  if (to.length + cc.length > 20) return { ok: false, error: "받는 사람·참조는 합쳐서 20명 이하로 입력하세요" };
+  const subject = oneLine(b.subject, 200);
+  if (!subject) return { ok: false, error: "메일 제목을 입력하세요" };
+  const text = longText(b.body, 10_000);
+  let fileName = oneLine(b.fileName, 120).replace(/[\\/:*?"<>|]+/g, "_");
+  if (!fileName) return { ok: false, error: "파일 이름을 입력하세요" };
+  if (!/\.pdf$/i.test(fileName)) fileName += ".pdf";
+  return { ok: true, data: { to, cc, subject, body: text, fileName } };
+}

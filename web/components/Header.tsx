@@ -57,7 +57,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
       <div className="header-actions">
         <IconButton icon="moon" label="테마 전환" onClick={toggleTheme} />
         {/* 모바일은 하단 탭의 AI 메뉴로 연다 */}
-        <Button
+        {view !== "contracts" && <Button
           className="hide-mobile"
           active={assistantOpen}
           title="AI Assistant 열기/닫기"
@@ -67,7 +67,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
         >
           <Badge tone="brand">AI</Badge>
           <span>Assistant</span>
-        </Button>
+        </Button>}
         {addLabel && (
           <Button variant="primary" icon="plus" className="hide-mobile" onClick={onAdd}>
             {addLabel}

@@ -117,6 +117,8 @@ export interface Me {
   gmail: {
     /** connected: 사용 가능, expired: 토큰 만료·폐기(재연동 필요), none: 미연동 */
     state: "connected" | "expired" | "none";
+    /** 메일 발송 권한(gmail.send)까지 받았는지 */
+    canSend: boolean;
   };
 }
 
@@ -250,4 +252,155 @@ export interface ExtractResult {
   candidates: ScheduledMeeting[];
   /** 캘린더 미연동·만료·오류로 자동 등록하지 못한 이유 */
   calendarError?: string;
+}
+
+// ───────────────────────── 계약서·견적서 ─────────────────────────
+
+export type DocKind = "contract" | "quote";
+
+/** 템플릿 항목 유형 */
+export type FieldType = "text" | "multiline" | "number" | "money" | "date" | "period" | "email" | "phone" | "choice";
+
+/** 리드에서 자동으로 채울 값 */
+export type LeadSource = "" | "company" | "contact" | "email" | "phone" | "value";
+
+/** 템플릿에서 문서마다 바뀌는 부분 ({{key}}) */
+export interface TemplateField {
+  /** 본문의 {{key}}와 같은 이름 (예: "회사명") */
+  key: string;
+  type: FieldType;
+  /** Assistant 질문 문구 (비우면 자동) */
+  question: string;
+  /** 예시·설명 */
+  hint: string;
+  required: boolean;
+  defaultValue: string;
+  leadSource: LeadSource;
+  /** 선택지 유형의 보기 */
+  options: string[];
+}
+
+/** 견적서 품목 표 설정 */
+export interface LineItemsConfig {
+  /** 규격 열 표시 */
+  spec: boolean;
+  /** excluded: 부가세 별도 10%, included: 단가에 부가세 포함, none: 부가세 없음 */
+  vat: "excluded" | "included" | "none";
+}
+
+export interface LineItem {
+  name: string;
+  spec: string;
+  qty: number;
+  unitPrice: number;
+}
+
+export interface DocTemplateInput {
+  kind: DocKind;
+  name: string;
+  description: string;
+  body: string;
+  fields: TemplateField[];
+  lineItems: LineItemsConfig | null;
+  emailSubject: string;
+  emailBody: string;
+}
+
+export interface DocTemplate extends DocTemplateInput {
+  id: string;
+  archived: boolean;
+  updatedAt: string; // ISO
+  updatedByName: string;
+  /** 이 템플릿으로 만든 문서 수 */
+  documentCount: number;
+}
+
+export type DocStatus = "draft" | "completed" | "sent";
+
+/** Assistant 빠른 답변 버튼 */
+export interface QuickReply {
+  label: string;
+  action: DocAction;
+  value?: string;
+}
+
+export type DocAction =
+  | "select_lead" | "no_lead" | "answer" | "skip" | "items_done" | "remove_last_item"
+  | "complete" | "complete_blank" | "fill_missing" | "reopen" | "move_stage" | "keep_stage";
+
+export interface DocMessage {
+  role: "assistant" | "user";
+  text: string;
+  at: string; // ISO
+  /** filled: 값 반영 안내, result: 완성 카드, sent: 발송 완료 */
+  kind?: "question" | "filled" | "info" | "result" | "sent" | "error";
+  quick?: QuickReply[];
+  /** 질문 메시지가 묻는 항목 (빠른 입력 표시용) */
+  fieldKey?: string;
+  /** sent: Gmail에서 보기 링크 */
+  link?: string;
+}
+
+/** Assistant가 기다리는 입력 */
+export type DocStep =
+  | { type: "lead" }
+  | { type: "items" }
+  | { type: "field"; key: string }
+  | { type: "review" }
+  | { type: "confirm_complete"; missing: string[] }
+  | { type: "done" };
+
+/** 문서 목록 항목 */
+export interface DocumentSummary {
+  id: string;
+  templateId: string | null;
+  kind: DocKind;
+  title: string;
+  docNumber: string;
+  leadId: string | null;
+  company: string;
+  status: DocStatus;
+  createdBy: string | null;
+  createdByName: string;
+  /** 작성자 이메일 ({{작성자_이메일}}) */
+  createdByEmail: string;
+  updatedAt: string; // ISO
+  sentAt: string | null;
+  sendCount: number;
+  /** 필수 항목 채움 현황 */
+  progress: { filled: number; total: number };
+}
+
+export interface DocumentRecord extends DocumentSummary {
+  body: string;
+  fields: TemplateField[];
+  lineItemsConfig: LineItemsConfig | null;
+  emailSubject: string;
+  emailBody: string;
+  values: Record<string, string>;
+  lineItems: LineItem[];
+  skipped: string[];
+  messages: DocMessage[];
+  step: DocStep;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/** Assistant 응답: 갱신된 문서 + 이번에 바뀐 항목(화면 강조용) */
+export interface DocChatResult {
+  document: DocumentRecord;
+  changed: string[];
+  /** 리드 단계가 바뀌었으면 true (파이프라인 다시 불러오기) */
+  leadChanged?: boolean;
+}
+
+/** 메일 작성 기본값 */
+export interface DocEmailDraft {
+  from: string;
+  to: string[];
+  subject: string;
+  body: string;
+  fileName: string;
+  size: number;
+  pages: number;
 }

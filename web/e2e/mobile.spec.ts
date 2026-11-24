@@ -63,6 +63,8 @@ test("모바일: 파이프라인은 단계 탭 + 선택한 단계의 리드 세�
 
 test("모바일: 하단 탭 맨 왼쪽 AI 메뉴로 AI Assistant 채팅을 열고, 다른 메뉴로 가면 닫힌다", async ({ page }) => {
   await page.goto("/");
+  // 개발 서버의 Next.js 표시(왼쪽 아래 "N")가 맨 왼쪽 탭을 가리므로 숨긴다 (프로덕션에는 없음)
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
   const nav = page.getByRole("navigation", { name: "메뉴" });
   const ai = nav.getByRole("button", { name: "AI" });
   // 맨 왼쪽
@@ -80,4 +82,24 @@ test("모바일: 하단 탭 맨 왼쪽 AI 메뉴로 AI Assistant 채팅을 열�
   await nav.getByRole("link", { name: "미팅 노트" }).click();
   await expect(page).toHaveURL(/\/meetings$/);
   await expect(panel).toBeHidden();
+});
+
+test("모바일 계약서: 2단 대신 대화/문서 전환, 답변하면 문서 탭에 표시", async ({ page, request }) => {
+  await request.post("/api/templates/defaults");
+  await page.goto("/contracts");
+  await page.getByRole("button", { name: /SaaS 서비스 이용 계약서/ }).click();
+  await page.getByRole("button", { name: "리드 없이 작성" }).click();
+  await expect(page.getByText("회사명을 알려주세요.")).toBeVisible();
+  await expect(page.locator(".paper")).toBeHidden(); // 대화 화면에서는 문서를 숨김
+
+  const input = page.getByPlaceholder(/답변 입력/);
+  await input.fill("블루웨이브");
+  await input.press("Enter");
+  await expect(page.locator(".pane-dot")).toBeVisible();
+  if (process.env.E2E_SHOTS_DIR) await page.screenshot({ path: `${process.env.E2E_SHOTS_DIR}/9-mobile-chat.png` });
+
+  await page.getByRole("tab", { name: /📄 문서/ }).click();
+  await expect(page.locator('.paper [data-key="회사명"]').first()).toHaveText("블루웨이브");
+  await expect(page.getByRole("region", { name: "문서 작성 Assistant" })).toBeHidden();
+  if (process.env.E2E_SHOTS_DIR) await page.screenshot({ path: `${process.env.E2E_SHOTS_DIR}/10-mobile-doc.png` });
 });

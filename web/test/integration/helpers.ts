@@ -3,7 +3,7 @@ import type { Lead, MeetingNote } from "@/lib/types";
 
 /** 테스트 사이 데이터 초기화 */
 export async function resetDb() {
-  await pool.query("TRUNCATE meeting_notes, lead_events, leads, companies RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE document_sends, documents, document_templates, meeting_notes, lead_events, leads, companies RESTART IDENTITY CASCADE");
 }
 
 export async function closeDb() {
