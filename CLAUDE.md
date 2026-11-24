@@ -90,6 +90,7 @@ AI CRM/                      # git 저장소 루트
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
         ├── seed.sql         # 샘플 데이터
+        ├── templates.sql    # 계약서·견적서 템플릿 추가 (같은 이름 있으면 건너뜀, 로컬·운영에 직접 실행)
         └── init.mjs         # npm run db:init
 ```
 
