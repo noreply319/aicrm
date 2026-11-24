@@ -112,3 +112,51 @@ export async function transcribeAudio(audio: File): Promise<string> {
   }
   return body.text.trim();
 }
+
+const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
+// 실시간 자막 기본 모델. OPENAI_LIVE_TRANSCRIBE_MODEL 환경 변수로 변경 가능
+const DEFAULT_LIVE_TRANSCRIBE_MODEL = "gpt-live-transcribe";
+// 임시 키 유효 시간: 이 시간 안에 연결을 시작해야 한다 (연결된 세션은 계속 유지)
+const LIVE_SECRET_TTL_SEC = 120;
+
+/**
+ * 브라우저가 Realtime 전사 세션에 직접 연결할 수 있는 임시 키를 발급한다.
+ * 원래 API 키는 브라우저로 보내지 않는다. 오디오는 24kHz PCM, 커밋은 클라이언트가 직접 한다.
+ */
+export async function createLiveTranscribeSecret(): Promise<{ value: string; expiresAt: number }> {
+  const body = await send(
+    CLIENT_SECRETS_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey()}` },
+      body: JSON.stringify({
+        expires_after: { anchor: "created_at", seconds: LIVE_SECRET_TTL_SEC },
+        session: {
+          type: "transcription",
+          audio: {
+            input: {
+              format: { type: "audio/pcm", rate: 24000 },
+              noise_reduction: { type: "near_field" },
+              transcription: {
+                model: process.env.OPENAI_LIVE_TRANSCRIBE_MODEL || DEFAULT_LIVE_TRANSCRIBE_MODEL,
+                languages: ["ko"],
+              },
+              turn_detection: null,
+            },
+          },
+        },
+      }),
+    },
+    15_000
+  );
+
+  // 응답 형식: { value: "ek_...", expires_at: (초) }
+  if (
+    !body || typeof body !== "object" ||
+    !("value" in body) || typeof body.value !== "string" ||
+    !("expires_at" in body) || typeof body.expires_at !== "number"
+  ) {
+    throw new AiError("실시간 전사 세션을 만들지 못했습니다", 502);
+  }
+  return { value: body.value, expiresAt: body.expires_at * 1000 };
+}

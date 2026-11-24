@@ -89,3 +89,16 @@ BEGIN
     CREATE POLICY meeting_notes_crm_app ON meeting_notes FOR ALL TO crm_app USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- 앱 접속 역할(crm_app) 권한: RLS 정책만으로는 부족하고 테이블 권한(GRANT)도 필요하다.
+-- Supabase에서는 테이블 소유자가 postgres라 새 테이블마다 명시해야 한다 (재실행 안전).
+-- lead_events는 이력 기록·조회만 하므로 SELECT, INSERT만 허용
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON leads TO crm_app;
+    GRANT SELECT, INSERT ON lead_events TO crm_app;
+    GRANT USAGE ON SEQUENCE lead_events_id_seq TO crm_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON meeting_notes TO crm_app;
+  END IF;
+END $$;

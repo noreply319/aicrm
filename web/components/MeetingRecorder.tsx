@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { splitAudioFile } from "@/lib/audioFile";
 import { AUDIO_MAX_BYTES, RECORD_MAX_SEC, RECORD_SEGMENT_SEC, RECORD_WARN_SEC } from "@/lib/constants";
+import { LiveTranscriber, type LiveLine, type LiveState } from "@/lib/liveTranscriber";
+
+/**
+ * 미팅 녹음
+ *  - 실시간 자막: Realtime 전사(gpt-live-transcribe)로 말하는 동안 미리보기
+ *  - 본문: 5분 구간마다 gpt-transcribe로 다시 전사한 정확한 텍스트를 이어 붙임
+ *  - 화면 잠금·앱 전환으로 마이크가 끊기면 돌아왔을 때 자동으로 이어서 녹음
+ *  - 잠금 중에도 녹음해야 하면 휴대폰 녹음 앱 파일을 업로드해 구간 전사
+ */
 
 type SegStatus = "recording" | "queued" | "working" | "done" | "error";
 
@@ -11,14 +21,18 @@ interface Segment {
   startSec: number;
   endSec: number;
   status: SegStatus;
+  /** 라벨 앞에 붙일 출처 (파일 업로드면 "파일") */
+  prefix?: string;
   blob?: Blob;
   error?: string;
+  /** 이 구간 동안 확정된 실시간 자막 (구간 전사 실패 시 대체용) */
+  liveText?: string;
 }
 
-type Phase = "idle" | "recording" | "paused" | "stopping";
+type Phase = "idle" | "recording" | "paused" | "interrupted" | "stopping";
 
 export interface RecorderStatus {
-  /** 녹음 중(일시정지 포함) */
+  /** 녹음 중(일시정지·중단 포함) 또는 파일 변환 중 */
   recording: boolean;
   /** 전사 대기·진행 중인 구간 수 */
   pending: number;
@@ -38,38 +52,71 @@ const AUDIO_BPS = 32_000;
 // 브라우저가 비트레이트를 무시해 구간이 커지면 업로드 한도 전에 구간을 넘긴다
 const ROTATE_BYTES = AUDIO_MAX_BYTES * 0.85;
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+// 화면이 이 시간 이상 가려졌는데 녹음 데이터가 늘지 않았으면 끊긴 것으로 본다
+const HIDDEN_CHECK_MS = 3000;
+const LIVE_LINES_SHOWN = 6;
 
 const pickMime = () =>
   MIME_CANDIDATES.find((m) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(m)) ?? "";
 
-const extOf = (mime: string) => (mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm");
+const extOf = (mime: string) =>
+  mime.includes("wav") ? "wav" : mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
 
 const mmss = (sec: number) => {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  const s = Math.max(0, Math.floor(sec));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 };
 
-const labelOf = (s: Segment) => `${mmss(s.startSec)}~${mmss(s.endSec)}`;
+const labelOf = (s: Segment) => `${s.prefix ? `${s.prefix} ` : ""}${mmss(s.startSec)}~${mmss(s.endSec)}`;
+
+const micError = (e: unknown) => {
+  const name = e instanceof DOMException ? e.name : "";
+  return name === "NotAllowedError"
+    ? "마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크를 허용하거나, 직접 입력/붙여넣기를 사용하세요."
+    : name === "NotFoundError"
+      ? "사용할 수 있는 마이크가 없습니다."
+      : "마이크를 사용할 수 없습니다. (HTTPS 또는 localhost에서만 녹음할 수 있습니다)";
+};
+
+const LIVE_LABEL: Record<LiveState, string> = {
+  connecting: "연결 중…",
+  live: "실시간",
+  reconnecting: "다시 연결 중…",
+  unavailable: "사용 불가",
+  stopped: "종료",
+};
 
 export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [mode, setMode] = useState<"mic" | "file">("mic");
   const [error, setError] = useState<string | null>(null);
+  const [notices, setNotices] = useState<string[]>([]);
   const [warned, setWarned] = useState(false);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [liveState, setLiveState] = useState<LiveState | null>(null);
+  const [liveMsg, setLiveMsg] = useState<string | null>(null);
+  const [liveLines, setLiveLines] = useState<LiveLine[]>([]);
+  // iOS 등에서 잠금 후 돌아오면 오디오 처리가 멈춰 있어 사용자가 한 번 눌러야 다시 켜진다
+  const [liveSuspended, setLiveSuspended] = useState(false);
 
   const phaseRef = useRef<Phase>("idle");
   const elapsedRef = useRef(0);
+  const lastTickRef = useRef(0);
   const segsRef = useRef<Segment[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const segBytesRef = useRef(0);
+  const totalBytesRef = useRef(0);
   const mimeRef = useRef("");
   const tickRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const wakeRef = useRef<WakeLockSentinel | null>(null);
+  const liveRef = useRef<LiveTranscriber | null>(null);
+  const hiddenRef = useRef<{ at: number; bytes: number; elapsed: number } | null>(null);
   const queueBusyRef = useRef(false);
   const mountedRef = useRef(true);
+  const liveBoxRef = useRef<HTMLDivElement>(null);
 
   // 콜백은 최신 값을 ref로 참조 (녹음 중 부모가 리렌더돼도 MediaRecorder 핸들러 재생성 없이)
   const onTranscriptRef = useRef(onTranscript);
@@ -81,7 +128,7 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
 
   const setPhaseBoth = (p: Phase) => {
     phaseRef.current = p;
-    setPhase(p);
+    if (mountedRef.current) setPhase(p);
   };
 
   const updateSeg = useCallback((index: number, patch: Partial<Segment>) => {
@@ -89,14 +136,26 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     if (mountedRef.current) setSegments(segsRef.current);
   }, []);
 
+  const pushSeg = (seg: Omit<Segment, "index">) => {
+    const s = { ...seg, index: segsRef.current.length };
+    segsRef.current = [...segsRef.current, s];
+    setSegments(segsRef.current);
+    return s;
+  };
+
   // 부모에게 상태 알림
   useEffect(() => {
     onStatusRef.current({
-      recording: phase !== "idle",
+      recording: phase !== "idle" || fileBusy,
       pending: segments.filter((s) => s.status === "queued" || s.status === "working").length,
       failed: segments.filter((s) => s.status === "error").length,
     });
-  }, [phase, segments]);
+  }, [phase, segments, fileBusy]);
+
+  // 자막이 늘면 맨 아래로
+  useEffect(() => {
+    liveBoxRef.current?.scrollTo({ top: liveBoxRef.current.scrollHeight });
+  }, [liveLines]);
 
   /** 대기 중인 구간을 순서대로 하나씩 전사 */
   const processQueue = useCallback(async () => {
@@ -144,11 +203,16 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     }
   };
 
-  const cleanup = () => {
-    clearInterval(tickRef.current);
+  const stopTracks = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+  };
+
+  const cleanup = () => {
+    clearInterval(tickRef.current);
+    stopTracks();
     recRef.current = null;
+    hiddenRef.current = null;
     releaseWakeLock();
   };
 
@@ -159,48 +223,98 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     const mime = mimeRef.current;
     const rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: AUDIO_BPS });
     const parts: Blob[] = [];
-    const seg: Segment = {
-      index: segsRef.current.length,
-      startSec: elapsedRef.current,
-      endSec: elapsedRef.current,
-      status: "recording",
-    };
-    segsRef.current = [...segsRef.current, seg];
-    setSegments(segsRef.current);
+    const seg = pushSeg({ startSec: elapsedRef.current, endSec: elapsedRef.current, status: "recording" });
     segBytesRef.current = 0;
 
     rec.ondataavailable = (e) => {
       if (e.data.size > 0) {
         parts.push(e.data);
         segBytesRef.current += e.data.size;
+        totalBytesRef.current += e.data.size;
       }
     };
     rec.onstop = () => {
       const blob = new Blob(parts, { type: rec.mimeType || mime || "audio/webm" });
       const end = elapsedRef.current;
       // 1초 미만 빈 구간은 버린다
-      updateSeg(seg.index, blob.size > 0 && end > seg.startSec ? { status: "queued", blob, endSec: end } : { status: "done", endSec: end });
-      if (phaseRef.current === "recording" || phaseRef.current === "paused") {
+      updateSeg(
+        seg.index,
+        blob.size > 0 && end > seg.startSec ? { status: "queued", blob, endSec: end } : { status: "done", endSec: end }
+      );
+      const p = phaseRef.current;
+      const alive = stream.getAudioTracks().some((t) => t.readyState === "live");
+      if ((p === "recording" || p === "paused") && !alive) {
+        // 마이크가 끊겨 녹음기가 스스로 멈춘 경우 (화면 잠금 등) → 중단 처리 후 복귀 시 자동 재개
+        interrupt();
+      } else if (p === "recording" || p === "paused") {
         startSegment(); // 구간 교체
-      } else {
+      } else if (p === "stopping") {
         cleanup();
-        if (mountedRef.current) setPhaseBoth("idle");
+        setPhaseBoth("idle");
       }
+      // "interrupted"는 recover()가 이어서 처리
       processQueue();
     };
     rec.onerror = () => {
-      setError("녹음 중 오류가 발생했습니다. 지금까지 녹음된 부분은 전사됩니다.");
-      phaseRef.current = "stopping";
-      if (rec.state !== "inactive") rec.stop();
+      if (phaseRef.current === "recording" || phaseRef.current === "paused") interrupt();
     };
     // 1초마다 데이터를 받아 구간 크기를 추적한다
-    rec.start(1000);
+    try {
+      rec.start(1000);
+    } catch {
+      updateSeg(seg.index, { status: "done" });
+      interrupt();
+      return;
+    }
     recRef.current = rec;
+    // interrupt는 ref만 사용하는 함수 선언이라 의존성에 넣지 않는다
   }, [processQueue, updateSeg]);
 
+  /** 마이크를 열고 녹음·실시간 자막에 연결한다 */
+  const openMic = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+    streamRef.current = stream;
+    const track = stream.getAudioTracks()[0];
+    // 다른 앱이 마이크를 가져가거나 기기가 분리되면 끊김 처리
+    if (track) track.onended = () => {
+      if (phaseRef.current === "recording" || phaseRef.current === "paused") interrupt();
+    };
+    return stream;
+  };
+
+  const startLive = async (stream: MediaStream) => {
+    if (!liveRef.current) {
+      liveRef.current = new LiveTranscriber({
+        onLines: (lines) => mountedRef.current && setLiveLines(lines.slice(-50)),
+        onFinal: (text) => {
+          // 현재 녹음 중인 구간에 실시간 자막을 모아 둔다 (구간 전사 실패 시 대체용)
+          const cur = [...segsRef.current].reverse().find((s) => s.status === "recording");
+          if (cur) updateSeg(cur.index, { liveText: `${cur.liveText ? cur.liveText + " " : ""}${text}` });
+        },
+        onState: (s, msg) => {
+          if (!mountedRef.current) return;
+          setLiveState(s);
+          setLiveMsg(msg ?? null);
+        },
+      });
+      await liveRef.current.start(stream).catch(() => {
+        setLiveState("unavailable");
+        setLiveMsg("이 브라우저에서는 실시간 자막을 사용할 수 없습니다. 녹음과 구간 전사는 계속됩니다.");
+      });
+    } else {
+      await liveRef.current.attach(stream).catch(() => {});
+      liveRef.current.resume();
+    }
+  };
+
   const stop = useCallback(() => {
-    if (phaseRef.current === "idle" || phaseRef.current === "stopping") return;
+    const p = phaseRef.current;
+    if (p === "idle" || p === "stopping") return;
     setPhaseBoth("stopping");
+    liveRef.current?.stop();
+    liveRef.current = null;
     const rec = recRef.current;
     if (rec && rec.state !== "inactive") rec.stop();
     else {
@@ -210,62 +324,101 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
   }, []);
 
   const tick = useCallback(() => {
+    const now = Date.now();
+    const delta = (now - lastTickRef.current) / 1000;
+    lastTickRef.current = now;
     if (phaseRef.current !== "recording") return;
-    elapsedRef.current += 1;
+    // 백그라운드에서 타이머가 느려져도 실제 경과 시간으로 계산
+    elapsedRef.current += delta;
     setElapsed(elapsedRef.current);
     const seg = segsRef.current.at(-1);
     if (elapsedRef.current >= RECORD_MAX_SEC) {
       stop();
     } else if (
-      seg &&
+      seg?.status === "recording" &&
       (elapsedRef.current - seg.startSec >= RECORD_SEGMENT_SEC || segBytesRef.current >= ROTATE_BYTES)
     ) {
       // 구간 교체: onstop에서 다음 구간을 시작한다
       recRef.current?.stop();
     }
-    if (elapsedRef.current === RECORD_WARN_SEC) setWarned(true);
+    if (elapsedRef.current >= RECORD_WARN_SEC) setWarned(true);
   }, [stop]);
+
+  /** 마이크가 끊김: 지금까지 녹음된 구간을 전사 대기열에 넣고 재개를 기다린다 */
+  function interrupt() {
+    if (phaseRef.current !== "recording" && phaseRef.current !== "paused") return;
+    setPhaseBoth("interrupted");
+    liveRef.current?.pause();
+    const rec = recRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    recRef.current = null;
+    stopTracks();
+  }
+
+  /** 끊긴 녹음 이어가기. 브라우저가 사용자 동작을 요구하면 '녹음 재개' 버튼으로 다시 호출된다. */
+  const recover = async (gapSec?: number) => {
+    if (phaseRef.current !== "interrupted") return;
+    if (gapSec && gapSec >= 1) {
+      setNotices((n) => [
+        ...n,
+        `${mmss(elapsedRef.current)} 지점에서 화면 잠금·앱 전환으로 약 ${mmss(gapSec)} 동안 녹음되지 않았습니다.`,
+      ]);
+    }
+    try {
+      const stream = await openMic();
+      setPhaseBoth("recording");
+      lastTickRef.current = Date.now();
+      startSegment();
+      await startLive(stream);
+      if (liveRef.current && !(await liveRef.current.resumeAudio())) setLiveSuspended(true);
+      requestWakeLock();
+      setError(null);
+    } catch {
+      setError("녹음을 자동으로 이어가지 못했습니다. '녹음 재개'를 눌러 주세요.");
+    }
+  };
 
   const start = async () => {
     setError(null);
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("이 브라우저는 녹음을 지원하지 않습니다. 직접 입력/붙여넣기를 사용하세요.");
+      setError("이 브라우저는 녹음을 지원하지 않습니다. 직접 입력/붙여넣기 또는 파일 업로드를 사용하세요.");
       return;
     }
+    let stream: MediaStream;
     try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      stream = await openMic();
     } catch (e) {
-      const name = e instanceof DOMException ? e.name : "";
-      setError(
-        name === "NotAllowedError"
-          ? "마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크를 허용하거나, 직접 입력/붙여넣기를 사용하세요."
-          : name === "NotFoundError"
-            ? "사용할 수 있는 마이크가 없습니다."
-            : "마이크를 사용할 수 없습니다. (HTTPS 또는 localhost에서만 녹음할 수 있습니다)"
-      );
+      setError(micError(e));
       return;
     }
     mimeRef.current = pickMime();
     elapsedRef.current = 0;
+    totalBytesRef.current = 0;
+    lastTickRef.current = Date.now();
     setElapsed(0);
     setWarned(false);
+    setNotices([]);
+    setLiveLines([]);
+    setMode("mic");
     segsRef.current = [];
     setSegments([]);
     setPhaseBoth("recording");
     startSegment();
     tickRef.current = setInterval(tick, 1000);
     requestWakeLock();
+    startLive(stream);
   };
 
   const pause = () => {
     if (recRef.current?.state === "recording") recRef.current.pause();
+    liveRef.current?.pause();
     setPhaseBoth("paused");
   };
 
   const resume = () => {
     if (recRef.current?.state === "paused") recRef.current.resume();
+    liveRef.current?.resume();
+    lastTickRef.current = Date.now();
     setPhaseBoth("recording");
   };
 
@@ -274,13 +427,70 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     processQueue();
   };
 
-  // 화면이 다시 보이면 화면 꺼짐 방지를 다시 요청 (탭 전환 시 자동 해제됨)
+  /** 구간 전사 실패 시 그 구간의 실시간 자막을 본문에 대신 넣는다 */
+  const applyLiveText = (s: Segment) => {
+    if (!s.liveText) return;
+    onTranscriptRef.current(`${labelOf(s)} · 실시간 자막`, s.liveText);
+    updateSeg(s.index, { status: "done", blob: undefined, error: undefined });
+  };
+
+  /** 휴대폰 녹음 앱 등으로 녹음한 파일 업로드 → 구간으로 나눠 전사 */
+  const onFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setFileBusy(true);
+    try {
+      const chunks = await splitAudioFile(file);
+      segsRef.current = [];
+      setSegments([]);
+      setMode("file");
+      for (const c of chunks) pushSeg({ startSec: c.startSec, endSec: c.endSec, status: "queued", blob: c.blob, prefix: "파일" });
+      processQueue();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
+  // 화면 잠금·앱 전환 감지: 돌아왔을 때 녹음이 실제로 이어졌는지 확인하고, 끊겼으면 자동 복구
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && phaseRef.current !== "idle") requestWakeLock();
+    const onVisibility = () => {
+      const p = phaseRef.current;
+      if (document.visibilityState === "hidden") {
+        if (p === "recording") {
+          hiddenRef.current = { at: Date.now(), bytes: totalBytesRef.current, elapsed: elapsedRef.current };
+        }
+        return;
+      }
+      // visible
+      if (p === "idle" || p === "stopping") return;
+      requestWakeLock();
+      const hidden = hiddenRef.current;
+      hiddenRef.current = null;
+      const track = streamRef.current?.getAudioTracks()[0];
+      const away = hidden ? Date.now() - hidden.at : 0;
+      const noData = hidden !== null && away >= HIDDEN_CHECK_MS && totalBytesRef.current === hidden.bytes;
+      const broken = !track || track.readyState === "ended" || track.muted || noData;
+
+      if ((p === "recording" && broken) || p === "interrupted") {
+        // 가려져 있던 동안은 녹음되지 않았으므로 녹음 시간에서 뺀다
+        if (hidden) {
+          elapsedRef.current = hidden.elapsed;
+          // 가려진 동안 끝난 구간의 끝 시각도 맞춘다 (구간 라벨이 겹치지 않게)
+          for (const sg of segsRef.current) {
+            if (sg.endSec > hidden.elapsed) updateSeg(sg.index, { endSec: Math.max(sg.startSec, hidden.elapsed) });
+          }
+        }
+        if (p === "recording") interrupt();
+        recover(hidden ? away / 1000 : undefined);
+      } else if (p === "recording" && liveRef.current && !liveRef.current.audioRunning) {
+        liveRef.current.resumeAudio().then((ok) => setLiveSuspended(!ok));
+      }
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+    // 핸들러 안에서는 ref와 안정 함수만 사용
   }, []);
 
   // 모달이 닫히면 마이크를 끈다
@@ -294,6 +504,8 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
         rec.onstop = null;
         rec.stop();
       }
+      liveRef.current?.stop();
+      liveRef.current = null;
       cleanup();
     };
   }, []);
@@ -301,7 +513,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
   const active = phase !== "idle";
   const pending = segments.filter((s) => s.status === "queued" || s.status === "working").length;
   const failed = segments.filter((s) => s.status === "error");
-  const totalSlots = Math.max(segments.length, Math.ceil(RECORD_MAX_SEC / RECORD_SEGMENT_SEC));
+  const totalSlots =
+    mode === "file" ? segments.length : Math.max(segments.length, Math.ceil(RECORD_MAX_SEC / RECORD_SEGMENT_SEC));
+  const shownLines = liveLines.slice(-LIVE_LINES_SHOWN);
 
   return (
     <div className="recorder">
@@ -312,13 +526,23 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
       <div className={`rec-box${phase === "recording" ? " live" : ""}`}>
         <span className="rec-dot" aria-hidden />
         <span className="rec-state">
-          {phase === "recording" ? "녹음 중" : phase === "paused" ? "일시정지" : phase === "stopping" ? "마무리 중…" : "녹음 대기"}
+          {phase === "recording"
+            ? "녹음 중"
+            : phase === "paused"
+              ? "일시정지"
+              : phase === "interrupted"
+                ? "녹음 중단됨"
+                : phase === "stopping"
+                  ? "마무리 중…"
+                  : fileBusy
+                    ? "파일 변환 중…"
+                    : "녹음 대기"}
         </span>
         <span className="rec-time">{mmss(elapsed)}</span>
         <span className="rec-max">/ {mmss(RECORD_MAX_SEC)}</span>
         <div className="rec-actions">
           {!active && (
-            <button type="button" className="btn btn-primary" onClick={start} disabled={disabled || pending > 0}>
+            <button type="button" className="btn btn-primary" onClick={start} disabled={disabled || pending > 0 || fileBusy}>
               ● 녹음 시작
             </button>
           )}
@@ -328,7 +552,10 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
           {phase === "paused" && (
             <button type="button" className="btn" onClick={resume}>▶ 재개</button>
           )}
-          {(phase === "recording" || phase === "paused") && (
+          {phase === "interrupted" && (
+            <button type="button" className="btn" onClick={() => recover()}>▶ 녹음 재개</button>
+          )}
+          {(phase === "recording" || phase === "paused" || phase === "interrupted") && (
             <button type="button" className="btn btn-primary" onClick={stop}>■ 녹음 종료</button>
           )}
         </div>
@@ -337,15 +564,71 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
       {active && (
         <div className="rec-hint">
           {warned ? "⏰ 녹음 가능 시간이 5분 남았습니다. 60분이 되면 자동으로 종료됩니다. " : ""}
-          화면을 켜 둔 채로 녹음하세요. 화면이 꺼지거나 다른 앱으로 전환하면 녹음이 끊길 수 있습니다.
+          화면을 켜 둔 채로 녹음하세요. 화면이 잠기거나 다른 앱으로 전환하면 녹음이 멈추고, 돌아오면 자동으로 이어집니다.
+        </div>
+      )}
+
+      {notices.map((n, i) => (
+        <div key={i} className="rec-gap">⏸ {n}</div>
+      ))}
+
+      {/* 실시간 자막 (미리보기) */}
+      {(active || liveLines.length > 0) && liveState && (
+        <div className="live-box">
+          <div className="live-head">
+            <span className={`live-dot live-${liveState}`} aria-hidden />
+            <b>실시간 자막</b>
+            <span className="muted">{LIVE_LABEL[liveState]} · 미리보기 — 본문에는 5분마다 정확한 전사가 들어갑니다</span>
+            {phase === "recording" && liveSuspended && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => liveRef.current?.resumeAudio().then((ok) => setLiveSuspended(!ok))}
+              >
+                자막 다시 켜기
+              </button>
+            )}
+          </div>
+          <div className="live-lines" ref={liveBoxRef} aria-live="polite">
+            {shownLines.length === 0 ? (
+              <span className="muted">{phase === "recording" ? "말하면 여기에 바로 표시됩니다…" : ""}</span>
+            ) : (
+              shownLines.map((l) => (
+                <p key={l.id} className={l.final ? "" : "partial"}>{l.text || "…"}</p>
+              ))
+            )}
+          </div>
+          {liveMsg && <div className="muted">{liveMsg}</div>}
+        </div>
+      )}
+
+      {/* 잠금 화면에서도 녹음해야 할 때: 휴대폰 녹음 앱 파일 업로드 */}
+      {!active && (
+        <div className="rec-file">
+          <label className={`btn btn-sm${disabled || pending > 0 || fileBusy ? " disabled" : ""}`}>
+            📁 녹음 파일 업로드
+            <input
+              type="file"
+              accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg"
+              hidden
+              disabled={disabled || pending > 0 || fileBusy}
+              onChange={(e) => {
+                onFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <span className="muted">
+            화면이 잠긴 상태에서도 녹음해야 하면 휴대폰 녹음 앱(음성 메모 등)으로 녹음한 뒤 파일을 올려 주세요. 최대 90분.
+          </span>
         </div>
       )}
 
       {segments.length > 0 && (
         <>
           <div className="rec-progress-label">
-            전사 진행 ({RECORD_SEGMENT_SEC / 60}분 구간)
-            {pending > 0 && ` · 전사 중 ${segments.filter((s) => s.status === "done").length}/${segments.length}`}
+            {mode === "file" ? "파일 전사 진행" : `구간 전사 진행 (${RECORD_SEGMENT_SEC / 60}분 구간)`}
+            {` · 완료 ${segments.filter((s) => s.status === "done").length}/${segments.length}`}
           </div>
           <div className="chunks" role="list">
             {Array.from({ length: totalSlots }, (_, i) => {
@@ -370,9 +653,16 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
           <span>
             {s.index + 1}구간({labelOf(s)}) 전사 실패: {s.error}
           </span>
-          <button type="button" className="btn btn-sm" onClick={() => retry(s.index)} disabled={!s.blob}>
-            ↻ 다시 시도
-          </button>
+          <span className="rec-error-actions">
+            {s.liveText && (
+              <button type="button" className="btn btn-sm" onClick={() => applyLiveText(s)}>
+                실시간 자막으로 대체
+              </button>
+            )}
+            <button type="button" className="btn btn-sm" onClick={() => retry(s.index)} disabled={!s.blob}>
+              ↻ 다시 시도
+            </button>
+          </span>
         </div>
       ))}
 
