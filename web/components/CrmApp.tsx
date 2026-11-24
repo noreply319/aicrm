@@ -290,6 +290,13 @@ export default function CrmApp() {
     } catch {}
   };
 
+  /** 미팅 완료 후 자동 요약. 작성 화면을 닫아도 서버에서 끝나고 목록이 갱신된다. */
+  const handleAutoSummarize = async (id: string) => {
+    const saved = await meetings.summarizeNote(id);
+    showToast("AI 요약이 완료되었습니다");
+    return saved;
+  };
+
   const handleSaveNote = async (input: MeetingNoteInput, id: string | null, opts?: { auto?: boolean }) => {
     const saved = id ? await meetings.updateNote(id, input) : await meetings.addNote(input);
     showToast(
@@ -515,6 +522,7 @@ export default function CrmApp() {
           leads={leads}
           getNote={meetings.getNote}
           onSave={handleSaveNote}
+          onAutoSummarize={handleAutoSummarize}
           onDelete={handleDeleteNote}
           onOpenLead={(leadId) => {
             setNoteModal({ open: false });
