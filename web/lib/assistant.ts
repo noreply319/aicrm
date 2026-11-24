@@ -2,20 +2,18 @@ import "server-only";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
+import { chatCompletion, maskPii } from "./openai";
 import type { ChatMessage } from "./types";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-// 빠르고 저렴한 기본 모델. OPENAI_MODEL 환경 변수로 변경 가능
-const DEFAULT_MODEL = "gpt-6-luna";
+export { AiError as AssistantError } from "./openai";
+
 // 컨텍스트에 넣을 최근 이력 개수 상한 (토큰 비용 제한)
 const MAX_EVENTS = 500;
+// 미팅 노트: 최근 N건, 질문에 언급된 리드의 노트만 본문 포함 (토큰 비용 제한)
+const MAX_NOTES = 100;
+const NOTE_BODY_CHARS = 4000;
+const NOTE_BODY_TOTAL_CHARS = 40000;
 const TIME_ZONE = "Asia/Seoul";
-
-export class AssistantError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
-}
 
 const stageName = (id: unknown) => STAGES.find((s) => s.id === id)?.name ?? String(id);
 
@@ -38,14 +36,35 @@ function readableChanges(changes: Record<string, unknown>): Record<string, unkno
   return out;
 }
 
-/** DB에서 현재 리드 + 변경 이력을 읽어 모델 컨텍스트 문자열을 만든다 */
-async function buildContext(): Promise<string> {
-  const [leadsRes, eventsRes] = await Promise.all([
+interface NoteContextRow {
+  leadId: string;
+  company: string;
+  title: string;
+  metAt: Date;
+  source: string;
+  summary: string;
+  nextActions: string;
+  body: string;
+}
+
+/**
+ * DB에서 현재 리드 + 변경 이력 + 미팅 노트를 읽어 모델 컨텍스트 문자열을 만든다.
+ * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
+ */
+async function buildContext(question: string): Promise<string> {
+  const [leadsRes, eventsRes, notesRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
     pool.query<LeadEvent>(
       `SELECT lead_id AS "leadId", company, type, changes, created_at AS "createdAt"
        FROM lead_events ORDER BY created_at DESC, id DESC LIMIT $1`,
       [MAX_EVENTS]
+    ),
+    pool.query<NoteContextRow>(
+      `SELECT m.lead_id AS "leadId", l.company, m.title, m.met_at AS "metAt", m.source,
+              m.summary, m.next_actions AS "nextActions", m.body
+       FROM meeting_notes m JOIN leads l ON l.id = m.lead_id
+       ORDER BY m.met_at DESC LIMIT $1`,
+      [MAX_NOTES]
     ),
   ]);
 
@@ -59,7 +78,7 @@ async function buildContext(): Promise<string> {
     closeDate: l.closeDate || null,
     stage: stageName(l.stage),
     priority: PRIORITY_LABEL[l.priority],
-    notes: l.notes,
+    notes: maskPii(l.notes),
     createdAt: kst(l.createdAt),
   }));
 
@@ -71,7 +90,28 @@ async function buildContext(): Promise<string> {
     changes: readableChanges(e.changes),
   }));
 
-  return JSON.stringify({ leads, events });
+  // 질문에 회사명이 나온 리드의 노트는 본문 포함, 나머지는 요약(없으면 본문 앞부분)만
+  const q = question.toLowerCase();
+  let bodyBudget = NOTE_BODY_TOTAL_CHARS;
+  const meetingNotes = notesRes.rows.map((n) => {
+    const mentioned = q.includes(n.company.toLowerCase());
+    const bodyText = mentioned && bodyBudget > 0 ? n.body.slice(0, Math.min(NOTE_BODY_CHARS, bodyBudget)) : "";
+    bodyBudget -= bodyText.length;
+    return {
+      leadId: n.leadId,
+      company: n.company,
+      title: maskPii(n.title),
+      metAt: kst(n.metAt),
+      source: n.source,
+      summary: maskPii(n.summary) || null,
+      nextActions: maskPii(n.nextActions) || null,
+      ...(bodyText
+        ? { body: maskPii(bodyText) }
+        : n.summary ? {} : { bodyPreview: maskPii(n.body.slice(0, 300)) }),
+    };
+  });
+
+  return JSON.stringify({ leads, events, meetingNotes });
 }
 
 function systemPrompt(context: string): string {
@@ -82,7 +122,11 @@ function systemPrompt(context: string): string {
 - 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())}
 - 금액은 원화(₩)이며 천 단위 구분 기호를 붙이세요.
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
-- events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제).
+- events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
+  note_created/note_updated/note_deleted(미팅 노트 작성/수정/삭제).
+- meetingNotes는 리드별 미팅 노트입니다(최근 ${MAX_NOTES}건, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.
+  body는 질문에 회사명이 언급된 리드의 노트에만 포함됩니다. 노트를 근거로 답할 때는 "(출처: 노트 제목, 미팅 일시)"를 붙이세요.
+  본문은 녹음 전사일 수 있어 오인식이 있을 수 있습니다.
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
 - 이력은 최근 ${MAX_EVENTS}건까지만 포함됩니다.
 - 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
@@ -94,45 +138,10 @@ ${context}`;
 
 /** 대화 내역을 받아 OpenAI로 답변을 생성한다 */
 export async function askAssistant(messages: ChatMessage[]): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new AssistantError("OPENAI_API_KEY가 설정되지 않았습니다", 503);
-
-  const model = process.env.OPENAI_MODEL || DEFAULT_MODEL;
-  // reasoning 모델은 "none"이 가장 빠름. reasoning 미지원 모델로 바꾸면 OPENAI_REASONING_EFFORT=off
-  const effort = process.env.OPENAI_REASONING_EFFORT ?? "none";
-
-  const res = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: systemPrompt(await buildContext()) }, ...messages],
-      max_completion_tokens: 1200,
-      ...(effort && effort !== "off" ? { reasoning_effort: effort } : {}),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  }).catch((e: unknown) => {
-    const timeout = e instanceof Error && e.name === "TimeoutError";
-    throw new AssistantError(timeout ? "AI 응답 시간이 초과되었습니다" : "OpenAI에 연결할 수 없습니다", 502);
-  });
-
-  const body: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    console.error("[assistant] OpenAI error", res.status, JSON.stringify(body).slice(0, 500));
-    if (res.status === 401) throw new AssistantError("OpenAI API 키가 올바르지 않습니다", 502);
-    if (res.status === 429) throw new AssistantError("OpenAI 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요", 429);
-    throw new AssistantError("AI 답변을 생성하지 못했습니다", 502);
-  }
-
-  const content = extractContent(body);
-  if (!content) throw new AssistantError("AI 답변이 비어 있습니다", 502);
-  return content;
-}
-
-// 응답 형식: { choices: [{ message: { content } }] }
-function extractContent(body: unknown): string | null {
-  if (!body || typeof body !== "object" || !("choices" in body) || !Array.isArray(body.choices)) return null;
-  const msg: unknown = body.choices[0]?.message;
-  if (!msg || typeof msg !== "object" || !("content" in msg) || typeof msg.content !== "string") return null;
-  return msg.content.trim() || null;
+  const question = messages.at(-1)?.content ?? "";
+  const context = await buildContext(question);
+  return chatCompletion(
+    [{ role: "system", content: systemPrompt(context) }, ...messages.map((m) => ({ ...m, content: maskPii(m.content) }))],
+    { maxTokens: 1200 }
+  );
 }

@@ -6,13 +6,15 @@ import type { Lead } from "@/lib/types";
 
 interface Props {
   lead: Lead;
+  /** 미팅 노트 개수 (0이면 배지 숨김) */
+  noteCount: number;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
   onClick: () => void;
 }
 
-export default function LeadCard({ lead, dragging, onDragStart, onDragEnd, onClick }: Props) {
+export default function LeadCard({ lead, noteCount, dragging, onDragStart, onDragEnd, onClick }: Props) {
   const initial = (lead.contact || lead.company || "?").trim().slice(0, 1);
   const colorIdx =
     [...(lead.company || "")].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
@@ -45,7 +47,12 @@ export default function LeadCard({ lead, dragging, onDragStart, onDragEnd, onCli
       </div>
       <div className="card-value">{formatWon(lead.value)}</div>
       <div className="card-foot">
-        <span className={`tag prio-${lead.priority}`}>{PRIORITY_LABEL[lead.priority] ?? "보통"}</span>
+        <span className="card-tags">
+          <span className={`tag prio-${lead.priority}`}>{PRIORITY_LABEL[lead.priority] ?? "보통"}</span>
+          {noteCount > 0 && (
+            <span className="note-badge" title={`미팅 노트 ${noteCount}개`}>📝 {noteCount}</span>
+          )}
+        </span>
         {lead.closeDate && (
           <span className={`card-date${overdue ? " overdue" : ""}`}>
             📅 {lead.closeDate.slice(5).replace("-", "/")}

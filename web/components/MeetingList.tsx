@@ -1,0 +1,90 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import type { Lead, MeetingNoteSummary } from "@/lib/types";
+import NoteListItem from "./NoteListItem";
+
+interface Props {
+  notes: MeetingNoteSummary[];
+  leads: Lead[];
+  query: string;
+  ready: boolean;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+}
+
+type Period = "all" | "7" | "30" | "90";
+
+const PERIODS: { id: Period; label: string }[] = [
+  { id: "all", label: "전체 기간" },
+  { id: "7", label: "최근 7일" },
+  { id: "30", label: "최근 30일" },
+  { id: "90", label: "최근 90일" },
+];
+
+export default function MeetingList({ notes, leads, query, ready, onOpen, onNew }: Props) {
+  const [leadFilter, setLeadFilter] = useState("");
+  const [period, setPeriod] = useState<Period>("all");
+
+  const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
+
+  // 노트가 있는 리드만 필터 옵션으로
+  const leadOptions = useMemo(() => {
+    const ids = new Set(notes.map((n) => n.leadId));
+    return leads.filter((l) => ids.has(l.id)).sort((a, b) => a.company.localeCompare(b.company, "ko"));
+  }, [notes, leads]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const since = period === "all" ? 0 : Date.now() - Number(period) * 86_400_000;
+    return notes.filter((n) => {
+      if (leadFilter && n.leadId !== leadFilter) return false;
+      if (since && new Date(n.metAt).getTime() < since) return false;
+      if (!q) return true;
+      const company = leadById.get(n.leadId)?.company ?? "";
+      return [n.title, n.preview, n.summary, n.nextActions, company].some((v) => v.toLowerCase().includes(q));
+    });
+  }, [notes, leadFilter, period, query, leadById]);
+
+  if (!ready) return <div className="loading">불러오는 중…</div>;
+
+  return (
+    <main className="meetings">
+      <div className="meetings-toolbar">
+        <select value={leadFilter} onChange={(e) => setLeadFilter(e.target.value)} aria-label="리드 필터">
+          <option value="">리드: 전체</option>
+          {leadOptions.map((l) => (
+            <option key={l.id} value={l.id}>{l.company}</option>
+          ))}
+        </select>
+        <select value={period} onChange={(e) => setPeriod(e.target.value as Period)} aria-label="기간 필터">
+          {PERIODS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+        <span className="spacer" />
+        <span className="meetings-count">총 {visible.length}건 · 미팅 일시 최신순</span>
+      </div>
+
+      {notes.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📝</div>
+          <b>아직 미팅 노트가 없습니다</b>
+          <p>미팅을 녹음하거나 회의록을 붙여넣어 기록해 보세요.</p>
+          <button className="btn btn-primary" onClick={onNew}>＋ 노트 작성</button>
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="empty-state">
+          <b>조건에 맞는 노트가 없습니다</b>
+          <p>검색어나 필터를 바꿔 보세요.</p>
+        </div>
+      ) : (
+        <div className="note-list">
+          {visible.map((n) => (
+            <NoteListItem key={n.id} note={n} lead={leadById.get(n.leadId)} onClick={() => onOpen(n.id)} />
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}

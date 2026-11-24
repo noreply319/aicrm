@@ -16,3 +16,20 @@ export const isOverdue = (closeDate: string) => {
   const today = new Date(new Date().toDateString());
   return new Date(closeDate) < today;
 };
+
+/** ISO → 'YYYY-MM-DD HH:mm' (브라우저 로컬 시간) */
+export const formatDateTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+/** ISO → <input type="datetime-local"> 값 */
+export const toLocalInput = (iso: string) => formatDateTime(iso).replace(" ", "T");
+
+/** <input type="datetime-local"> 값 → ISO (잘못된 값이면 "") */
+export const fromLocalInput = (v: string) => {
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+};

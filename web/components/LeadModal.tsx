@@ -2,13 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { STAGES } from "@/lib/constants";
-import type { Lead, LeadInput, Priority, StageId } from "@/lib/types";
+import type { Lead, LeadInput, MeetingNoteSummary, Priority, StageId } from "@/lib/types";
+import NoteListItem from "./NoteListItem";
+
+export type LeadModalTab = "info" | "notes";
 
 interface Props {
   lead: Lead | null;
   defaultStage: StageId;
+  /** 이 리드의 미팅 노트 (최신순) */
+  notes: MeetingNoteSummary[];
+  initialTab: LeadModalTab;
   onSave: (input: LeadInput) => void;
   onDelete?: () => void;
+  onNewNote: () => void;
+  onOpenNote: (id: string) => void;
   onClose: () => void;
 }
 
@@ -17,7 +25,10 @@ const empty = (stage: StageId): LeadInput => ({
   value: 0, closeDate: "", stage, priority: "mid", notes: "",
 });
 
-export default function LeadModal({ lead, defaultStage, onSave, onDelete, onClose }: Props) {
+export default function LeadModal({
+  lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote, onClose,
+}: Props) {
+  const [tab, setTab] = useState<LeadModalTab>(lead ? initialTab : "info");
   const [form, setForm] = useState<LeadInput>(() => {
     if (!lead) return empty(defaultStage);
     const { id: _id, createdAt: _c, ...rest } = lead;
@@ -25,8 +36,13 @@ export default function LeadModal({ lead, defaultStage, onSave, onDelete, onClos
   });
   const firstRef = useRef<HTMLInputElement>(null);
 
+  // 처음 열 때 정보 탭이면 회사명 입력에 포커스
+  const focusOnOpen = useRef(tab === "info");
   useEffect(() => {
-    firstRef.current?.focus();
+    if (focusOnOpen.current) firstRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -46,9 +62,40 @@ export default function LeadModal({ lead, defaultStage, onSave, onDelete, onClos
         }}
       >
         <div className="modal-head">
-          <h2>{lead ? "리드 수정" : "새 리드 등록"}</h2>
+          <h2>{lead ? lead.company : "새 리드 등록"}</h2>
         </div>
-        <div className="modal-body">
+        {lead && (
+          <div className="seg-tabs modal-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === "info"} className={tab === "info" ? "on" : ""} onClick={() => setTab("info")}>
+              리드 정보
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "on" : ""} onClick={() => setTab("notes")}>
+              미팅 노트 ({notes.length})
+            </button>
+          </div>
+        )}
+        {tab === "notes" && (
+          <div className="lead-notes">
+            <div className="lead-notes-head">
+              <span className="muted">미팅 일시 최신순</span>
+              <span className="spacer" />
+              <button type="button" className="btn btn-primary btn-sm" onClick={onNewNote}>＋ 노트 작성</button>
+            </div>
+            {notes.length === 0 ? (
+              <div className="empty-state small">
+                <div className="empty-icon">🗂</div>
+                <b>이 리드의 미팅 노트가 없습니다</b>
+              </div>
+            ) : (
+              <div className="note-list">
+                {notes.map((n) => (
+                  <NoteListItem key={n.id} note={n} onClick={() => onOpenNote(n.id)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="modal-body" hidden={tab !== "info"}>
           <div className="field full">
             <label>회사명 *</label>
             <input ref={firstRef} required placeholder="예: 에이아이랩스"

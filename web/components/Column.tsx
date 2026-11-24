@@ -8,6 +8,7 @@ import LeadCard from "./LeadCard";
 interface Props {
   stage: { id: StageId; name: string; color: string };
   leads: Lead[];
+  noteCounts: Record<string, number>;
   draggingId: string | null;
   dropIndex: number | null;
   onDragStart: (id: string) => void;
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export default function Column({
-  stage, leads, draggingId, dropIndex,
+  stage, leads, noteCounts, draggingId, dropIndex,
   onDragStart, onDragEnd, onHover, onLeave, onDrop, onOpen, onAdd,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -77,6 +78,7 @@ export default function Column({
               {dropIndex !== null && otherIdx === dropIndex && <div className="placeholder" />}
               <LeadCard
                 lead={lead}
+                noteCount={noteCounts[lead.id] ?? 0}
                 dragging={lead.id === draggingId}
                 onDragStart={() => onDragStart(lead.id)}
                 onDragEnd={onDragEnd}

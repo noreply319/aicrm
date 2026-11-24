@@ -1,19 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { api } from "./api";
 import type { Lead, LeadInput, StageId } from "./types";
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `요청 실패 (${res.status})`);
-  }
-  return (res.status === 204 ? undefined : await res.json()) as T;
-}
 
 export function useLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
