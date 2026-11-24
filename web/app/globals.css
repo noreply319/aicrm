@@ -473,6 +473,13 @@ button { font: inherit; cursor: pointer; }
 .rec-file .btn { cursor: pointer; }
 .rec-file .muted { flex: 1; min-width: 200px; }
 .btn.disabled { opacity: 0.5; pointer-events: none; }
+.speakers { display: flex; flex-direction: column; gap: 6px; }
+.speaker-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.speaker-input {
+  width: 120px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+}
+.speaker-input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
 .rec-error-actions { display: flex; gap: 6px; flex-shrink: 0; }
 @media (max-width: 640px) {
   .rec-error { flex-direction: column; align-items: stretch; }

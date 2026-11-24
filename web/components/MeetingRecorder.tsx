@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { splitAudioFile } from "@/lib/audioFile";
+import { extractClip, splitAudioFile } from "@/lib/audioFile";
 import { AUDIO_MAX_BYTES, RECORD_MAX_SEC, RECORD_SEGMENT_SEC, RECORD_WARN_SEC } from "@/lib/constants";
 import { LiveTranscriber, type LiveLine, type LiveState } from "@/lib/liveTranscriber";
 
 /**
  * 미팅 녹음
  *  - 실시간 자막: Realtime 전사(gpt-4o-transcribe)로 말하는 동안 미리보기 (한 문단으로 이어서 표시)
- *  - 본문: 5분 구간마다 gpt-4o-transcribe로 다시 전사한 정확한 텍스트를 이어 붙임
+ *  - 본문: 5분 구간마다 화자 구분 전사(gpt-4o-transcribe-diarize)한 텍스트를 "화자 1: …" 형식으로 이어 붙임
+ *    구간마다 따로 전사해도 같은 사람이 같은 이름을 갖도록, 처음 나온 화자의 2~8초 음성을 참조로 다음 구간에 보낸다
  *  - 화면 잠금·앱 전환으로 마이크가 끊기면 돌아왔을 때 자동으로 이어서 녹음
  *  - 잠금 중에도 녹음해야 하면 휴대폰 녹음 앱 파일을 업로드해 구간 전사
  */
@@ -45,12 +46,24 @@ interface Props {
   /** 구간 전사가 끝날 때마다 호출 (label 예: "05:00~10:00") */
   onTranscript: (label: string, text: string) => void;
   onStatus: (s: RecorderStatus) => void;
+  /** 화자 이름을 바꾸면 본문의 "이전 이름:"도 바꾸도록 알린다 */
+  onRenameSpeaker?: (from: string, to: string) => void;
 }
+
+/** 화자 구분 전사 응답 */
+interface TranscribeResult {
+  text: string;
+  utterances: { speaker: string; start: number; end: number; text: string }[] | null;
+}
+
+// 참조 음성을 함께 보낼 수 있는 화자 수 (OpenAI 제한)
+const MAX_KNOWN_SPEAKERS = 4;
 
 // 저비트레이트 음성 녹음 (5분 ≈ 1.2MB)
 const AUDIO_BPS = 32_000;
 // 브라우저가 비트레이트를 무시해 구간이 커지면 업로드 한도 전에 구간을 넘긴다
-const ROTATE_BYTES = AUDIO_MAX_BYTES * 0.85;
+// (화자 참조 음성 최대 ≈1MB와 함께 Vercel 요청 한도 4.5MB 안에 들어가도록 3MB)
+const ROTATE_BYTES = Math.min(3_000_000, AUDIO_MAX_BYTES);
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 // 화면이 이 시간 이상 가려졌는데 녹음 데이터가 늘지 않았으면 끊긴 것으로 본다
 const HIDDEN_CHECK_MS = 3000;
@@ -85,7 +98,7 @@ const LIVE_LABEL: Record<LiveState, string> = {
   stopped: "종료",
 };
 
-export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Props) {
+export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRenameSpeaker }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -116,14 +129,68 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
   const queueBusyRef = useRef(false);
   const mountedRef = useRef(true);
   const liveBoxRef = useRef<HTMLDivElement>(null);
+  // 확인된 화자 (참조 음성이 있는 화자만 다음 구간에 보낸다)
+  const speakersRef = useRef<{ name: string; ref: Blob | null }[]>([]);
+  const speakerSeqRef = useRef(0);
+  const [speakers, setSpeakers] = useState<string[]>([]);
 
   // 콜백은 최신 값을 ref로 참조 (녹음 중 부모가 리렌더돼도 MediaRecorder 핸들러 재생성 없이)
   const onTranscriptRef = useRef(onTranscript);
   const onStatusRef = useRef(onStatus);
+  const onRenameRef = useRef(onRenameSpeaker);
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
     onStatusRef.current = onStatus;
+    onRenameRef.current = onRenameSpeaker;
   });
+
+  /**
+   * 화자 구분 결과 → "화자 1: …" 줄. 처음 보는 화자(A, B…)에는 다음 번호를 붙이고,
+   * 그 화자의 가장 긴 발화에서 참조 음성을 잘라 다음 구간부터 같은 이름으로 인식되게 한다.
+   */
+  const formatSpeakers = async (r: TranscribeResult, blob: Blob): Promise<string> => {
+    const utts = r.utterances;
+    if (!utts || utts.length === 0) return r.text;
+    const known = new Set(speakersRef.current.map((s) => s.name));
+    const rename = new Map<string, string>();
+    for (const u of utts) {
+      if (!known.has(u.speaker) && !rename.has(u.speaker)) rename.set(u.speaker, `화자 ${++speakerSeqRef.current}`);
+    }
+    const named = utts.map((u) => ({ ...u, speaker: rename.get(u.speaker) ?? u.speaker }));
+
+    for (const name of rename.values()) {
+      let ref: Blob | null = null;
+      if (speakersRef.current.filter((s) => s.ref).length < MAX_KNOWN_SPEAKERS) {
+        const best = named
+          .filter((u) => u.speaker === name)
+          .sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+        ref = best ? await extractClip(blob, best.start, best.end) : null;
+      }
+      speakersRef.current = [...speakersRef.current, { name, ref }];
+    }
+    if (rename.size && mountedRef.current) setSpeakers(speakersRef.current.map((s) => s.name));
+
+    // 같은 화자의 연속 발화는 한 줄로
+    const lines: { speaker: string; text: string }[] = [];
+    for (const u of named) {
+      const last = lines.at(-1);
+      if (last && last.speaker === u.speaker) last.text += ` ${u.text}`;
+      else lines.push({ speaker: u.speaker, text: u.text });
+    }
+    return lines.map((l) => `${l.speaker}: ${l.text}`).join("\n");
+  };
+
+  /** 화자 이름 바꾸기: 다음 구간부터 새 이름으로 인식되고, 본문의 기존 이름도 바뀐다 */
+  const renameSpeaker = (from: string, raw: string) => {
+    const to = raw.trim().replace(/[:\n]/g, "").slice(0, 30);
+    if (!to || to === from || speakersRef.current.some((s) => s.name === to)) {
+      setSpeakers(speakersRef.current.map((s) => s.name)); // 입력값 되돌리기
+      return;
+    }
+    speakersRef.current = speakersRef.current.map((s) => (s.name === from ? { ...s, name: to } : s));
+    setSpeakers(speakersRef.current.map((s) => s.name));
+    onRenameRef.current?.(from, to);
+  };
 
   const setPhaseBoth = (p: Phase) => {
     phaseRef.current = p;
@@ -169,8 +236,14 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
           if (seg.blob.size > AUDIO_MAX_BYTES) throw new Error("녹음 구간이 너무 큽니다");
           const form = new FormData();
           form.append("audio", seg.blob, `segment-${seg.index + 1}.${extOf(seg.blob.type)}`);
-          const { text } = await api<{ text: string }>("/api/meetings/transcribe", { method: "POST", body: form });
+          for (const sp of speakersRef.current) {
+            if (!sp.ref) continue;
+            form.append("speakerName", sp.name);
+            form.append("speakerRef", sp.ref, "speaker.wav");
+          }
+          const result = await api<TranscribeResult>("/api/meetings/transcribe", { method: "POST", body: form });
           if (!mountedRef.current) return;
+          const text = await formatSpeakers(result, seg.blob);
           // 전사가 끝난 구간의 음성은 메모리에서 버린다
           updateSeg(seg.index, { status: "done", blob: undefined });
           if (text) onTranscriptRef.current(labelOf(seg), text);
@@ -399,6 +472,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     setNotices([]);
     setLiveLines([]);
     setMode("mic");
+    speakersRef.current = [];
+    speakerSeqRef.current = 0;
+    setSpeakers([]);
     segsRef.current = [];
     setSegments([]);
     setPhaseBoth("recording");
@@ -440,6 +516,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
     setFileBusy(true);
     try {
       const chunks = await splitAudioFile(file);
+      speakersRef.current = [];
+      speakerSeqRef.current = 0;
+      setSpeakers([]);
       segsRef.current = [];
       setSegments([]);
       setMode("file");
@@ -648,6 +727,30 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
             })}
           </div>
         </>
+      )}
+
+      {speakers.length > 0 && (
+        <div className="speakers">
+          <span className="muted">화자 이름 (바꾸면 본문과 다음 구간에 반영)</span>
+          <div className="speaker-list">
+            {speakers.map((name) => (
+              <input
+                key={name}
+                className="speaker-input"
+                defaultValue={name}
+                maxLength={30}
+                aria-label={`${name} 이름`}
+                onBlur={(e) => renameSpeaker(name, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
       {failed.map((s) => (
