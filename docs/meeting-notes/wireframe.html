@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미팅 노트 — Low-fi Wireframe</title>
+<style>
+  /* Low fidelity: 흑백 + 손그림 느낌, 실제 디자인 아님 */
+  :root { --ink:#333; --line:#888; --soft:#bbb; --fill:#eee; --bg:#fafafa; --note:#fff8c4; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: "Comic Sans MS", "Chalkboard SE", "Apple SD Gothic Neo", sans-serif; color:var(--ink); background:#ddd; font-size:14px; }
+  .toc { position:sticky; top:0; z-index:10; background:#333; color:#fff; padding:10px 16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .toc b { margin-right:8px; }
+  .toc button { background:#555; color:#fff; border:1px solid #777; border-radius:4px; padding:4px 10px; cursor:pointer; font:inherit; }
+  .toc button.on { background:#fff; color:#333; }
+  .screen { display:none; max-width:1200px; margin:20px auto; background:var(--bg); border:2px solid var(--ink); border-radius:6px; overflow:hidden; position:relative; }
+  .screen.on { display:block; }
+  .caption { background:var(--note); border-bottom:2px dashed var(--line); padding:8px 14px; font-size:13px; }
+  .caption b { margin-right:6px; }
+
+  .box { border:2px solid var(--ink); border-radius:4px; background:#fff; }
+  .dash { border:2px dashed var(--line); border-radius:4px; }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:2px solid var(--ink); border-radius:4px; padding:4px 10px; background:#fff; cursor:pointer; font:inherit; color:inherit; }
+  .btn.primary { background:var(--ink); color:#fff; }
+  .btn.sm { padding:2px 6px; font-size:12px; }
+  .pill { display:inline-block; border:1.5px solid var(--ink); border-radius:10px; padding:0 7px; font-size:11px; }
+  .x { background:repeating-linear-gradient(45deg,var(--fill) 0 6px,#fff 6px 12px); }
+  .line { height:9px; background:var(--soft); border-radius:3px; margin:6px 0; }
+  .muted { color:#777; font-size:12px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .spacer { flex:1; }
+  .anno { position:absolute; background:var(--note); border:1.5px solid #b9a800; padding:3px 7px; font-size:11px; border-radius:3px; transform:rotate(-1.5deg); box-shadow:2px 2px 0 rgba(0,0,0,.1); z-index:3; max-width:200px; }
+  .anno::before { content:"✎ "; }
+
+  /* 헤더 */
+  .header { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:2px solid var(--ink); background:#fff; }
+  .logo { font-weight:bold; }
+  .tabs { display:flex; gap:0; border:2px solid var(--ink); border-radius:4px; overflow:hidden; }
+  .tabs span { padding:4px 12px; cursor:pointer; }
+  .tabs span.on { background:var(--ink); color:#fff; }
+  .search { border:2px solid var(--ink); border-radius:4px; padding:4px 10px; width:240px; color:#999; }
+  .stats { display:flex; gap:10px; padding:10px 14px; }
+  .stats .box { flex:1; padding:8px; }
+
+  /* 레이아웃 */
+  .workspace { display:flex; min-height:520px; }
+  .main { flex:1; padding:14px; }
+  .assistant { width:280px; border-left:2px solid var(--ink); padding:12px; background:#fff; display:flex; flex-direction:column; gap:8px; }
+  .bubble { border:1.5px solid var(--ink); border-radius:8px; padding:6px 8px; font-size:12px; }
+  .bubble.me { align-self:flex-end; background:var(--fill); max-width:85%; }
+
+  /* 리스트 */
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+  .select { border:2px solid var(--ink); border-radius:4px; padding:3px 8px; background:#fff; }
+  .note-item { display:flex; gap:12px; padding:10px 12px; margin-bottom:8px; cursor:pointer; }
+  .note-item:hover { background:var(--fill); }
+  .note-item .icon { width:34px; height:34px; border:2px solid var(--ink); border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none; }
+  .note-item .body { flex:1; }
+  .note-item .meta { text-align:right; white-space:nowrap; }
+
+  /* 칸반 */
+  .board { display:flex; gap:10px; }
+  .col { flex:1; min-width:0; padding:8px; }
+  .col h4 { margin:0 0 8px; font-size:13px; }
+  .card { padding:8px; margin-bottom:8px; cursor:pointer; }
+  .card .badge { border:1.5px solid var(--ink); border-radius:10px; padding:0 6px; font-size:11px; background:var(--note); }
+
+  /* 모달 */
+  .overlay { background:rgba(0,0,0,.25); padding:30px; min-height:600px; display:flex; justify-content:center; align-items:flex-start; }
+  .modal { width:760px; max-width:100%; background:#fff; }
+  .modal-head { display:flex; align-items:center; padding:10px 14px; border-bottom:2px solid var(--ink); }
+  .modal-head h3 { margin:0; font-size:16px; }
+  .modal-body { padding:14px; }
+  .modal-foot { display:flex; gap:8px; padding:10px 14px; border-top:2px solid var(--ink); }
+  .field { margin-bottom:10px; }
+  .field label { display:block; font-size:12px; margin-bottom:3px; }
+  .input { border:2px solid var(--ink); border-radius:4px; padding:5px 8px; min-height:30px; }
+  .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:10px; }
+  .textarea { min-height:170px; padding:8px; font-size:13px; line-height:1.6; }
+  .seg { display:flex; border-bottom:2px solid var(--ink); margin:-14px -14px 14px; }
+  .seg span { padding:8px 14px; cursor:pointer; border-right:2px solid var(--soft); }
+  .seg span.on { font-weight:bold; border-bottom:4px solid var(--ink); }
+  .rec { padding:10px; display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+  .dot { width:14px; height:14px; border-radius:50%; background:var(--ink); }
+  .rec.live .dot { animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
+  .chunks { display:flex; gap:4px; margin:6px 0 10px; }
+  .chunk { flex:1; height:16px; border:1.5px solid var(--ink); font-size:10px; text-align:center; line-height:13px; }
+  .chunk.done { background:var(--ink); color:#fff; }
+  .chunk.work { background:repeating-linear-gradient(45deg,var(--soft) 0 4px,#fff 4px 8px); }
+  .chunk.fail { border-style:dashed; }
+  .warn { border:2px dashed var(--ink); padding:6px 10px; font-size:12px; margin-bottom:10px; }
+  .ai { padding:10px; margin-top:10px; }
+  .ai h5 { margin:0 0 4px; font-size:12px; }
+  .check { font-size:13px; margin:3px 0; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .hidden { display:none; }
+
+  /* ───────── 반응형 ─────────
+     화면(.screen) 너비 기준 컨테이너 쿼리 → 실제 모바일 기기와 '📱 모바일 프레임' 미리보기 모두 동일하게 적용 */
+  .screen { container-type:inline-size; }
+  .m-only { display:none !important; }
+  .fab { position:absolute; right:16px; bottom:16px; width:52px; height:52px; border-radius:50%; background:var(--ink); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; border:2px solid var(--ink); cursor:pointer; z-index:4; box-shadow:2px 3px 0 rgba(0,0,0,.2); }
+  .m-assist { border-top:2px solid var(--ink); background:#fff; padding:10px 14px; display:flex; align-items:center; gap:8px; }
+  .icon-row { display:flex; gap:6px; }
+
+  body.mobile .screen { max-width:390px; border-radius:22px; border-width:8px; }
+  body.mobile .toc .frame { background:#fff; color:#333; }
+
+  @media (max-width:640px) {
+    body { font-size:13px; }
+    .toc { flex-wrap:nowrap; overflow-x:auto; padding:8px 10px; }
+    .toc button { white-space:nowrap; }
+    .screen { margin:10px 6px; }
+  }
+
+  @container (max-width:640px) {
+    .m-only { display:revert !important; }
+    .fab.m-only, .m-assist.m-only, .icon-row.m-only { display:flex !important; }
+    .d-only { display:none !important; }
+
+    /* 주석: 절대 위치 → 본문 흐름 안으로 */
+    .anno { position:static; display:block; transform:none; max-width:none; margin:8px 0; }
+
+    /* 헤더: 1줄 로고+아이콘, 2줄 메뉴 탭, 3줄 검색 */
+    .header { flex-wrap:wrap; gap:8px; padding:10px 12px; }
+    .header .logo { flex:1; }
+    .tabs { order:2; width:100%; }
+    .tabs span { flex:1; text-align:center; padding:7px 0; }
+    .search { order:3; width:100%; }
+    .header > .spacer { display:none; }
+
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 12px; }
+
+    /* Assistant 패널 → 하단 바(탭하면 전체 화면 시트) */
+    .workspace { flex-direction:column; min-height:0; }
+    .assistant { display:none; }
+    .main { padding:12px; position:relative; min-height:480px; padding-bottom:80px; }
+
+    .toolbar { flex-wrap:wrap; }
+    .toolbar .select { flex:1; }
+    .toolbar .spacer { display:none; }
+    .toolbar .muted { width:100%; }
+
+    .note-item { flex-wrap:wrap; gap:8px; padding:10px; }
+    .note-item .body { min-width:0; flex:1; }
+    .note-item .meta { width:100%; text-align:left; padding-left:46px; }
+
+    /* 칸반: 가로 스와이프, 한 화면에 한 단계 */
+    .board { overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:6px; }
+    .col { flex:0 0 80%; scroll-snap-align:start; min-height:220px; }
+
+    /* 모달 → 전체 화면 시트 */
+    .overlay { padding:0; min-height:0; background:none; }
+    .modal, .modal.box { width:100% !important; border:none; border-radius:0; }
+    .modal-head { position:sticky; top:0; background:#fff; z-index:2; }
+    .modal-head h3 { font-size:15px; }
+    .modal-body { padding:12px; }
+    .seg { margin:-12px -12px 12px; }
+    .seg span { flex:1; text-align:center; padding:9px 4px; font-size:13px; }
+    .seg span:last-child { border-right:none; }
+    .modal > .anno { margin:8px 12px; }
+    .grid2, .two { grid-template-columns:1fr; gap:0; }
+    .two > * + * { margin-top:10px; }
+    .textarea { min-height:200px; }
+    .modal-foot { position:sticky; bottom:0; background:#fff; flex-wrap:wrap; padding:10px 12px; }
+    .modal-foot .btn.primary { flex:1; justify-content:center; padding:9px; }
+
+    /* 녹음 컨트롤: 큰 터치 버튼 */
+    .rec { flex-wrap:wrap; }
+    .rec .spacer { display:none; }
+    .rec .btn { flex:1 0 40%; justify-content:center; padding:12px; }
+    .chunk { font-size:0; }
+    .chunk.fail::after { content:"✕"; font-size:10px; }
+
+    .row.muted { flex-wrap:wrap; gap:4px 10px; }
+    .row.muted .spacer { display:none; }
+    .box[style*="width:380px"] { width:100% !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <b>미팅 노트 Wireframe</b>
+  <button data-go="s1" class="on">① 노트 리스트</button>
+  <button data-go="s2">② 노트 작성 — 녹음</button>
+  <button data-go="s3">③ 노트 작성 — 붙여넣기</button>
+  <button data-go="s4">④ 노트 상세 + AI 요약</button>
+  <button data-go="s5">⑤ 칸반 카드 배지</button>
+  <button data-go="s6">⑥ 리드 상세 — 미팅 노트 탭</button>
+  <button data-go="s7">⑦ 빈 상태 / 에러</button>
+  <span style="flex:1"></span>
+  <button class="frame" id="frame">📱 모바일 프레임</button>
+</nav>
+
+<!-- ① 노트 리스트 -->
+<section class="screen on" id="s1">
+  <div class="caption"><b>① 미팅 노트 리스트</b> <span class="muted">(📱 버튼 또는 화면 640px 이하에서 모바일 레이아웃)</span> FR-1~9, FR-20d, FR-30 · URL <code>/meetings</code></div>
+  <div class="header">
+    <span class="logo">◆ Pipeline CRM</span>
+    <div class="tabs"><span data-go="s5">파이프라인</span><span class="on">미팅 노트</span></div>
+    <div class="search">🔍 제목, 본문, 회사명 검색…</div>
+    <div class="spacer"></div>
+    <span class="btn d-only">☾</span><span class="btn d-only">AI Assistant</span>
+    <span class="btn primary d-only" data-go="s2">＋ 노트 작성</span>
+    <span class="icon-row m-only"><span class="btn sm">☾</span><span class="btn sm">☰</span></span>
+  </div>
+  <div class="workspace">
+    <div class="main" style="position:relative">
+      <div class="anno" style="top:-6px;left:330px">'새 리드' 버튼이 '노트 작성'으로 바뀜 (FR-3)</div>
+      <div class="toolbar">
+        <span class="select">리드: 전체 ▾</span>
+        <span class="select">기간: 전체 ▾</span>
+        <span class="spacer"></span>
+        <span class="muted">총 4건 · 미팅 일시 최신순</span>
+      </div>
+
+      <div class="note-item box" data-go="s4">
+        <div class="icon">🎙</div>
+        <div class="body">
+          <div class="row"><b>한빛소프트 2차 미팅</b><span class="pill">제안/견적</span><span class="pill">AI 요약</span></div>
+          <div class="muted">한빛소프트 · 김민수 팀장</div>
+          <div style="font-size:12px">요약: 연간 라이선스 50석 견적 요청. 보안 심사 서류 필요. 12월 둘째 주 결재…</div>
+        </div>
+        <div class="meta muted">2026-11-24 14:00<br>녹음 · 42분</div>
+      </div>
+
+      <div class="note-item box" data-go="s4">
+        <div class="icon">📋</div>
+        <div class="body">
+          <div class="row"><b>그린테크 킥오프</b><span class="pill">니즈 확인</span></div>
+          <div class="muted">그린테크 · 이지은 매니저</div>
+          <div class="line" style="width:90%"></div><div class="line" style="width:60%"></div>
+        </div>
+        <div class="meta muted">2026-11-21 10:30<br>붙여넣기</div>
+      </div>
+
+      <div class="note-item box" data-go="s4">
+        <div class="icon">🎙</div>
+        <div class="body">
+          <div class="row"><b>한빛소프트 첫 미팅</b><span class="pill">제안/견적</span><span class="pill">AI 요약</span></div>
+          <div class="muted">한빛소프트 · 김민수 팀장</div>
+          <div style="font-size:12px">요약: 현재 엑셀로 영업 관리 중, 팀원 12명. 파이프라인 가시성 니즈…</div>
+        </div>
+        <div class="meta muted">2026-11-18 16:00<br>녹음+붙여넣기</div>
+      </div>
+
+      <div class="note-item box" data-go="s4">
+        <div class="icon">📋</div>
+        <div class="body">
+          <div class="row"><b>오로라물산 통화 메모</b><span class="pill">첫 컨택</span></div>
+          <div class="muted">오로라물산 · 박서준 대표</div>
+          <div class="line" style="width:75%"></div><div class="line" style="width:40%"></div>
+        </div>
+        <div class="meta muted">2026-11-15 09:10<br>붙여넣기</div>
+      </div>
+      <div class="anno" style="bottom:20px;right:20px">아이콘 🎙 녹음 / 📋 붙여넣기 · 요약이 있으면 본문 대신 요약 미리보기 (FR-5, FR-20d)</div>
+      <div class="anno m-only">모바일: '노트 작성'은 오른쪽 아래 ＋ 버튼(FAB), 메타 정보는 항목 아래 줄로</div>
+      <span class="fab m-only" data-go="s2">＋</span>
+    </div>
+    <div class="m-assist m-only"><span class="pill">AI</span><span class="muted">Assistant에게 질문하기…</span><span class="spacer"></span><span>▴</span></div>
+    <aside class="assistant">
+      <b>AI Assistant</b>
+      <div class="bubble me">한빛소프트 지난 미팅 이슈 뭐였어?</div>
+      <div class="bubble">11/24 미팅 기준: ① 보안 심사 서류 필요 ② 50석 견적 ③ 12월 둘째 주 결재 예정입니다. (출처: 한빛소프트 2차 미팅)</div>
+      <div class="spacer"></div>
+      <div class="input muted">질문 입력…</div>
+      <div class="muted">✎ 노트 요약·다음 액션을 참고해 답변 (FR-30~32)</div>
+    </aside>
+  </div>
+</section>
+
+<!-- ② 노트 작성 — 녹음 -->
+<section class="screen" id="s2">
+  <div class="caption"><b>② 노트 작성 — 녹음 중</b> FR-10~18 · 60분 한도, 5분 구간마다 GPT transcribe 전사</div>
+  <div class="overlay">
+    <div class="modal box" style="position:relative">
+      <div class="modal-head"><h3>미팅 노트 작성</h3><span class="spacer"></span><span class="btn sm" data-go="s1">✕</span></div>
+      <div class="modal-body">
+        <div class="grid2">
+          <div class="field"><label>연결 리드 *</label><div class="input">🔍 한빛소프트 — 김민수 ▾</div></div>
+          <div class="field"><label>미팅 일시 *</label><div class="input">2026-11-24 14:00</div></div>
+        </div>
+        <div class="field"><label>제목 *</label><div class="input">한빛소프트 미팅</div></div>
+
+        <div class="seg"><span class="on">🎙 녹음하기</span><span data-go="s3">📋 직접 입력 / 붙여넣기</span></div>
+
+        <div class="warn">⚠ 녹음 전에 참석자에게 녹음 사실을 알리세요. 음성은 텍스트 변환을 위해 OpenAI로 전송되며 원본은 저장되지 않습니다. (FR-18)</div>
+
+        <div class="rec box live">
+          <span class="dot"></span><b>녹음 중</b><span style="font-size:20px">12:34</span><span class="muted">/ 60:00</span>
+          <span class="spacer"></span>
+          <span class="btn">⏸ 일시정지</span><span class="btn primary">■ 녹음 종료</span>
+        </div>
+        <div class="muted">전사 진행 (5분 구간)</div>
+        <div class="chunks">
+          <div class="chunk done">1 ✓</div><div class="chunk done">2 ✓</div><div class="chunk work">3 녹음중</div>
+          <div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div>
+          <div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div>
+          <div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div><div class="chunk" style="border-color:var(--soft)"></div>
+        </div>
+
+        <div class="field"><label>본문 * <span class="muted">— 전사 결과가 구간 순서대로 이어 붙음, 직접 수정 가능</span></label>
+          <div class="input textarea">
+            [00:00~05:00] 네 안녕하세요, 지난번 말씀드린 견적 건으로… 현재 팀원은 12명이고요, 내년에 50명까지…<br>
+            [05:00~10:00] 보안 심사는 저희 정보보호팀에서 서류를 먼저 받아봐야 해서…<br>
+            <span class="muted">▌ 3구간 녹음 중…</span>
+          </div>
+          <div class="muted" style="text-align:right">2,310 / 50,000자</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="btn" style="opacity:.4">✨ AI 요약</span>
+        <span class="muted">전사가 끝나면 사용 가능</span>
+        <span class="spacer"></span>
+        <span class="btn" data-go="s1">취소</span><span class="btn primary">저장</span>
+      </div>
+      <div class="anno" style="top:250px;right:-150px">55:00에 "5분 남음" 안내, 60:00 자동 종료 (FR-16)</div>
+      <div class="anno" style="top:345px;right:-150px">구간 실패 시 해당 칸만 점선 + '다시 시도' (FR-14b)</div>
+      <div class="anno" style="bottom:50px;right:-150px">전사 미완료 상태로 저장하면 확인 창 (FR-14b)</div>
+      <div class="anno m-only">모바일: 녹음 중 화면 꺼짐/앱 전환 시 녹음이 끊길 수 있음 → 녹음 중 화면 꺼짐 방지(Wake Lock) + "화면을 켜 두세요" 안내</div>
+    </div>
+  </div>
+</section>
+
+<!-- ③ 노트 작성 — 붙여넣기 -->
+<section class="screen" id="s3">
+  <div class="caption"><b>③ 노트 작성 — 직접 입력 / 붙여넣기</b> FR-11, FR-19~20, FR-27 (리드 상세에서 열면 리드 고정)</div>
+  <div class="overlay">
+    <div class="modal box" style="position:relative">
+      <div class="modal-head"><h3>미팅 노트 작성</h3><span class="spacer"></span><span class="btn sm" data-go="s1">✕</span></div>
+      <div class="modal-body">
+        <div class="grid2">
+          <div class="field"><label>연결 리드 * <span class="muted">🔒 고정</span></label><div class="input x">그린테크 — 이지은</div></div>
+          <div class="field"><label>미팅 일시 *</label><div class="input">2026-11-21 10:30</div></div>
+        </div>
+        <div class="field"><label>제목 *</label><div class="input">그린테크 미팅</div></div>
+
+        <div class="seg"><span data-go="s2">🎙 녹음하기</span><span class="on">📋 직접 입력 / 붙여넣기</span></div>
+
+        <div class="field"><label>본문 *</label>
+          <div class="input textarea">
+            회의록 — 그린테크 킥오프<br>
+            참석: 이지은 매니저, 정우성 과장 / 우리: 영업 담당<br>
+            1. 현재 CRM 미사용, 스프레드시트로 관리<br>
+            2. 도입 희망 시기: 1분기<br>
+            3. 예산은 내부 확인 후 회신 예정<br>
+            <span class="muted">▌ Ctrl+V로 붙여넣기 — 줄바꿈 유지</span>
+          </div>
+          <div class="row"><span class="btn sm">🎙 이어서 녹음</span><span class="spacer"></span><span class="muted">186 / 50,000자</span></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="btn">✨ AI 요약</span>
+        <span class="spacer"></span>
+        <span class="btn" data-go="s6">취소</span><span class="btn primary">저장</span>
+      </div>
+      <div class="anno" style="top:70px;right:-150px">리드 상세에서 '노트 작성' 시 리드 고정 / 메뉴에서 열면 검색 선택</div>
+      <div class="anno" style="top:420px;right:-150px">붙여넣기 뒤 녹음을 섞어 쓸 수 있음 → source = mixed (FR-11)</div>
+    </div>
+  </div>
+</section>
+
+<!-- ④ 노트 상세 + AI 요약 -->
+<section class="screen" id="s4">
+  <div class="caption"><b>④ 노트 상세 / 수정 + AI 요약·다음 액션</b> FR-20a~c, FR-21~24</div>
+  <div class="overlay">
+    <div class="modal box" style="position:relative;width:860px">
+      <div class="modal-head">
+        <h3>한빛소프트 2차 미팅</h3>
+        <span class="spacer"></span>
+        <span class="btn sm">✎ 수정</span>&nbsp;<span class="btn sm" data-go="s1">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="row muted" style="margin-bottom:10px">
+          <span>📅 2026-11-24 14:00</span>
+          <span>🔗 <u style="cursor:pointer" data-go="s6">한빛소프트 — 김민수</u> <span class="pill">제안/견적</span></span>
+          <span>🎙 녹음 42분</span>
+          <span class="spacer"></span>
+          <span>작성 11-24 15:02 · 수정 11-24 15:10</span>
+        </div>
+
+        <div class="ai box">
+          <div class="row"><b>✨ AI 요약</b><span class="spacer"></span><span class="btn sm">↻ 다시 생성</span><span class="btn sm">✎</span></div>
+          <div class="two" style="margin-top:6px">
+            <div>
+              <h5>요약</h5>
+              <div style="font-size:13px">연간 라이선스 50석 견적 요청. 보안 심사 통과가 계약 전제. 12월 둘째 주 내부 결재 예정.</div>
+              <h5 style="margin-top:8px">고객 니즈 / 이슈</h5>
+              <div style="font-size:13px">· 파이프라인 가시성<br>· 보안 심사 서류 (ISMS 증빙)<br>· 연 단위 결제 선호</div>
+            </div>
+            <div>
+              <h5>다음 액션</h5>
+              <div class="check">☐ 50석 견적서 발송 — 11/26까지</div>
+              <div class="check">☐ 보안 심사 서류 전달 — 정보보호팀</div>
+              <div class="check">☐ 12/10 결재 전 후속 미팅 잡기</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:12px"><label>본문 (전사 원문)</label>
+          <div class="input textarea" style="min-height:120px">
+            <div class="line" style="width:95%"></div><div class="line" style="width:88%"></div><div class="line" style="width:92%"></div>
+            <div class="line" style="width:70%"></div><div class="line" style="width:85%"></div><div class="line" style="width:50%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="btn">🗑 삭제</span>
+        <span class="spacer"></span>
+        <span class="btn" data-go="s1">닫기</span>
+      </div>
+      <div class="anno" style="top:105px;right:-150px">'다시 생성' 시 덮어쓰기 확인 창 (FR-20b)</div>
+      <div class="anno" style="top:50px;left:280px">연결 리드 클릭 → 리드 상세 (FR-24)</div>
+      <div class="anno" style="bottom:20px;left:110px">삭제 시 확인 창 (FR-23)</div>
+    </div>
+  </div>
+</section>
+
+<!-- ⑤ 칸반 카드 배지 -->
+<section class="screen" id="s5">
+  <div class="caption"><b>⑤ 파이프라인 — 리드 카드에 노트 개수 배지</b> FR-28 · 카드 클릭 → ⑥</div>
+  <div class="header">
+    <span class="logo">◆ Pipeline CRM</span>
+    <div class="tabs"><span class="on">파이프라인</span><span data-go="s1">미팅 노트</span></div>
+    <div class="search">🔍 회사, 담당자, 메모 검색…</div>
+    <div class="spacer"></div>
+    <span class="btn d-only">☾</span><span class="btn d-only">AI Assistant</span><span class="btn primary d-only">＋ 새 리드</span>
+    <span class="icon-row m-only"><span class="btn sm">☾</span><span class="btn sm">☰</span></span>
+  </div>
+  <div class="stats">
+    <div class="box"><div class="muted">파이프라인</div><div class="line" style="width:50%"></div></div>
+    <div class="box"><div class="muted">진행 중 리드</div><div class="line" style="width:30%"></div></div>
+    <div class="box"><div class="muted">수주</div><div class="line" style="width:40%"></div></div>
+    <div class="box"><div class="muted">전환율</div><div class="line" style="width:25%"></div></div>
+  </div>
+  <div class="main" style="position:relative">
+    <div class="board">
+      <div class="col dash"><h4>신규 리드</h4>
+        <div class="card box"><b>미래상사</b><div class="line" style="width:60%"></div></div>
+      </div>
+      <div class="col dash"><h4>첫 컨택</h4>
+        <div class="card box"><div class="row"><b>오로라물산</b><span class="spacer"></span><span class="badge">📝 1</span></div><div class="line" style="width:60%"></div></div>
+      </div>
+      <div class="col dash"><h4>니즈 확인</h4>
+        <div class="card box" data-go="s6"><div class="row"><b>그린테크</b><span class="spacer"></span><span class="badge">📝 1</span></div><div class="line" style="width:60%"></div></div>
+      </div>
+      <div class="col dash"><h4>제안/견적</h4>
+        <div class="card box" data-go="s6"><div class="row"><b>한빛소프트</b><span class="spacer"></span><span class="badge">📝 2</span></div><div class="line" style="width:60%"></div></div>
+      </div>
+      <div class="col dash"><h4>협상</h4>
+        <div class="card box"><b>동해전자</b><div class="line" style="width:60%"></div></div>
+      </div>
+      <div class="col dash"><h4>수주</h4></div>
+      <div class="col dash"><h4>실주</h4></div>
+    </div>
+    <div class="anno" style="top:70px;left:330px">노트 0개면 배지 숨김</div>
+    <div class="anno m-only">모바일: 단계 컬럼을 좌우 스와이프. 카드 길게 눌러 Drag &amp; Drop (또는 상세에서 단계 변경)</div>
+    <span class="fab m-only">＋</span>
+  </div>
+  <div class="m-assist m-only"><span class="pill">AI</span><span class="muted">Assistant에게 질문하기…</span><span class="spacer"></span><span>▴</span></div>
+</section>
+
+<!-- ⑥ 리드 상세 — 미팅 노트 탭 -->
+<section class="screen" id="s6">
+  <div class="caption"><b>⑥ 리드 상세 (LeadModal) — 미팅 노트 탭</b> FR-26, FR-27, FR-29</div>
+  <div class="overlay">
+    <div class="modal box" style="position:relative">
+      <div class="modal-head"><h3>한빛소프트</h3><span class="pill" style="margin-left:8px">제안/견적</span><span class="spacer"></span><span class="btn sm" data-go="s5">✕</span></div>
+      <div class="modal-body">
+        <div class="seg"><span id="t-info">리드 정보</span><span id="t-notes" class="on">미팅 노트 (2)</span></div>
+
+        <div id="p-info" class="hidden">
+          <div class="grid2"><div class="field"><label>회사명</label><div class="input">한빛소프트</div></div><div class="field"><label>예상 금액</label><div class="input">₩ 24,000,000</div></div></div>
+          <div class="grid2"><div class="field"><label>담당자</label><div class="input">김민수</div></div><div class="field"><label>단계</label><div class="input">제안/견적 ▾</div></div></div>
+          <div class="field"><label>메모</label><div class="input" style="min-height:60px"></div></div>
+          <div class="muted">✎ 기존 리드 수정 폼 그대로</div>
+        </div>
+
+        <div id="p-notes">
+          <div class="row" style="margin-bottom:10px"><span class="muted">미팅 일시 최신순</span><span class="spacer"></span><span class="btn primary" data-go="s3">＋ 노트 작성</span></div>
+          <div class="note-item box" data-go="s4">
+            <div class="icon">🎙</div>
+            <div class="body"><b>한빛소프트 2차 미팅</b> <span class="pill">AI 요약</span>
+              <div style="font-size:12px">연간 라이선스 50석 견적 요청. 보안 심사 통과가 계약 전제…</div>
+              <div class="muted">다음 액션 3개 · ☐ 50석 견적서 발송 — 11/26까지</div>
+            </div>
+            <div class="meta muted">11-24 14:00</div>
+          </div>
+          <div class="note-item box" data-go="s4">
+            <div class="icon">🎙</div>
+            <div class="body"><b>한빛소프트 첫 미팅</b> <span class="pill">AI 요약</span>
+              <div style="font-size:12px">현재 엑셀로 영업 관리 중, 팀원 12명. 파이프라인 가시성 니즈…</div>
+            </div>
+            <div class="meta muted">11-18 16:00</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="btn" id="del">🗑 리드 삭제</span>
+        <span class="spacer"></span>
+        <span class="btn" data-go="s5">취소</span><span class="btn primary">저장</span>
+      </div>
+      <div class="anno" style="top:60px;right:-150px">탭 클릭으로 전환 가능 (이 와이어프레임에서도 동작)</div>
+      <div class="anno" style="bottom:10px;left:130px">삭제 확인: "미팅 노트 2개도 함께 삭제됩니다" (FR-29)</div>
+    </div>
+  </div>
+</section>
+
+<!-- ⑦ 빈 상태 / 에러 -->
+<section class="screen" id="s7">
+  <div class="caption"><b>⑦ 빈 상태 / 에러 상태</b> FR-8, FR-17, FR-14b</div>
+  <div class="main">
+    <div class="two">
+      <div class="box" style="padding:30px;text-align:center">
+        <div class="muted">미팅 노트 리스트 — 노트 0건</div>
+        <div style="font-size:40px;margin:14px 0">📝</div>
+        <b>아직 미팅 노트가 없습니다</b>
+        <div class="muted" style="margin:6px 0 12px">미팅을 녹음하거나 회의록을 붙여넣어 기록해 보세요.</div>
+        <span class="btn primary" data-go="s2">＋ 노트 작성</span>
+      </div>
+      <div class="box" style="padding:30px;text-align:center">
+        <div class="muted">리드 상세 — 미팅 노트 탭 0건</div>
+        <div style="font-size:40px;margin:14px 0">🗂</div>
+        <b>이 리드의 미팅 노트가 없습니다</b>
+        <div style="margin-top:12px"><span class="btn primary" data-go="s3">＋ 노트 작성</span></div>
+      </div>
+    </div>
+    <h4>녹음 에러 (노트 작성 모달 내부 배너)</h4>
+    <div class="warn">⚠ 마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크를 허용하거나, 직접 입력/붙여넣기를 사용하세요.</div>
+    <div class="warn">⚠ 이 브라우저는 녹음을 지원하지 않습니다. 직접 입력/붙여넣기를 사용하세요.</div>
+    <div class="rec box">
+      <b>구간 전사</b>
+      <div class="chunks" style="flex:1;margin:0">
+        <div class="chunk done">1 ✓</div><div class="chunk done">2 ✓</div><div class="chunk fail">3 ✕</div><div class="chunk done">4 ✓</div><div class="chunk work">5 전사중</div>
+      </div>
+      <span class="btn sm">↻ 3구간 다시 시도</span>
+    </div>
+    <div class="muted">✎ 3구간 실패: "음성을 텍스트로 변환하지 못했습니다. 다시 시도해 주세요." 나머지 구간 결과는 본문에 유지</div>
+    <h4>저장 확인</h4>
+    <div class="box" style="padding:14px;width:380px">
+      <b>전사가 아직 끝나지 않았습니다</b>
+      <div class="muted" style="margin:6px 0 10px">지금 저장하면 5구간 결과는 포함되지 않습니다. 저장할까요?</div>
+      <div class="row"><span class="spacer"></span><span class="btn">기다리기</span><span class="btn primary">그래도 저장</span></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // 화면 전환 (와이어프레임 내비게이션)
+  function go(id) {
+    document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === id));
+    document.querySelectorAll(".toc button").forEach((b) => b.classList.toggle("on", b.dataset.go === id));
+    window.scrollTo(0, 0);
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go]");
+    if (t) go(t.dataset.go);
+  });
+  // 리드 상세 탭 전환
+  const tInfo = document.getElementById("t-info"), tNotes = document.getElementById("t-notes");
+  const pInfo = document.getElementById("p-info"), pNotes = document.getElementById("p-notes");
+  tInfo.onclick = () => { tInfo.classList.add("on"); tNotes.classList.remove("on"); pInfo.classList.remove("hidden"); pNotes.classList.add("hidden"); };
+  tNotes.onclick = () => { tNotes.classList.add("on"); tInfo.classList.remove("on"); pNotes.classList.remove("hidden"); pInfo.classList.add("hidden"); };
+  // URL로 바로 열기: wireframe.html?mobile#s2
+  if (new URLSearchParams(location.search).has("mobile")) document.body.classList.add("mobile");
+  if (location.hash && document.getElementById(location.hash.slice(1))) go(location.hash.slice(1));
+  document.getElementById("frame").onclick = () => document.body.classList.toggle("mobile");
+  document.getElementById("del").onclick = () => confirm("이 리드를 삭제할까요?\n미팅 노트 2개도 함께 삭제됩니다.");
+</script>
+</body>
+</html>

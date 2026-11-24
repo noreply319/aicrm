@@ -298,8 +298,101 @@
 
 - 결과: 필수 아님으로 변경 — 없으면 Vercel은 `VERCEL_PROJECT_PRODUCTION_URL`(자동 제공), 로컬은 요청 주소로 판단, 커스텀 도메인일 때만 설정. 요구사항 문서 6.3·NFR-5·사전 준비 갱신
 
+## 42. 2026-11-24 — 녹음 완료 시 자동 저장 + 리드 나중에 지정 (복구)
+
+> 미팅 노트 저장할때 리드가 없더라도 녹음이 완료되면 자동 저장되고, 리드를 수정하는 방향으로 수정해줘.
+
+- 결과: `meeting_notes.lead_id` NULL 허용(schema.sql에 ALTER 추가), 리드 미지정 노트 저장·나중에 연결/변경/해제(연결된 리드에만 이력 기록), 녹음·파일 전사 완료 시 자동 저장 후 수정 모드 유지, 리드 미지정 기본 제목 "{날짜} 미팅", 목록 "리드 미지정" 표시·필터, 상세 "리드 지정" 버튼, Assistant는 LEFT JOIN. 로컬 DB 적용·curl·헤드리스 Chrome 확인
+
+## 45. 2026-11-24 — 다중 화자 구분 전사 (복구)
+
+> 노트 작성시 다중 화자 구분 할 수 있도록 transcribe 모델 변경해줘.
+
+- 결과: 화자 구분을 지원하는 유일한 모델 `gpt-4o-transcribe-diarize`(diarized_json, chunking_strategy=auto, 2027-02-26 지원 종료 예정)로 본문 전사 변경. 구간별 요청은 화자 라벨이 뒤바뀌므로 처음 나온 화자의 2~8초 참조 음성을 다음 구간에 known_speaker_references로 보내 이름 유지(최대 4명). 본문 "화자 N: …" 형식, 화자 이름 변경 UI. 업로드 한도 때문에 녹음 구간 3MB·파일 구간 약 1분 30초로 축소
+
+## 46. 2026-11-24 — 실시간 자막 기능 제거 (복구)
+
+> 실시간 자막 기능은 FE / BE 에서 제거하고 관련 코드도 삭제해줘.
+>
+> 아래 녹음할때 나오는 에러도 분석하고 수정해줘. (Module not found: Can't resolve '@/lib/liveTranscriber', GET /meetings 500)
+
+- 결과: `lib/liveTranscriber.ts`, `public/worklets/pcm24k-worklet.js`, `/api/meetings/realtime-token`, `createLiveTranscribeSecret`, 녹음 화면 자막 UI·상태, 관련 CSS·환경 변수 삭제. 에러는 파일 삭제와 import 제거 사이에 dev 서버가 컴파일한 일시적 상태. 테스트 정리 중 3000 포트 종료 명령이 사용자 dev 서버를 내림
+
+## 47. 2026-11-24 — 테스트 추가 (worktree) (복구)
+
+> 새로운 워크트리에서 Unit test 작성해줘. 100%까지 커버할 필요 없고 중요한 기능만 unit test, integratio test, e2e 테스트 추가해줘. 아래 폴더에 worktrees에서 작업해줘. 아래 폴더에서 worktrees 추가하는것은 claude.md에 추가해줘. ('/Users/j-mac-16-intel/프로젝트/aicrm/worktress')
+
+- 결과: `worktress/aicrm-tests`(브랜치 `test/automated-tests`)에 Vitest + Playwright 추가. unit 33·integration 17(로컬 `ai_crm_test`)·e2e 6개 모두 통과. CLAUDE.md에 테스트·worktree 규칙, `.gitignore`에 `worktress/` 추가 (워크트리에서 미커밋)
+
 ## 48. 2026-11-24 — merge된 worktree 삭제
 
 > 머지된 worktree는 삭제해줘.
 
 - 결과: `aicrm-google-calendar`(feature/google-calendar, main에 merge됨·미커밋 변경 없음) worktree 삭제, 브랜치는 유지. 경로의 한글이 NFD로 저장돼 있어 `git -c core.precomposeunicode=false worktree remove <NFD 경로>`로 삭제. `worktress/aicrm-tests`는 커밋이 없어 merge된 것처럼 보일 뿐 테스트 작업 전체가 미커밋 상태라 삭제하지 않음
+- ⚠ 이 항목의 중복 정리 중 스크립트 실수로 다른 세션의 #48~#55(구글 설정 완료, 구글 연동 테스트 방법, 다음 미팅 자동 등록 + [AI CRM] 제목 표시 등)와 내 #42·#45~#47이 삭제됨. 내 항목은 위에 (복구)로 다시 기록, 다른 세션 항목은 git에도 남아 있지 않아 해당 세션에서 다시 기록 필요
+
+## 56. 2026-11-24 — 에러 판별 수정·문서 커밋 및 push
+
+> 커밋하고 push 해줘
+
+- 결과: `b50e867` 커밋(gmail/calendar 에러 판별 수정, CLAUDE.md Gmail 섹션, history) 후 push. 무관한 `package-lock.json`(이름 변경), `docs/meeting-notes/`, `worktress/`는 제외
+
+## 57. 2026-11-24 — npm run dev "uv_cwd ENOENT" 에러
+
+> npm run dev하면 아래 처럼 에러나는데 해당 부분 확인해줘. (process.cwd failed … uv_cwd)
+
+- 결과: 터미널이 삭제된 워크트리 폴더(`worktress/aicrm-gmail/web`)에 머물러 있어 현재 폴더를 읽지 못한 것. 코드 문제 아님 → `cd /Users/j-mac-16-intel/프로젝트/aicrm/web` 후 실행 안내
+
+## 58. 2026-11-24 — 리드 메일 제목·요약 저장 + Assistant 관련 메일만 참고 (워크트리)
+
+> 이메일 불러오면 title과 해당 이메일 summary 저장해놔서 다시 로등 안하도록 해줘. 그리고 향후에 AI Assistant에서 질문할때 관련 이메일만 확인해서 답변하도록 해줘. 새로운 워크트리에서 해당 사항 구현해줘.
+
+- 결과: `worktress/aicrm-email-cache`(feature/email-cache, main `b50e867` 기준)에 구현. `lead_emails` 테이블(사용자·리드별 제목·헤더·미리보기·AI 요약, 본문 미저장, RLS), 이메일 탭은 저장 목록 즉시 표시 → Gmail id 목록으로 새 메일만 저장 → 새 메일만 10건 묶음 요약. Assistant는 질문에 나온 회사·담당자·키워드로 고른 저장 메일 요약만 컨텍스트에 넣고, 도구도 저장 요약 검색으로 변경. Gmail 해제 시 저장 메일 삭제. 로컬 DB 적용, build 통과, 실제 Gmail로 확인(첫 동기화 20건 5.6초·요약 14초 → 재동기화 0건 2.2초·재요약 0.1초), Assistant 답변·화면 확인. 미커밋
+
+## 59. 2026-11-24 — 메일 캐시 워크트리 main 병합·삭제
+
+> 해당 worktree merge하고 삭제해줘.
+
+- 결과: 워크트리 변경을 `dd1978b`로 커밋 → main fast-forward 병합(build 통과). 워크트리에서 돌던 사용자 dev 서버(3000)를 먼저 종료한 뒤 `worktress/aicrm-email-cache`·`feature/email-cache` 삭제. push·운영 스키마 적용은 하지 않음
+
+## 60. 2026-11-24 — auto-summary·aicrm-tests 워크트리 병합 여부 확인
+
+> 아래 워크트리 현재 머지 됐는지 확인하고 머지 됐으면 정리해줘. (worktress/auto-summary, worktress/aicrm-tests)
+
+- 결과: 두 브랜치 모두 새 커밋은 없지만(main에 포함) 미커밋 작업이 main에 없음 → 정리 안 함. auto-summary: 노트 자동 요약(`api/meetings/[id]/summarize`, CrmApp·MeetingNoteModal·useMeetings, +68줄) 진행 중, 그 폴더에서 dev 서버(3002) 실행 중. aicrm-tests: Vitest·Playwright 테스트(`web/test`, `web/e2e`, 설정 파일, package.json 등 +1495줄), 기준 커밋 187d637(구버전)
+
+## 61. 2026-11-24 — 완료된 워크트리(auto-summary·aicrm-tests) main 병합
+
+> 구현 완료됐으면 머지 해줘.
+
+- 결과: auto-summary(녹음 완료 후 노트 자동 요약, 타입 체크 통과)를 `c717287`로 커밋 → main 병합 `089b1e9`. aicrm-tests(기록상 완료)는 `b41bad5` 커밋 후 워크트리에서 최신 main 병합(CLAUDE.md 충돌 해결) → 로그인 추가로 e2e 6개 실패 → 테스트 DB 사용자·세션 쿠키로 로그인, 자동 요약·다음 미팅 추출 가짜 응답 추가(`06ea0a5`) → main fast-forward. main에서 unit+integration 50·e2e 6 통과, build 통과, npm audit 0. 워크트리 2개는 남겨 둠(auto-summary는 dev 서버 실행 중), push 안 함
+
+## 62. 2026-11-24 — 병합된 워크트리 삭제
+
+> main에 merge되었으면 삭제해줘.
+
+- 결과: auto-summary·aicrm-tests 모두 main에 포함·미커밋 변경 없음 확인. auto-summary에서 돌던 dev 서버(3002)·헤드리스 Chrome 종료 후 두 워크트리와 브랜치(`feature/auto-summary`, `test/automated-tests`) 삭제. 남은 워크트리 없음
+
+## 49. 2026-11-24 — 미팅 완료 시 자동 요약 (worktree)
+
+> 미팅이 완료되면 자동으로 미팅 요약 되도록 로직 수정해줘. 새로운 워크트리에서 구현해줘.
+
+- 결과: `worktress/auto-summary`(feature/auto-summary)에서 `POST /api/meetings/[id]/summarize`(저장된 노트 요약·저장, 리드 있으면 note_updated auto:true 기록) + 녹음·파일 전사 완료 자동 저장 직후 자동 요약(요약이 비었거나 이전 자동 요약일 때만, 창을 닫아도 서버에서 완료·목록 갱신·토스트). 빌드·API(실제 요약·404·이력) 확인. 작업 중 다른 세션이 이 변경을 커밋(c717287)·main merge 후 worktree를 삭제해 브라우저 확인은 중단, 임시 테스트 사용자·데이터 정리. 요구사항 FR-20c 갱신
+
+## 62. 2026-11-24 — 계약서·견적서 메뉴 요구사항·와이어프레임
+
+> 계약서 메뉴 추가해서, 해당 페이지에서는 AI Assistant와 대화하면서 계약서를 완성하고, 메일까지 보낼 수 있도록해줘. (1. 템플릿 등록·변경 부분 표시 2. 왼쪽 Assistant / 오른쪽 템플릿 3. 처음에 어떤 계약서인지 버튼으로 묻고 한 번에 하나씩 질문, 답할 때마다 채움 4. 완성되면 PDF 다운로드·이메일 발송 — 고객 이메일은 사용자 입력, 제목·본문·첨부 표시) 명확하지 않은 부분은 질문하고 먼저 요구사항 문서와 low fidelity wireframe html로 작성해줘. / 계약서뿐 아니라 인보이스(견적서)도 보낼 수 있게 / 아래 폴더에 문서 작성해줘. (docs)
+
+- 결과: 질의응답(견적서 포함·품목 표, 내 Gmail 발송(gmail.send), 서버 PDF 라이브러리+한글 폰트, 리드 선택→자동 채움+이력) 반영해 `docs/contracts/requirements.md`(FR-1~36, 데이터 모델·API 안, 확인 필요 Q1~Q7)와 `docs/contracts/wireframe.html`(11개 화면) 작성. 구현 전.
+
+## 63. 2026-11-24 — 계약서 확인 질문 선택형으로 받기
+
+> 질문 한국어로 해주고 선택할 수 있게 해줘.
+
+- 결과: 확인 질문 7개(Q1~Q7)를 선택형으로 질문 → 모두 추천안 선택(계약서·견적서만, 메뉴 `계약서`, Assistant 문서 작성 전용, 발송 후 단계 이동은 버튼 제안, 템플릿은 모든 사용자, 회사 정보는 템플릿에 직접, 계산 항목은 계약 종료일만). `docs/contracts/requirements.md` 10장 결정 사항으로 반영, 상태 확정
+
+## 64. 2026-11-24 — 회사 메뉴·리드 회사 선택 계획·와이어프레임
+
+> 상단에 회사  추가하고, 회사 정보를 등록할 수 있게 해줘. 등록된 리드 등록할때 서치 & 드롭다운으로 선택하거나 없으면 리드에서 바로 생성 버튼 눌러서 생성할 수 있게 구현해줘. 관련해서 먼저 명확하지 않은 부분 질문하고, docs에 구현 계획 문서와 low fidelity wireframe html로 구현해줘.
+
+- 결과: 질의응답(회사 항목 기본·사업자·영업 관리·이메일 도메인 전부, 기존 리드 회사명으로 자동 생성·연결, 목록+상세, 바로 생성은 이름만 즉시) 반영해 `docs/companies/requirements.md`(FR-1~30, `companies` 테이블 + `leads.company_id`·회사명 사본 유지 설계, API·구현 순서·테스트, 확인 필요 Q1~Q7)와 `docs/companies/wireframe.html`(8개 화면) 작성. 구현 전
