@@ -1,5 +1,5 @@
-import { STAGES } from "./constants";
-import type { ChatMessage, LeadInput, Priority, StageId } from "./types";
+import { NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES } from "./constants";
+import type { ChatMessage, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId } from "./types";
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
 const PRIORITIES = new Set<string>(["high", "mid", "low"]);
@@ -64,4 +64,50 @@ export function parseChatInput(body: unknown): { ok: true; data: ChatMessage[] }
   }
   if (messages.at(-1)?.role !== "user") return { ok: false, error: "질문을 입력하세요" };
   return { ok: true, data: messages };
+}
+
+const NOTE_SOURCES = new Set<string>(["manual", "recording", "mixed"]);
+
+/** 미팅 노트 요청 본문 검증 */
+export function parseNoteInput(body: unknown): { ok: true; data: MeetingNoteInput } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+
+  const leadId = typeof b.leadId === "string" ? b.leadId : "";
+  if (!UUID_RE.test(leadId)) return { ok: false, error: "연결할 리드를 선택하세요" };
+
+  const title = str(b.title, NOTE_TITLE_MAX);
+  if (!title) return { ok: false, error: "제목은 필수입니다" };
+
+  const metAt = typeof b.metAt === "string" ? new Date(b.metAt) : null;
+  if (!metAt || Number.isNaN(metAt.getTime())) return { ok: false, error: "미팅 일시가 올바르지 않습니다" };
+
+  // 본문은 줄바꿈·들여쓰기를 보존하기 위해 trim하지 않는다 (앞뒤 빈 줄만 제거)
+  const rawBody = typeof b.body === "string" ? b.body.replace(/^\s*\n|\n\s*$/g, "") : "";
+  if (!rawBody.trim()) return { ok: false, error: "본문을 입력하세요" };
+  if (rawBody.length > NOTE_BODY_MAX) return { ok: false, error: `본문은 ${NOTE_BODY_MAX.toLocaleString()}자 이하로 입력하세요` };
+
+  const source = (NOTE_SOURCES.has(b.source as string) ? b.source : "manual") as NoteSource;
+
+  return {
+    ok: true,
+    data: {
+      leadId,
+      title,
+      metAt: metAt.toISOString(),
+      body: rawBody,
+      source,
+      summary: str(b.summary, NOTE_SUMMARY_MAX),
+      nextActions: str(b.nextActions, NOTE_SUMMARY_MAX),
+    },
+  };
+}
+
+/** AI 요약 요청 { title, body } 검증 */
+export function parseSummarizeInput(body: unknown): { ok: true; data: { title: string; body: string } } | { ok: false; error: string } {
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const text = typeof b.body === "string" ? b.body.trim() : "";
+  if (!text) return { ok: false, error: "요약할 본문이 없습니다" };
+  if (text.length > NOTE_BODY_MAX) return { ok: false, error: `본문은 ${NOTE_BODY_MAX.toLocaleString()}자 이하여야 합니다` };
+  return { ok: true, data: { title: str(b.title, NOTE_TITLE_MAX), body: text } };
 }

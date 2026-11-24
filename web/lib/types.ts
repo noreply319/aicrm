@@ -31,3 +31,36 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+/** 미팅 노트 입력 방식: 직접 입력/붙여넣기, 녹음 전사, 둘 다 */
+export type NoteSource = "manual" | "recording" | "mixed";
+
+/** 미팅 노트 (목록용: 본문은 미리보기만) */
+export interface MeetingNoteSummary {
+  id: string;
+  leadId: string;
+  title: string;
+  metAt: string; // ISO
+  source: NoteSource;
+  preview: string; // 본문 앞부분
+  summary: string;
+  nextActions: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+/** 미팅 노트 전체 (상세/수정용) */
+export interface MeetingNote extends Omit<MeetingNoteSummary, "preview"> {
+  body: string;
+}
+
+export type MeetingNoteInput = Pick<
+  MeetingNote,
+  "leadId" | "title" | "metAt" | "body" | "source" | "summary" | "nextActions"
+>;
+
+/** AI 요약 결과 */
+export interface NoteSummaryResult {
+  summary: string;
+  nextActions: string;
+}

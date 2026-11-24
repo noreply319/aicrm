@@ -1,4 +1,4 @@
-import type { Priority, StageId } from "./types";
+import type { NoteSource, Priority, StageId } from "./types";
 
 export const STAGES: { id: StageId; name: string; color: string }[] = [
   { id: "new", name: "신규 리드", color: "#8a90a2" },
@@ -27,3 +27,21 @@ export const AVATAR_COLORS = [
 ];
 
 export const THEME_KEY = "crm.theme";
+
+/** 미팅 노트 제한 (서버 검증·DB CHECK와 동일하게 유지) */
+export const NOTE_BODY_MAX = 50000;
+export const NOTE_TITLE_MAX = 200;
+export const NOTE_SUMMARY_MAX = 5000;
+
+/** 녹음: 5분 구간마다 전사, 최대 60분 */
+export const RECORD_SEGMENT_SEC = 5 * 60;
+export const RECORD_MAX_SEC = 60 * 60;
+export const RECORD_WARN_SEC = 55 * 60;
+/** 전사 업로드 1건 최대 크기 (Vercel 요청 본문 한도 4.5MB보다 작게) */
+export const AUDIO_MAX_BYTES = 4 * 1024 * 1024;
+
+export const NOTE_SOURCE_LABEL: Record<NoteSource, string> = {
+  manual: "붙여넣기",
+  recording: "녹음",
+  mixed: "녹음+붙여넣기",
+};

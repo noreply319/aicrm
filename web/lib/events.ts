@@ -3,7 +3,9 @@ import type { PoolClient } from "pg";
 import { pool } from "./db";
 import type { Lead, LeadInput } from "./types";
 
-export type LeadEventType = "created" | "updated" | "moved" | "deleted";
+export type LeadEventType =
+  | "created" | "updated" | "moved" | "deleted"
+  | "note_created" | "note_updated" | "note_deleted";
 
 export type FieldChange = { from: unknown; to: unknown };
 
