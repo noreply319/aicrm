@@ -407,6 +407,13 @@ export default function CrmApp() {
           <a className="btn" href="/api/calendar/connect">다시 연동</a>
         </div>
       )}
+      {/* 토큰은 캘린더·Gmail 공용이라 캘린더 배너가 있으면 그것만 보여준다 */}
+      {auth.me?.gmail.state === "expired" && auth.me.calendar.state !== "expired" && view !== "settings" && (
+        <div className="error-banner warn-banner" role="status">
+          <span>⚠ Gmail 연동이 만료되었습니다. 리드 이메일을 보려면 다시 연동하세요.</span>
+          <a className="btn" href="/api/gmail/connect">다시 연동</a>
+        </div>
+      )}
       {view === "pipeline" && <StatsBar leads={leads} />}
       {bannerError && (
         <div className="error-banner" role="alert">
@@ -458,6 +465,7 @@ export default function CrmApp() {
               me={auth.me}
               onSetCalendar={auth.setCalendarId}
               onDisconnect={auth.disconnectCalendar}
+              onDisconnectGmail={auth.disconnectGmail}
               onLogout={auth.logout}
               onNotice={showToast}
             />
@@ -492,6 +500,9 @@ export default function CrmApp() {
           onOpenSchedule={(s) => openSchedule(s, editingLead?.id ?? null)}
           onDismissSchedule={dismissSchedule}
           onSchedulesTab={() => editingLead && sched.syncLead(editingLead.id)}
+          gmailState={auth.me?.gmail.state ?? "none"}
+          meEmail={auth.me?.email ?? ""}
+          onGmailExpired={auth.reload}
           onClose={() => setModal({ open: false })}
         />
       )}

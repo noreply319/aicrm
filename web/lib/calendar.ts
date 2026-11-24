@@ -12,7 +12,7 @@ export const TIME_ZONE = "Asia/Seoul";
 /** 한 번에 조회할 수 있는 최대 기간 */
 export const MAX_RANGE_DAYS = 92;
 
-type CalendarUser = Pick<SessionUser, "id" | "refreshToken" | "calendarExpired" | "calendarId">;
+type CalendarUser = Pick<SessionUser, "id" | "refreshToken" | "calendarExpired" | "calendarEnabled" | "gmailEnabled" | "calendarId">;
 
 /** 'YYYY-MM-DD' (한국 시간) */
 export const kstDate = (d: Date | string | number) =>
@@ -31,7 +31,7 @@ export const addDays = (date: string, n: number) => {
 
 /** 구글 API 호출: 401이면 토큰을 새로 받아 1회, 429/5xx면 1회 재시도 */
 async function gfetch(user: CalendarUser, path: string, init: RequestInit = {}, attempt = 0): Promise<unknown> {
-  const token = await getAccessToken(user);
+  const token = await getAccessToken(user, "calendar");
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },

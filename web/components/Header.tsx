@@ -129,11 +129,12 @@ function UserMenu({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
   if (!me) return null;
   const initial = (me.name || me.email).slice(0, 1).toUpperCase();
   const cal = me.calendar.state;
+  const gmail = me.gmail.state;
   return (
     <div className="user-menu" ref={ref}>
       <button type="button" className="user-btn" title={me.email} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {me.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <span>{initial}</span>}
-        {cal === "expired" && <i className="user-dot" title="캘린더 연동 만료" />}
+        {(cal === "expired" || gmail === "expired") && <i className="user-dot" title="구글 연동 만료" />}
       </button>
       {open && (
         <div className="user-pop" role="menu">
@@ -141,6 +142,9 @@ function UserMenu({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
           <div className="muted">{me.email}</div>
           <div className="user-pop-cal">
             📅 캘린더 {cal === "connected" ? "연동됨" : cal === "expired" ? "연동 만료" : "연동 안 됨"}
+          </div>
+          <div className="user-pop-cal">
+            ✉️ Gmail {gmail === "connected" ? "연동됨" : gmail === "expired" ? "연동 만료" : "연동 안 됨"}
           </div>
           <Link href="/settings" className="user-pop-item" onClick={() => setOpen(false)}>설정</Link>
           <button type="button" className="user-pop-item" onClick={onLogout}>로그아웃</button>

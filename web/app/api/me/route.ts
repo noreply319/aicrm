@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { featureState, getSessionUser } from "@/lib/auth";
 import { listCalendars } from "@/lib/calendar";
 import { pool } from "@/lib/db";
 import { googleErrorResponse, unauthorized } from "@/lib/google";
@@ -7,7 +7,7 @@ import type { Me } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-/** 로그인 사용자 + 캘린더 연동 상태 */
+/** 로그인 사용자 + 캘린더·Gmail 연동 상태 */
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return unauthorized();
@@ -17,9 +17,10 @@ export async function GET() {
     name: user.name,
     picture: user.picture,
     calendar: {
-      state: user.calendarExpired ? "expired" : user.refreshToken ? "connected" : "none",
+      state: featureState(user, "calendar"),
       calendarId: user.calendarId,
     },
+    gmail: { state: featureState(user, "gmail") },
   };
   return NextResponse.json(me);
 }

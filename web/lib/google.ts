@@ -1,12 +1,15 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import { featureState, type GoogleFeature, type SessionUser } from "./auth";
 import { decrypt, randomToken } from "./crypto";
 import { pool } from "./db";
 
 /**
  * 구글 OAuth 2.0 (SDK 없이 fetch)
  *  - 로그인: openid email profile
- *  - 캘린더 연동(설정 → Google 연동): 로그인 권한에 캘린더 권한을 추가로 받는다 (include_granted_scopes)
+ *  - 캘린더 연동(설정 → Google 캘린더): 로그인 권한에 캘린더 권한을 추가로 받는다 (include_granted_scopes)
+ *  - Gmail 연동(설정 → Gmail): 같은 방식으로 Gmail 읽기 권한을 추가로 받는다
+ * 리프레시 토큰은 사용자당 하나(받은 권한 전체)를 두 기능이 같이 쓰고, 기능별 사용 여부는 users.*_enabled로 구분한다.
  * 리디렉션 URI는 하나(/api/auth/callback)만 쓰고, 어떤 흐름인지는 state 쿠키의 purpose로 구분한다.
  */
 
@@ -20,6 +23,8 @@ export const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 export const CALENDAR_EVENTS_SCOPE = CALENDAR_SCOPES[0];
+/** 메일 읽기 전용 (보내기·수정·삭제 권한 없음) */
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 export const OAUTH_COOKIE = "crm_oauth";
 export const CALLBACK_PATH = "/api/auth/callback";
@@ -59,7 +64,7 @@ export function appOrigin(reqUrl: string): string {
   return new URL(reqUrl).origin;
 }
 
-export type OAuthPurpose = "login" | "calendar";
+export type OAuthPurpose = "login" | GoogleFeature;
 
 /** state 쿠키에 보관하는 값 (10분) */
 export interface OAuthState {
@@ -88,13 +93,13 @@ export function buildAuthRequest(
     client_id: id,
     redirect_uri: appOrigin(reqUrl) + CALLBACK_PATH,
     response_type: "code",
-    scope: (purpose === "calendar" ? [...LOGIN_SCOPES, ...CALENDAR_SCOPES] : LOGIN_SCOPES).join(" "),
+    scope: [...LOGIN_SCOPES, ...(purpose === "calendar" ? CALENDAR_SCOPES : purpose === "gmail" ? [GMAIL_SCOPE] : [])].join(" "),
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
     include_granted_scopes: "true",
   });
-  if (purpose === "calendar") {
+  if (purpose !== "login") {
     // 리프레시 토큰을 받으려면 offline + consent가 필요하다
     params.set("access_type", "offline");
     params.set("prompt", "consent");
@@ -113,7 +118,7 @@ export function parseOAuthState(raw: string | undefined): OAuthState | null {
     if (!v || typeof v !== "object") return null;
     const r = v as Record<string, unknown>;
     if (typeof r.state !== "string" || typeof r.verifier !== "string" || typeof r.next !== "string") return null;
-    if (r.purpose !== "login" && r.purpose !== "calendar") return null;
+    if (r.purpose !== "login" && r.purpose !== "calendar" && r.purpose !== "gmail") return null;
     return { state: r.state, verifier: r.verifier, purpose: r.purpose, next: r.next };
   } catch {
     return null;
@@ -211,22 +216,36 @@ export function forgetAccessToken(userId: string) {
   tokenCache.delete(userId);
 }
 
-/** 사용자의 캘린더 액세스 토큰. 리프레시 토큰이 만료·폐기됐으면 연동 만료로 표시하고 예외 */
-export async function getAccessToken(user: { id: string; refreshToken: string | null; calendarExpired: boolean }): Promise<string> {
+export type TokenUser = Pick<SessionUser, "id" | "refreshToken" | "calendarExpired" | "calendarEnabled" | "gmailEnabled">;
+
+const FEATURE_LABEL: Record<GoogleFeature, string> = { calendar: "캘린더", gmail: "Gmail" };
+
+/** 기능 연동이 끊긴 상태(409) 예외 */
+export function notConnectedError(feature: GoogleFeature, expired: boolean): GoogleError {
+  const label = FEATURE_LABEL[feature];
+  return expired
+    ? new GoogleError(`${label} 연동이 만료되었습니다. 설정에서 다시 연동하세요`, 409, "expired")
+    : new GoogleError(
+        feature === "gmail"
+          ? "Gmail이 연동되지 않았습니다. 설정에서 Gmail 연동을 진행하세요"
+          : "캘린더가 연동되지 않았습니다. 설정에서 Google 연동을 진행하세요",
+        409,
+        "not_connected"
+      );
+}
+
+/** 사용자의 구글 액세스 토큰 (feature 기능을 연동했을 때만). 리프레시 토큰이 만료·폐기됐으면 연동 만료로 표시하고 예외 */
+export async function getAccessToken(user: TokenUser, feature: GoogleFeature = "calendar"): Promise<string> {
+  const state = featureState(user, feature);
+  if (state !== "connected") throw notConnectedError(feature, state === "expired");
+
   const cached = tokenCache.get(user.id);
   if (cached && cached.exp > Date.now() + 60_000) return cached.token;
 
-  if (!user.refreshToken || user.calendarExpired) {
-    throw new GoogleError(
-      user.calendarExpired ? "캘린더 연동이 만료되었습니다. 설정에서 다시 연동하세요" : "캘린더가 연동되지 않았습니다. 설정에서 Google 연동을 진행하세요",
-      409,
-      user.calendarExpired ? "expired" : "not_connected"
-    );
-  }
-  const refresh = decrypt(user.refreshToken);
+  const refresh = user.refreshToken ? decrypt(user.refreshToken) : null;
   if (!refresh) {
     await markExpired(user.id);
-    throw new GoogleError("캘린더 연동 정보를 읽지 못했습니다. 설정에서 다시 연동하세요", 409, "expired");
+    throw new GoogleError(`${FEATURE_LABEL[feature]} 연동 정보를 읽지 못했습니다. 설정에서 다시 연동하세요`, 409, "expired");
   }
 
   const { id, secret } = clientConfig();
@@ -237,7 +256,7 @@ export async function getAccessToken(user: { id: string; refreshToken: string | 
   } catch (e) {
     if (e instanceof GoogleError && e.code === "invalid_grant") {
       await markExpired(user.id);
-      throw new GoogleError("캘린더 연동이 만료되었습니다. 설정에서 다시 연동하세요", 409, "expired");
+      throw notConnectedError(feature, true);
     }
     throw e;
   }
@@ -256,6 +275,32 @@ export async function revokeToken(token: string) {
     body: new URLSearchParams({ token }),
     signal: AbortSignal.timeout(10_000),
   }).catch(() => undefined);
+}
+
+/**
+ * 기능별 연동 해제. 다른 기능이 아직 연동돼 있으면 토큰은 남기고 이 기능만 끈다
+ * (구글 토큰 폐기는 앱에 준 권한 전체를 없애므로). 마지막 기능이면 구글에 토큰 폐기 요청 후 삭제.
+ */
+export async function disconnectFeature(user: TokenUser, feature: GoogleFeature) {
+  const otherEnabled = feature === "gmail" ? user.calendarEnabled : user.gmailEnabled;
+  if (user.refreshToken && otherEnabled) {
+    await pool.query(
+      feature === "gmail"
+        ? "UPDATE users SET gmail_enabled = false, updated_at = now() WHERE id = $1"
+        : "UPDATE users SET calendar_enabled = false, calendar_id = 'primary', updated_at = now() WHERE id = $1",
+      [user.id]
+    );
+    return;
+  }
+  const refresh = user.refreshToken ? decrypt(user.refreshToken) : null;
+  if (refresh) await revokeToken(refresh);
+  await pool.query(
+    `UPDATE users SET google_refresh_token = NULL, google_scopes = '', calendar_expired = false,
+            calendar_enabled = false, gmail_enabled = false, calendar_id = 'primary', updated_at = now()
+     WHERE id = $1`,
+    [user.id]
+  );
+  forgetAccessToken(user.id);
 }
 
 /** Route Handler 공통: 구글 에러 → { error, code } 응답, 그 외 예외는 다시 던진다 */

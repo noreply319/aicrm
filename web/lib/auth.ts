@@ -20,16 +20,33 @@ export interface SessionUser {
   email: string;
   name: string;
   picture: string;
-  /** 암호화된 구글 리프레시 토큰. null = 캘린더 미연동 */
+  /** 암호화된 구글 리프레시 토큰 (캘린더·Gmail 공용). null = 구글 기능 미연동 */
   refreshToken: string | null;
+  /** 토큰 만료·폐기 (캘린더·Gmail 공통) */
   calendarExpired: boolean;
+  calendarEnabled: boolean;
+  gmailEnabled: boolean;
   calendarId: string;
   googleSub: string;
 }
 
 export const USER_COLUMNS = `
   u.id, u.email, u.name, u.picture, u.google_refresh_token AS "refreshToken",
-  u.calendar_expired AS "calendarExpired", u.calendar_id AS "calendarId", u.google_sub AS "googleSub"`;
+  u.calendar_expired AS "calendarExpired", u.calendar_id AS "calendarId", u.google_sub AS "googleSub",
+  u.calendar_enabled AS "calendarEnabled", u.gmail_enabled AS "gmailEnabled"`;
+
+export type GoogleFeature = "calendar" | "gmail";
+export type ConnectionState = "connected" | "expired" | "none";
+
+type FeatureUser = Pick<SessionUser, "refreshToken" | "calendarExpired" | "calendarEnabled" | "gmailEnabled">;
+
+/** 기능별 연동 상태: 연동한 기능이 아니면 none, 공용 토큰이 만료됐으면 expired */
+export function featureState(user: FeatureUser | null | undefined, feature: GoogleFeature): ConnectionState {
+  if (!user?.refreshToken) return "none";
+  const enabled = feature === "gmail" ? user.gmailEnabled : user.calendarEnabled;
+  if (!enabled) return "none";
+  return user.calendarExpired ? "expired" : "connected";
+}
 
 /** ALLOWED_EMAILS(쉼표 구분)에 있는 이메일만 로그인 허용 */
 export function isAllowedEmail(email: string): boolean {

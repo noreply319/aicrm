@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { STAGES } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
-import type { Lead, LeadInput, MeetingNoteSummary, Priority, ScheduledMeeting, StageId } from "@/lib/types";
+import type { Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
 import { CandidateRow } from "./CalendarView";
+import LeadEmails from "./LeadEmails";
 import NoteListItem from "./NoteListItem";
 
-export type LeadModalTab = "info" | "notes" | "schedules";
+export type LeadModalTab = "info" | "notes" | "schedules" | "emails";
 
 interface Props {
   lead: Lead | null;
@@ -28,6 +29,10 @@ interface Props {
   onDismissSchedule: (s: ScheduledMeeting) => void;
   /** 일정 탭을 열 때 구글과 동기화 */
   onSchedulesTab: () => void;
+  /** 이메일 탭: Gmail 연동 상태, 내 이메일(Gmail 웹 계정 선택용), 연동 만료 시 상태 갱신 */
+  gmailState: Me["gmail"]["state"];
+  meEmail: string;
+  onGmailExpired: () => void;
   onClose: () => void;
 }
 
@@ -38,7 +43,8 @@ const empty = (stage: StageId): LeadInput => ({
 
 export default function LeadModal({
   lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote,
-  schedules, meId, onNewSchedule, onOpenSchedule, onDismissSchedule, onSchedulesTab, onClose,
+  schedules, meId, onNewSchedule, onOpenSchedule, onDismissSchedule, onSchedulesTab,
+  gmailState, meEmail, onGmailExpired, onClose,
 }: Props) {
   const [tab, setTab] = useState<LeadModalTab>(lead ? initialTab : "info");
   const [form, setForm] = useState<LeadInput>(() => {
@@ -94,6 +100,9 @@ export default function LeadModal({
             <button type="button" role="tab" aria-selected={tab === "schedules"} className={tab === "schedules" ? "on" : ""} onClick={() => setTab("schedules")}>
               다음 미팅 ({schedules.filter((x) => x.status === "scheduled" && x.endsAt >= nowIso()).length})
             </button>
+            <button type="button" role="tab" aria-selected={tab === "emails"} className={tab === "emails" ? "on" : ""} onClick={() => setTab("emails")}>
+              이메일
+            </button>
           </div>
         )}
         {tab === "notes" && (
@@ -124,6 +133,15 @@ export default function LeadModal({
             onNew={onNewSchedule}
             onOpen={onOpenSchedule}
             onDismiss={onDismissSchedule}
+          />
+        )}
+        {tab === "emails" && lead && (
+          <LeadEmails
+            leadId={lead.id}
+            leadEmail={lead.email}
+            gmailState={gmailState}
+            meEmail={meEmail}
+            onExpired={onGmailExpired}
           />
         )}
         <div className="modal-body" hidden={tab !== "info"}>

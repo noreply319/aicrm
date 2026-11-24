@@ -178,3 +178,6 @@ export function parseDateRange(start: string | null, end: string | null, maxDays
   }
   return { ok: true, data: { start, end } };
 }
+
+/** Gmail 목록 다음 페이지 토큰 (영숫자) */
+export const PAGE_TOKEN_RE = /^[A-Za-z0-9_-]{1,200}$/;

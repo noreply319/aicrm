@@ -54,3 +54,13 @@ export const CRM_TITLE_PREFIX = "[AI CRM]";
 /** 제목에서 CRM 표시를 뗀다 */
 export const stripCrmPrefix = (title: string) =>
   title.startsWith(CRM_TITLE_PREFIX) ? title.slice(CRM_TITLE_PREFIX.length).trim() : title;
+
+/**
+ * 개인 무료 메일 도메인: 리드 이메일이 이 도메인이면 "같은 회사 도메인" 메일 검색을 하지 않는다
+ * (gmail.com 전체가 검색되는 것을 막기 위해)
+ */
+export const FREE_MAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "naver.com", "daum.net", "hanmail.net", "kakao.com", "nate.com",
+  "hotmail.com", "outlook.com", "live.com", "msn.com", "yahoo.com", "yahoo.co.kr", "icloud.com", "me.com",
+  "mac.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "zoho.com", "korea.com", "dreamwiz.com",
+]);

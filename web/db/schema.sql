@@ -117,10 +117,10 @@ CREATE TABLE IF NOT EXISTS users (
   email                 text NOT NULL UNIQUE,
   name                  text NOT NULL DEFAULT '',
   picture               text NOT NULL DEFAULT '',
-  google_refresh_token  text,                          -- 암호화된 값. NULL = 캘린더 미연동
+  google_refresh_token  text,                          -- 암호화된 값. NULL = 구글 기능(캘린더·Gmail) 미연동
   google_scopes         text NOT NULL DEFAULT '',
   calendar_id           text NOT NULL DEFAULT 'primary',
-  calendar_expired      boolean NOT NULL DEFAULT false, -- 토큰 만료·폐기로 연동이 끊김
+  calendar_expired      boolean NOT NULL DEFAULT false, -- 토큰 만료·폐기로 연동이 끊김 (캘린더·Gmail 공통)
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now()
 );
@@ -161,6 +161,19 @@ CREATE INDEX IF NOT EXISTS scheduled_meetings_lead_idx ON scheduled_meetings (le
 CREATE INDEX IF NOT EXISTS scheduled_meetings_note_idx ON scheduled_meetings (note_id);
 CREATE UNIQUE INDEX IF NOT EXISTS scheduled_meetings_event_idx ON scheduled_meetings (google_event_id)
   WHERE google_event_id IS NOT NULL;
+
+-- 구글 기능별 연동 여부 (리프레시 토큰은 사용자당 하나를 캘린더·Gmail이 같이 쓴다)
+--   calendar_expired = 토큰 만료·폐기 (두 기능 공통)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'calendar_enabled') THEN
+    ALTER TABLE users ADD COLUMN calendar_enabled boolean NOT NULL DEFAULT false;
+    -- 이 컬럼 도입 전에 연동한 사용자는 캘린더 연동 상태를 유지한다
+    UPDATE users SET calendar_enabled = true WHERE google_refresh_token IS NOT NULL;
+  END IF;
+END $$;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gmail_enabled boolean NOT NULL DEFAULT false;
 
 -- 작성자/변경자 기록 (로그인 도입 전 행은 NULL = 알 수 없음)
 ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES users(id) ON DELETE SET NULL;

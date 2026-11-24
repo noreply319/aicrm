@@ -8,6 +8,7 @@ interface Props {
   me: Me | null;
   onSetCalendar: (calendarId: string) => Promise<void>;
   onDisconnect: () => Promise<void>;
+  onDisconnectGmail: () => Promise<void>;
   onLogout: () => void;
   onNotice: (msg: string) => void;
 }
@@ -24,7 +25,13 @@ const CALENDAR_ERRORS: Record<string, string> = {
   google: "구글 인증 중 문제가 발생했습니다. 잠시 후 다시 시도하세요.",
 };
 
-export default function SettingsView({ me, onSetCalendar, onDisconnect, onLogout, onNotice }: Props) {
+/** Gmail 연동 실패 코드 → 안내 문구 (공통 코드는 캘린더 문구 사용) */
+const GMAIL_ERRORS: Record<string, string> = {
+  ...CALENDAR_ERRORS,
+  scope: "Gmail 권한이 체크되지 않았습니다. 동의 화면에서 Gmail 읽기 항목을 체크하세요.",
+};
+
+export default function SettingsView({ me, onSetCalendar, onDisconnect, onDisconnectGmail, onLogout, onNotice }: Props) {
   const [calendars, setCalendars] = useState<CalendarInfo[] | null>(null);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -35,9 +42,12 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onLogout
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const err = sp.get("calendar_error");
+    const gmailErr = sp.get("gmail_error");
     if (sp.get("calendar") === "connected") setMessage({ ok: true, text: "구글 캘린더가 연동되었습니다." });
     else if (err) setMessage({ ok: false, text: CALENDAR_ERRORS[err] ?? "캘린더 연동에 실패했습니다." });
-    if (sp.has("calendar") || err) window.history.replaceState(null, "", "/settings");
+    else if (sp.get("gmail") === "connected") setMessage({ ok: true, text: "Gmail이 연동되었습니다." });
+    else if (gmailErr) setMessage({ ok: false, text: GMAIL_ERRORS[gmailErr] ?? "Gmail 연동에 실패했습니다." });
+    if (sp.has("calendar") || err || sp.has("gmail") || gmailErr) window.history.replaceState(null, "", "/settings");
   }, []);
 
   useEffect(() => {
@@ -76,7 +86,21 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onLogout
     }
   };
 
+  const disconnectGmail = async () => {
+    if (!confirm("Gmail 연동을 해제할까요?\n리드 상세의 이메일 탭과 AI Assistant의 이메일 조회를 쓸 수 없게 됩니다.")) return;
+    setBusy(true);
+    try {
+      await onDisconnectGmail();
+      onNotice("Gmail 연동을 해제했습니다");
+    } catch (e) {
+      setMessage({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!me) return <div className="loading">불러오는 중…</div>;
+  const gmail = me.gmail.state;
 
   return (
     <div className="settings">
@@ -149,6 +173,34 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onLogout
         <p className="muted settings-note">
           구글 앱이 테스트 상태라 연동은 7일 동안 유지됩니다. 만료되면 이 화면에서 다시 연동하세요.
           캘린더 정보는 AI Assistant 답변을 위해 제목·시간·장소만 OpenAI로 전송됩니다 (참석자·설명 제외).
+        </p>
+      </section>
+
+      <section className="settings-card">
+        <h2>Gmail</h2>
+        <div className="settings-row">
+          <span className={`status-pill ${gmail}`}>
+            {gmail === "connected" ? "연동됨" : gmail === "expired" ? "연동 만료" : "연동 안 됨"}
+          </span>
+          <span className="muted">
+            {gmail === "connected"
+              ? "리드 상세의 이메일 탭에서 리드 이메일 주소와 주고받은 메일을 볼 수 있습니다. AI Assistant도 메일을 참고해 답합니다."
+              : gmail === "expired"
+                ? "연동 토큰이 만료되었습니다. 다시 연동하세요."
+                : "Gmail 연동을 누르고 동의 화면에서 Gmail 읽기 권한을 허용하세요."}
+          </span>
+        </div>
+        <div className="settings-actions">
+          <a className={`btn${gmail === "connected" ? "" : " btn-primary"}`} href="/api/gmail/connect">
+            <GoogleIcon /> {gmail === "none" ? "Gmail 연동" : "다시 연동"}
+          </a>
+          {gmail !== "none" && (
+            <button type="button" className="btn btn-danger" onClick={disconnectGmail} disabled={busy}>연동 해제</button>
+          )}
+        </div>
+        <p className="muted settings-note">
+          읽기 전용 권한만 받습니다 (메일 보내기·삭제 불가). 메일은 CRM에 저장하지 않고 볼 때마다 Gmail에서 읽어옵니다.
+          AI Assistant 답변을 위해 메일 제목·이름·본문 일부가 OpenAI로 전송되며, 이메일 주소·전화번호는 가려서 보냅니다.
         </p>
       </section>
     </div>

@@ -77,6 +77,44 @@ export interface Me {
     state: "connected" | "expired" | "none";
     calendarId: string;
   };
+  gmail: {
+    /** connected: 사용 가능, expired: 토큰 만료·폐기(재연동 필요), none: 미연동 */
+    state: "connected" | "expired" | "none";
+  };
+}
+
+/** Gmail 메일 목록 항목 (리드 이메일 주소로 검색한 결과) */
+export interface EmailSummary {
+  id: string;
+  threadId: string;
+  subject: string;
+  /** 헤더 원문 ("이름 <주소>") */
+  from: string;
+  to: string;
+  cc: string;
+  date: string; // ISO
+  snippet: string;
+  /** sent: 내가 보낸 메일, received: 받은 메일 */
+  direction: "sent" | "received";
+  unread: boolean;
+  hasAttachments: boolean;
+  /** 담당자 본인이 아니라 같은 회사 도메인의 다른 사람과 주고받은 메일 */
+  viaDomain?: boolean;
+}
+
+export interface EmailDetail extends EmailSummary {
+  /** 본문 텍스트 (HTML 메일은 텍스트로 변환) */
+  body: string;
+  attachments: string[];
+}
+
+export interface LeadEmails {
+  /** 검색한 리드 이메일 주소 */
+  address: string;
+  /** 함께 검색한 회사 도메인 (무료 메일·사내 도메인이면 null) */
+  domain: string | null;
+  messages: EmailSummary[];
+  nextPageToken: string | null;
 }
 
 /** 구글 캘린더 목록 항목 (쓰기 가능한 캘린더) */

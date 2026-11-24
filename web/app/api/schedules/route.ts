@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser, type SessionUser } from "@/lib/auth";
+import { featureState, getSessionUser, type SessionUser } from "@/lib/auth";
 import { getEvent, inputRange, scheduleSnapshot } from "@/lib/calendar";
 import { pool } from "@/lib/db";
 import { stripCrmPrefix } from "@/lib/constants";
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   const leadId = sp.get("leadId");
   if (leadId !== null && !UUID_RE.test(leadId)) return NextResponse.json({ error: "잘못된 요청입니다" }, { status: 400 });
 
-  if (leadId && sp.get("sync") === "1" && user.refreshToken && !user.calendarExpired) {
+  if (leadId && sp.get("sync") === "1" && featureState(user, "calendar") === "connected") {
     await syncFromGoogle(user, leadId).catch((e: unknown) => console.error("[schedules] sync", (e as Error).message));
   }
   return NextResponse.json(await getSchedules({ leadId: leadId ?? undefined }));

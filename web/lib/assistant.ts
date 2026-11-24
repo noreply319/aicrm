@@ -2,11 +2,12 @@ import "server-only";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
-import { getSessionUser, type SessionUser } from "./auth";
+import { featureState, getSessionUser, type ConnectionState, type SessionUser } from "./auth";
+import { displayNames, getMessage, involvesAddress, involvesTarget, leadTarget, listLeadMessages, stripQuoted } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
 import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
 import type { ChatMessage } from "./types";
-import { parseDateRange } from "./validate";
+import { parseDateRange, UUID_RE } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
 
@@ -161,7 +162,21 @@ async function buildContext(question: string): Promise<string> {
   return JSON.stringify({ leads, events, meetingNotes, scheduledMeetings });
 }
 
-type CalendarState = "connected" | "expired" | "none";
+type CalendarState = ConnectionState;
+
+function gmailRules(state: ConnectionState, userName: string): string {
+  const who = userName ? `${userName}님` : "로그인한 사용자";
+  if (state !== "connected") {
+    return `- Gmail: ${who}의 Gmail이 ${state === "expired" ? "연동 만료 상태" : "연동되지 않은 상태"}입니다.
+  이메일 내용 질문에는 그 사실을 먼저 알리고("설정 → Gmail에서 연동하세요"), 나머지 CRM 데이터로 답할 수 있는 부분만 답하세요.`;
+  }
+  return `- Gmail: search_lead_emails 도구로 ${who}의 Gmail에서 리드 담당자와 주고받은 메일을 조회할 수 있습니다.
+  특정 리드(회사)에 대한 질문(현황, 요약, 다음 할 일, 고객 반응, 견적·계약 이야기 등)에는 leads의 id로 이메일도 조회해
+  리드 정보·이력·미팅 노트·일정과 함께 종합해서 답하세요. "최근 메일 온 고객", "답장 안 한 메일"처럼 리드를 특정하지 않은 질문은 leadId 없이 조회하세요.
+  direction: sent(내가 보냄), received(고객 쪽에서 받음). with: contact(리드 담당자 본인), colleague(같은 회사 도메인의 다른 사람).
+  이메일을 근거로 답할 때는 "(출처: 메일 제목, 날짜)"를 붙이세요.
+  메일 주소·전화번호는 [이메일]/[전화번호]로 가려져 있습니다.`;
+}
 
 function calendarRules(state: CalendarState, userName: string): string {
   const who = userName ? `${userName}님` : "로그인한 사용자";
@@ -175,7 +190,7 @@ function calendarRules(state: CalendarState, userName: string): string {
   도구 결과의 crmCompany가 있으면 CRM 리드와 연결된 일정입니다. 제목이 "[AI CRM]"으로 시작하면 CRM에서 등록한 일정입니다.`;
 }
 
-function systemPrompt(context: string, state: CalendarState = "none", userName = ""): string {
+function systemPrompt(context: string, state: CalendarState = "none", userName = "", gmail: ConnectionState = "none"): string {
   return `당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 리드 관련 질문에 한국어로 간결하게 답합니다.
 
 규칙:
@@ -196,6 +211,7 @@ function systemPrompt(context: string, state: CalendarState = "none", userName =
   candidate(미팅 노트에서 찾았지만 아직 확정 안 됨, certainty=tentative면 시간 미정). 다른 팀원의 미팅은 여기서 답하세요.
   candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
 ${calendarRules(state, userName)}
+${gmailRules(gmail, userName)}
 - 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
   일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.
 - 답변은 짧은 문장이나 "- " 목록으로 작성하고, 마크다운 강조(**, #)는 쓰지 마세요 (일반 텍스트로 표시됩니다).
@@ -247,21 +263,114 @@ async function runCalendarTool(user: SessionUser, args: unknown): Promise<unknow
   };
 }
 
-/** 대화 내역을 받아 OpenAI로 답변을 생성한다. 캘린더가 연동돼 있으면 캘린더 조회 도구를 쓸 수 있다. */
+// 이메일 도구: 최대 건수, 본문을 넣을 메일 수·길이 (토큰 비용 제한)
+const EMAIL_TOOL_MAX = 20;
+const EMAIL_BODY_COUNT = 5;
+const EMAIL_BODY_CHARS = 2000;
+// 리드를 지정하지 않은 검색에서 함께 찾을 리드 수 (Gmail 검색어 길이 제한)
+const EMAIL_TOOL_MAX_ADDRESSES = 30;
+
+const EMAIL_TOOL: ToolDef = {
+  name: "search_lead_emails",
+  description:
+    "로그인한 사용자의 Gmail에서 리드 담당자 이메일 주소(회사 도메인이면 같은 회사 사람 전체)와 주고받은 메일을 최신순으로 조회합니다. " +
+    "leadId를 주면 그 리드의 메일(최근 메일은 본문 포함), 없으면 진행 중인 모든 리드와 주고받은 최근 메일(미리보기만)을 찾습니다.",
+  parameters: {
+    type: "object",
+    properties: {
+      leadId: { type: "string", description: "CRM 데이터 leads[].id (선택)" },
+      query: { type: "string", description: "추가 검색어: 제목·본문 키워드 (선택, 예: 견적)" },
+      days: { type: "integer", description: "최근 N일 이내 메일만 (선택, 1~365. leadId가 없으면 기본 30)" },
+      max: { type: "integer", description: "최대 건수 (선택, 1~20, 기본 10)" },
+    },
+    additionalProperties: false,
+  },
+};
+
+const clampInt = (v: unknown, min: number, max: number, fallback: number) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : fallback;
+
+/**
+ * 이메일 도구 실행: 제목·날짜·방향·보낸/받는 사람 이름·미리보기(·본문 일부)만 반환.
+ * 이메일 주소·전화번호는 보내지 않는다 (이름만 남기고 본문은 maskPii).
+ */
+async function runEmailTool(user: SessionUser, args: unknown): Promise<unknown> {
+  const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const leadId = typeof a.leadId === "string" && a.leadId ? a.leadId : null;
+  if (leadId && !UUID_RE.test(leadId)) return { error: "leadId가 올바르지 않습니다. CRM 데이터 leads[].id를 쓰세요" };
+  const max = clampInt(a.max, 1, EMAIL_TOOL_MAX, 10);
+  const days = a.days === undefined && !leadId ? 30 : a.days === undefined ? undefined : clampInt(a.days, 1, 365, 30);
+  const query = typeof a.query === "string" ? a.query : undefined;
+
+  const { rows } = await pool.query<{ id: string; company: string; email: string }>(
+    leadId
+      ? "SELECT id, company, email FROM leads WHERE id = $1"
+      : "SELECT id, company, email FROM leads WHERE stage NOT IN ('won','lost') AND email <> '' ORDER BY updated_at DESC LIMIT $1",
+    [leadId ?? EMAIL_TOOL_MAX_ADDRESSES]
+  );
+  if (leadId && !rows[0]) return { error: "리드를 찾을 수 없습니다" };
+  const leads = rows.flatMap((r) => {
+    const target = leadTarget(r.email, user.email);
+    return target ? [{ ...r, target }] : [];
+  });
+  if (leads.length === 0) return { count: 0, messages: [], note: leadId ? "이 리드에는 이메일 주소가 없습니다" : "이메일 주소가 있는 진행 중 리드가 없습니다" };
+
+  const { messages } = await listLeadMessages(user, leads.map((l) => l.target), { max, query, newerThanDays: days });
+  const leadOf = (m: { from: string; to: string; cc: string }) => leads.find((l) => involvesTarget(m, l.target)) ?? null;
+
+  // 리드를 지정하면 최근 몇 건은 본문까지 (인용된 이전 메일은 제외)
+  const bodies = leadId
+    ? await Promise.all(messages.slice(0, EMAIL_BODY_COUNT).map((m) => getMessage(user, m.id).catch(() => null)))
+    : [];
+
+  return {
+    count: messages.length,
+    ...(days ? { days } : {}),
+    messages: messages.map((m, i) => {
+      const body = bodies[i]?.body ? stripQuoted(bodies[i].body).slice(0, EMAIL_BODY_CHARS) : "";
+      const lead = leadOf(m);
+      return {
+        company: lead?.company ?? null,
+        // contact: 리드 담당자 본인, colleague: 담당자는 아니지만 같은 회사 도메인의 다른 사람
+        with: lead && involvesAddress(m, lead.target.address) ? "contact" : "colleague",
+        date: kstDateTime(m.date),
+        direction: m.direction,
+        from: maskPii(displayNames(m.from)) || "(이름 없음)",
+        to: maskPii(displayNames(m.to)) || "(이름 없음)",
+        subject: maskPii(m.subject),
+        ...(m.unread ? { unread: true } : {}),
+        ...(bodies[i]?.attachments.length ? { attachments: bodies[i]?.attachments.length } : m.hasAttachments ? { attachments: true } : {}),
+        ...(body ? { body: maskPii(body) } : { snippet: maskPii(m.snippet) }),
+      };
+    }),
+  };
+}
+
+/**
+ * 대화 내역을 받아 OpenAI로 답변을 생성한다.
+ * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 쓸 수 있다.
+ */
 export async function askAssistant(messages: ChatMessage[]): Promise<string> {
   const question = messages.at(-1)?.content ?? "";
   const [context, user] = await Promise.all([buildContext(question), getSessionUser()]);
-  const state: CalendarState = !user?.refreshToken ? "none" : user.calendarExpired ? "expired" : "connected";
+  const state = featureState(user, "calendar");
+  const gmail = featureState(user, "gmail");
   const chat = [
-    { role: "system" as const, content: systemPrompt(context, state, user?.name ?? "") },
+    { role: "system" as const, content: systemPrompt(context, state, user?.name ?? "", gmail) },
     ...messages.map((m) => ({ ...m, content: maskPii(m.content) })),
   ];
-  if (!user || state !== "connected") return chatCompletion(chat, { maxTokens: 1200 });
+  const tools = [...(state === "connected" ? [CALENDAR_TOOL] : []), ...(gmail === "connected" ? [EMAIL_TOOL] : [])];
+  if (!user || tools.length === 0) return chatCompletion(chat, { maxTokens: 1200 });
 
   return chatWithTools(
     chat,
-    [CALENDAR_TOOL],
-    (name, args) => (name === CALENDAR_TOOL.name ? runCalendarTool(user, args) : Promise.resolve({ error: "알 수 없는 도구" })),
+    tools,
+    (name, args) =>
+      name === CALENDAR_TOOL.name && state === "connected"
+        ? runCalendarTool(user, args)
+        : name === EMAIL_TOOL.name && gmail === "connected"
+          ? runEmailTool(user, args)
+          : Promise.resolve({ error: "알 수 없는 도구" }),
     { maxTokens: 1200, maxRounds: 3, timeoutMs: 40_000 }
   );
 }

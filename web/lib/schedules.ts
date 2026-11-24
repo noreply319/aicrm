@@ -1,6 +1,6 @@
 import "server-only";
 import type { PoolClient } from "pg";
-import type { SessionUser } from "./auth";
+import { featureState, type SessionUser } from "./auth";
 import { CRM_DESCRIPTION_MARK, STAGES } from "./constants";
 import {
   addDays, deleteEvent, fromKst, inputRange, insertEvent, kstDate, kstDateTime,
@@ -289,9 +289,10 @@ export async function registerSchedule(
 export async function extractAndAutoRegister(noteId: string, user: SessionUser | null): Promise<ExtractResult> {
   const found = await createCandidatesForNote(noteId);
   const result: ExtractResult = { registered: [], candidates: [] };
-  const canRegister = Boolean(user?.refreshToken && !user.calendarExpired);
+  const calState = featureState(user, "calendar");
+  const canRegister = calState === "connected";
   if (!canRegister && found.some((c) => c.certainty === "confirmed")) {
-    result.calendarError = user?.calendarExpired ? "캘린더 연동이 만료되었습니다" : "캘린더가 연동되지 않았습니다";
+    result.calendarError = calState === "expired" ? "캘린더 연동이 만료되었습니다" : "캘린더가 연동되지 않았습니다";
   }
 
   for (const c of found) {

@@ -662,3 +662,31 @@ button { font: inherit; cursor: pointer; }
   .event-form-grid { grid-template-columns: 1fr; }
 }
 a.btn { text-decoration: none; }
+
+/* 리드 상세 → 이메일 탭 (Gmail) */
+.email-list { display: flex; flex-direction: column; gap: 6px; }
+.email-item { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.email-item.open, .email-item:hover { border-color: var(--primary); }
+.email-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px 12px; text-align: left;
+  border: none; background: none; color: var(--text); font-size: 13px;
+}
+.email-dir {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; margin-top: 1px;
+}
+.email-dir.received { background: var(--primary-soft); color: var(--primary); }
+.email-dir.sent { background: var(--surface-2); color: var(--text-2); }
+.email-dir.domain { background: var(--prio-mid-bg); color: var(--prio-mid-fg); }
+.email-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.email-subject { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-subject.unread { font-weight: 700; }
+.email-meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-date { flex-shrink: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.email-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.email-headers { font-size: 12px; line-height: 1.6; word-break: break-all; }
+.email-text {
+  margin: 0; width: 100%; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 8px;
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+.email-attach { font-size: 12px; }
