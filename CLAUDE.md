@@ -69,7 +69,8 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
+    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
+    │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
     │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
@@ -103,8 +104,12 @@ AI CRM/                      # git 저장소 루트
 - 클라이언트에서 DB 직접 접근 금지. 데이터 변경은 `app/api` Route Handler → `useLeads` 경유.
 - `lib/db.ts`는 `server-only` — 클라이언트 컴포넌트에서 import 금지.
 
-### 스타일
-- `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--prio-*` 등)만 사용. 색상 하드코딩 지양.
+### 스타일 / 디자인 시스템 (Evergreen — Greenhouse 계열 에버그린·그린·민트)
+- 문서: `docs/design-system/design-system.html`(토큰·컴포넌트 카탈로그, 앱 `globals.css`를 그대로 불러옴), `wireframe.html`(사이드바 레이아웃).
+- 버튼·배지·입력·탭·알림·모달·빈 상태·아바타는 `@/components/ui`만 사용. `<button className="btn …">`, 새 `.xxx-pill` 클래스 등 직접 마크업 금지. 모달의 Esc·바깥 클릭은 `Modal`이 처리.
+- 우선순위 색은 `PRIORITY_TONE`, 연동 상태는 `STATE_TONE`(Sidebar.tsx) → Badge tone. e2e가 쓰는 클래스(`.card`, `.note-badge`, `.unassigned-pill`, `.autosave-note` 등)는 className으로 유지.
+- 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하 하단 탭). 상단 바(`Header`)는 제목·검색·테마·Assistant·추가 버튼.
+- `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
 - 새 색상 토큰은 라이트(`:root`)와 다크(두 군데: `prefers-color-scheme` 블록, `[data-theme="dark"]`) 모두에 정의.
 
 ### 데이터 / API

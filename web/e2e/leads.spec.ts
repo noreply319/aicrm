@@ -16,15 +16,18 @@ test("새 리드를 등록하면 신규 리드 컬럼에 카드가 생긴다", a
   await expect(page.locator(".stat").filter({ hasText: "전체 리드" })).toContainText("1");
 });
 
-test("헤더 메뉴로 파이프라인 ↔ 미팅 노트 이동 (URL 유지)", async ({ page, request }) => {
+test("왼쪽 사이드바 메뉴로 파이프라인 ↔ 미팅 노트 이동 (URL 유지)", async ({ page, request }) => {
   await createLead(request, "메뉴테스트");
   await page.goto("/");
-  await page.getByRole("link", { name: "미팅 노트" }).click();
+  const sidebar = page.locator(".sidebar");
+  await expect(page.locator(".page-title")).toHaveText("파이프라인");
+  await sidebar.getByRole("link", { name: "미팅 노트" }).click();
   await expect(page).toHaveURL(/\/meetings$/);
   await expect(page.getByText("아직 미팅 노트가 없습니다")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole("link", { name: "미팅 노트" })).toHaveAttribute("aria-current", "page");
-  await page.getByRole("link", { name: "파이프라인" }).click();
+  await expect(sidebar.getByRole("link", { name: "미팅 노트" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".page-title")).toHaveText("미팅 노트");
+  await sidebar.getByRole("link", { name: "파이프라인" }).click();
   await expect(page.locator(".card").filter({ hasText: "메뉴테스트" })).toBeVisible();
 });

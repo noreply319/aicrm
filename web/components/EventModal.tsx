@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
 import type { CalendarEvent, CalendarEventInput, Lead, Me } from "@/lib/types";
+import { Alert, Button, Checkbox, Field, Input, Modal, ModalFooter, ModalHeader, Select, Textarea } from "./ui";
 
 export type EventModalMode = "new" | "edit" | "view";
 
@@ -55,12 +56,6 @@ export default function EventModal({
   const [invite, setInvite] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
 
   const sortedLeads = useMemo(() => [...leads].sort((a, b) => a.company.localeCompare(b.company, "ko")), [leads]);
   const lead = leads.find((l) => l.id === leadId);
@@ -130,102 +125,98 @@ export default function EventModal({
 
   const viewData = event ?? null;
 
+  const modalTitle = heading ?? (mode === "new" ? "일정 추가" : mode === "edit" ? "일정 수정" : viewData?.title ?? "일정");
+  const close = () => !busy && onClose();
+
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal event-modal" role="dialog" aria-modal="true" aria-label="일정">
-        <div className="modal-head">
-          <h2>{heading ?? (mode === "new" ? "일정 추가" : mode === "edit" ? "일정 수정" : viewData?.title ?? "일정")}</h2>
-          <span className="spacer" />
-          {mode === "view" && editable && (
-            <button type="button" className="btn btn-sm" onClick={() => setMode("edit")}>✎ 수정</button>
+    <Modal label="일정" onClose={close} className="event-modal">
+      <ModalHeader
+        title={modalTitle}
+        onClose={close}
+        actions={mode === "view" && editable && <Button size="sm" icon="edit" onClick={() => setMode("edit")}>수정</Button>}
+      />
+
+      {mode === "view" && viewData ? (
+        <div className="event-view">
+          <div className="event-view-row">🕒 {describeWhen(viewData)}</div>
+          {viewData.location && <div className="event-view-row">📍 {viewData.location}</div>}
+          {viewData.crm?.company && <div className="event-view-row">🔗 {viewData.crm.company}</div>}
+          {ownerName && <div className="event-view-row muted">👤 {ownerName}님 캘린더 일정</div>}
+          {viewData.description && <div className="event-view-desc">{viewData.description}</div>}
+          {!viewData.crm && <p className="muted">CRM에서 등록하지 않은 일정은 구글 캘린더에서 수정하세요.</p>}
+        </div>
+      ) : (
+        <div className="event-form">
+          {evidence && (
+            <div className="evidence">
+              <span className="muted">노트 근거</span> “{evidence}”
+            </div>
+          )}
+          {!connected && (
+            <Alert tone="warning">
+              {calendarState === "expired" ? "캘린더 연동이 만료되었습니다." : "구글 캘린더가 연동되지 않았습니다."}{" "}
+              <Link href="/settings" onClick={onClose}>설정 → Google 연동</Link>에서 연결하면 등록할 수 있습니다.
+            </Alert>
+          )}
+          <Field label="제목 *">
+            <Input value={title} maxLength={200} placeholder="예: 한빛소프트 데모 미팅" onChange={(e) => setTitle(e.target.value)} autoFocus />
+          </Field>
+          <Checkbox label="종일" checked={allDay} onChange={toggleAllDay} />
+          <div className="form-grid">
+            <Field label={`${allDay ? "시작일" : "시작"} *`}>
+              <Input type={allDay ? "date" : "datetime-local"} value={start} onChange={(e) => changeStart(e.target.value)} />
+            </Field>
+            <Field label={`${allDay ? "종료일" : "종료"} *`}>
+              <Input type={allDay ? "date" : "datetime-local"} value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+            </Field>
+          </div>
+          <div className="form-grid">
+            <Field label="장소 / 방식">
+              <Input value={location} maxLength={300} placeholder="예: 고객사 방문, 화상" onChange={(e) => setLocation(e.target.value)} />
+            </Field>
+            <Field label="연결 리드">
+              <Select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
+                <option value="">연결 안 함</option>
+                {sortedLeads.map((l) => (
+                  <option key={l.id} value={l.id}>{l.company}{l.contact ? ` — ${l.contact}` : ""}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <Field label="메모">
+            <Textarea rows={3} value={memo} maxLength={4000} placeholder="캘린더 일정 설명에 들어갑니다" onChange={(e) => setMemo(e.target.value)} />
+          </Field>
+          {mode === "new" && lead?.email && (
+            <Checkbox
+              checked={invite}
+              onChange={setInvite}
+              label={`담당자(${lead.contact || lead.company})에게 구글 캘린더 초대 메일 보내기`}
+            />
           )}
         </div>
+      )}
 
-        {mode === "view" && viewData ? (
-          <div className="event-view">
-            <div className="event-view-row">🕒 {describeWhen(viewData)}</div>
-            {viewData.location && <div className="event-view-row">📍 {viewData.location}</div>}
-            {viewData.crm?.company && <div className="event-view-row">🔗 {viewData.crm.company}</div>}
-            {ownerName && <div className="event-view-row muted">👤 {ownerName}님 캘린더 일정</div>}
-            {viewData.description && <div className="event-view-desc">{viewData.description}</div>}
-            {!viewData.crm && <p className="muted">CRM에서 등록하지 않은 일정은 구글 캘린더에서 수정하세요.</p>}
-          </div>
-        ) : (
-          <div className="event-form">
-            {evidence && (
-              <div className="evidence">
-                <span className="muted">노트 근거</span> “{evidence}”
-              </div>
+      {error && <Alert tone="danger" className="modal-alert">{error}</Alert>}
+
+      <ModalFooter
+        start={
+          <>
+            {viewData?.htmlLink && (
+              <Button href={viewData.htmlLink} target="_blank" rel="noreferrer">구글 캘린더에서 열기 ↗</Button>
             )}
-            {!connected && (
-              <div className="modal-warn">
-                {calendarState === "expired" ? "캘린더 연동이 만료되었습니다." : "구글 캘린더가 연동되지 않았습니다."}{" "}
-                <Link href="/settings" onClick={onClose}>설정 → Google 연동</Link>에서 연결하면 등록할 수 있습니다.
-              </div>
+            {editable && onDelete && mode !== "new" && (
+              <Button variant="danger" onClick={remove} disabled={busy}>일정 취소</Button>
             )}
-            <div className="field">
-              <label>제목 *</label>
-              <input value={title} maxLength={200} placeholder="예: 한빛소프트 데모 미팅" onChange={(e) => setTitle(e.target.value)} autoFocus />
-            </div>
-            <label className="check">
-              <input type="checkbox" checked={allDay} onChange={(e) => toggleAllDay(e.target.checked)} /> 종일
-            </label>
-            <div className="event-form-grid">
-              <div className="field">
-                <label>{allDay ? "시작일" : "시작"} *</label>
-                <input type={allDay ? "date" : "datetime-local"} value={start} onChange={(e) => changeStart(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>{allDay ? "종료일" : "종료"} *</label>
-                <input type={allDay ? "date" : "datetime-local"} value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
-              </div>
-            </div>
-            <div className="event-form-grid">
-              <div className="field">
-                <label>장소 / 방식</label>
-                <input value={location} maxLength={300} placeholder="예: 고객사 방문, 화상" onChange={(e) => setLocation(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>연결 리드</label>
-                <select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-                  <option value="">연결 안 함</option>
-                  {sortedLeads.map((l) => (
-                    <option key={l.id} value={l.id}>{l.company}{l.contact ? ` — ${l.contact}` : ""}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="field">
-              <label>메모</label>
-              <textarea rows={3} value={memo} maxLength={4000} placeholder="캘린더 일정 설명에 들어갑니다" onChange={(e) => setMemo(e.target.value)} />
-            </div>
-            {mode === "new" && lead?.email && (
-              <label className="check">
-                <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} />
-                담당자({lead.contact || lead.company})에게 구글 캘린더 초대 메일 보내기
-              </label>
-            )}
-          </div>
+          </>
+        }
+      >
+        <Button onClick={onClose} disabled={busy}>{mode === "view" ? "닫기" : "취소"}</Button>
+        {mode !== "view" && (
+          <Button variant="primary" onClick={submit} disabled={busy || !connected}>
+            {busy ? "저장 중…" : mode === "new" ? "캘린더에 등록" : "변경 저장"}
+          </Button>
         )}
-
-        {error && <div className="modal-error" role="alert">⚠ {error}</div>}
-
-        <div className="modal-foot">
-          {viewData?.htmlLink && (
-            <a className="btn" href={viewData.htmlLink} target="_blank" rel="noreferrer">구글 캘린더에서 열기 ↗</a>
-          )}
-          {editable && onDelete && mode !== "new" && (
-            <button type="button" className="btn btn-danger" onClick={remove} disabled={busy}>일정 취소</button>
-          )}
-          <div className="spacer" />
-          <button type="button" className="btn" onClick={onClose} disabled={busy}>{mode === "view" ? "닫기" : "취소"}</button>
-          {mode !== "view" && (
-            <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !connected}>
-              {busy ? "저장 중…" : mode === "new" ? "캘린더에 등록" : "변경 저장"}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+      </ModalFooter>
+    </Modal>
   );
 }

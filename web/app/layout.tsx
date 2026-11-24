@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Source_Serif_4 } from "next/font/google";
 import { THEME_KEY } from "@/lib/constants";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+// 브랜드 워드마크·큰 숫자용 세리프 (디자인 토큰 --font-display)
+const serif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif" });
 
 export const metadata: Metadata = {
   title: "Pipeline CRM",
@@ -15,7 +17,7 @@ const themeScript = `try{var t=localStorage.getItem('${THEME_KEY}');if(t)documen
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" className={inter.variable} suppressHydrationWarning>
+    <html lang="ko" className={`${inter.variable} ${serif.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

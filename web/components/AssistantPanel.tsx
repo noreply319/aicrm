@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
+import { Alert, Badge, Button, IconButton, Textarea } from "./ui";
 
 interface Props {
   open: boolean;
@@ -61,18 +62,14 @@ export default function AssistantPanel({ open, onClose }: Props) {
     <aside className="assistant" aria-label="AI Assistant" hidden={!open}>
       <div className="assistant-head">
         <div className="assistant-title">
-          <span className="assistant-badge">AI</span> Assistant
+          <Badge tone="brand">AI</Badge> Assistant
         </div>
         {messages.length > 0 && (
-          <button className="btn assistant-clear" onClick={() => { setMessages([]); setError(null); }}>
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { setMessages([]); setError(null); }}>
             새 대화
-          </button>
+          </Button>
         )}
-        <button className="btn icon-btn" title="닫기" onClick={onClose}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
+        <IconButton icon="close" label="닫기" size="sm" onClick={onClose} />
       </div>
 
       <div className="assistant-messages" ref={listRef}>
@@ -96,7 +93,7 @@ export default function AssistantPanel({ open, onClose }: Props) {
         {loading && <div className="bubble bubble-assistant bubble-loading">답변 작성 중…</div>}
       </div>
 
-      {error && <div className="assistant-error" role="alert">⚠ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <form
         className="assistant-input"
@@ -105,7 +102,7 @@ export default function AssistantPanel({ open, onClose }: Props) {
           send(input);
         }}
       >
-        <textarea
+        <Textarea
           value={input}
           placeholder="리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"
           rows={2}
@@ -119,9 +116,9 @@ export default function AssistantPanel({ open, onClose }: Props) {
             }
           }}
         />
-        <button className="btn btn-primary" type="submit" disabled={loading || !input.trim()}>
+        <Button variant="primary" type="submit" disabled={loading || !input.trim()}>
           전송
-        </button>
+        </Button>
       </form>
     </aside>
   );

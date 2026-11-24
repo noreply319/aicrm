@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Lead, MeetingNoteSummary } from "@/lib/types";
 import NoteListItem from "./NoteListItem";
+import { Button, EmptyState, Select } from "./ui";
 
 interface Props {
   notes: MeetingNoteSummary[];
@@ -55,35 +56,32 @@ export default function MeetingList({ notes, leads, query, ready, onOpen, onNew 
 
   return (
     <main className="meetings">
-      <div className="meetings-toolbar">
-        <select value={leadFilter} onChange={(e) => setLeadFilter(e.target.value)} aria-label="리드 필터">
+      <div className="toolbar">
+        <Select value={leadFilter} onChange={(e) => setLeadFilter(e.target.value)} aria-label="리드 필터">
           <option value="">리드: 전체</option>
           {unassignedCount > 0 && <option value={UNASSIGNED}>리드 미지정 ({unassignedCount})</option>}
           {leadOptions.map((l) => (
             <option key={l.id} value={l.id}>{l.company}</option>
           ))}
-        </select>
-        <select value={period} onChange={(e) => setPeriod(e.target.value as Period)} aria-label="기간 필터">
+        </Select>
+        <Select value={period} onChange={(e) => setPeriod(e.target.value as Period)} aria-label="기간 필터">
           {PERIODS.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
-        </select>
+        </Select>
         <span className="spacer" />
         <span className="meetings-count">총 {visible.length}건 · 미팅 일시 최신순</span>
       </div>
 
       {notes.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">📝</div>
-          <b>아직 미팅 노트가 없습니다</b>
-          <p>미팅을 녹음하거나 회의록을 붙여넣어 기록해 보세요.</p>
-          <button className="btn btn-primary" onClick={onNew}>＋ 노트 작성</button>
-        </div>
+        <EmptyState
+          icon="📝"
+          title="아직 미팅 노트가 없습니다"
+          description="미팅을 녹음하거나 회의록을 붙여넣어 기록해 보세요."
+          action={<Button variant="primary" icon="plus" onClick={onNew}>노트 작성</Button>}
+        />
       ) : visible.length === 0 ? (
-        <div className="empty-state">
-          <b>조건에 맞는 노트가 없습니다</b>
-          <p>검색어나 필터를 바꿔 보세요.</p>
-        </div>
+        <EmptyState icon="🔍" title="조건에 맞는 노트가 없습니다" description="검색어나 필터를 바꿔 보세요." />
       ) : (
         <div className="note-list">
           {visible.map((n) => (

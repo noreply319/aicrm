@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { NOTE_BODY_MAX, NOTE_SOURCE_LABEL, STAGES } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
 import type { Lead, MeetingNote, MeetingNoteInput, NoteSource, NoteSummaryResult } from "@/lib/types";
 import MeetingRecorder, { type RecorderStatus } from "./MeetingRecorder";
+import { Alert, Badge, Button, Field, Input, Modal, ModalFooter, ModalHeader, Panel, Select, Tabs, Textarea } from "./ui";
 
 interface Props {
   /** 수정/보기할 노트 id. null이면 새 노트 */
@@ -124,12 +125,6 @@ export default function MeetingNoteModal({
     if (!busy && editing && dirty && !confirm("저장하지 않은 변경 사항이 있습니다. 닫을까요?")) return;
     onClose();
   }, [busy, editing, dirty, onClose]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && requestClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [requestClose]);
 
   /** 구간 전사 결과를 본문 끝에 이어 붙인다 */
   const appendTranscript = useCallback((label: string, text: string) => {
@@ -307,187 +302,162 @@ export default function MeetingNoteModal({
   const summaryText = editing ? summary : note?.summary ?? "";
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
-      <div className="modal modal-wide note-modal" role="dialog" aria-modal="true" aria-label="미팅 노트">
-        <div className="modal-head">
-          <h2>{!note ? "미팅 노트 작성" : editing ? "미팅 노트 수정" : note.title}</h2>
-          <span className="spacer" />
-          {note && !editing && (
-            <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>✎ 수정</button>
-          )}
-          <button type="button" className="btn icon-btn" title="닫기" onClick={requestClose}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+    <Modal label="미팅 노트" size="wide" className="note-modal" onClose={requestClose}>
+      <ModalHeader
+        title={!note ? "미팅 노트 작성" : editing ? "미팅 노트 수정" : note.title}
+        onClose={requestClose}
+        actions={note && !editing && <Button size="sm" icon="edit" onClick={() => setEditing(true)}>수정</Button>}
+      />
+
+      {loading ? (
+        <div className="loading">불러오는 중…</div>
+      ) : !editing && note ? (
+        /* ───── 보기 모드 ───── */
+        <div className="note-view">
+          <div className="note-view-meta">
+            <span>📅 {formatDateTime(note.metAt)}</span>
+            {lead ? (
+              <button type="button" className="link-btn" onClick={() => onOpenLead(lead.id)}>
+                🔗 {lead.company}{lead.contact ? ` — ${lead.contact}` : ""}
+              </button>
+            ) : (
+              <>
+                <Badge tone="warning" shape="pill" className="unassigned-pill">리드 미지정</Badge>
+                <Button size="sm" icon="link" onClick={() => setEditing(true)}>리드 지정</Button>
+              </>
+            )}
+            {stage && <Badge color={stage.color} shape="pill">{stage.name}</Badge>}
+            <span>{note.source === "manual" ? "📋" : "🎙"} {NOTE_SOURCE_LABEL[note.source]}</span>
+            <span className="spacer" />
+            <span className="muted">작성 {formatDateTime(note.createdAt)} · 수정 {formatDateTime(note.updatedAt)}</span>
+          </div>
+          <SummaryCard
+            summary={summaryText}
+            actions={actions}
+            loading={summarizing}
+            onGenerate={runSummary}
+          />
+          <Field label="본문">
+            <div className="note-body-view">{note.body}</div>
+          </Field>
         </div>
-
-        {loading ? (
-          <div className="loading">불러오는 중…</div>
-        ) : !editing && note ? (
-          /* ───── 보기 모드 ───── */
-          <div className="note-view">
-            <div className="note-view-meta">
-              <span>📅 {formatDateTime(note.metAt)}</span>
-              {lead ? (
-                <button type="button" className="link-btn" onClick={() => onOpenLead(lead.id)}>
-                  🔗 {lead.company}{lead.contact ? ` — ${lead.contact}` : ""}
-                </button>
-              ) : (
-                <>
-                  <span className="unassigned-pill">리드 미지정</span>
-                  <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>🔗 리드 지정</button>
-                </>
-              )}
-              {stage && <span className="stage-pill" style={{ "--stage": stage.color } as CSSProperties}>{stage.name}</span>}
-              <span>{note.source === "manual" ? "📋" : "🎙"} {NOTE_SOURCE_LABEL[note.source]}</span>
-              <span className="spacer" />
-              <span className="muted">작성 {formatDateTime(note.createdAt)} · 수정 {formatDateTime(note.updatedAt)}</span>
-            </div>
-            <SummaryCard
-              summary={summaryText}
-              actions={actions}
-              loading={summarizing}
-              onGenerate={runSummary}
-            />
-            <div className="field">
-              <label>본문</label>
-              <div className="note-body-view">{note.body}</div>
-            </div>
-          </div>
-        ) : (
-          /* ───── 작성/수정 모드 ───── */
-          <div className="note-form">
-            <div className="note-form-grid">
-              <div className="field">
-                <label>
-                  연결 리드{" "}
-                  <span className="muted">{lockLead ? "· 고정" : "· 나중에 지정해도 됩니다"}</span>
-                </label>
-                <select
-                  value={formLeadId}
-                  disabled={lockLead}
-                  onChange={(e) => { setFormLeadId(e.target.value); setDirty(true); }}
-                >
-                  <option value="">리드 미지정</option>
-                  {sortedLeads.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.company}{l.contact ? ` — ${l.contact}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>미팅 일시 *</label>
-                <input type="datetime-local" value={metAt} onChange={(e) => { setMetAt(e.target.value); setDirty(true); }} />
-              </div>
-            </div>
-            <div className="field">
-              <label>제목 *</label>
-              <input
-                value={title}
-                maxLength={200}
-                placeholder="예: 한빛소프트 미팅"
-                onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); setDirty(true); }}
-              />
-            </div>
-
-            <div className="seg-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={tab === "record"} className={tab === "record" ? "on" : ""} onClick={() => setTab("record")}>
-                🎙 녹음하기{busy ? " •" : ""}
-              </button>
-              <button type="button" role="tab" aria-selected={tab === "paste"} className={tab === "paste" ? "on" : ""} onClick={() => setTab("paste")}>
-                📋 직접 입력 / 붙여넣기
-              </button>
-            </div>
-
-            {/* 탭을 바꿔도 녹음이 끊기지 않도록 언마운트하지 않고 숨긴다 */}
-            <div hidden={tab !== "record"}>
-              <MeetingRecorder onTranscript={appendTranscript} onStatus={setRec} onRenameSpeaker={renameSpeakerInBody} />
-            </div>
-
-            <div className="field">
-              <label>
-                본문 *{" "}
-                <span className="muted">
-                  {tab === "record" ? "— 전사 결과가 구간 순서대로 이어 붙음, 직접 수정 가능" : "— Ctrl/⌘+V로 붙여넣기, 줄바꿈 유지"}
-                </span>
-              </label>
-              <textarea
-                ref={bodyRef}
-                className="note-body-input"
-                value={body}
-                maxLength={NOTE_BODY_MAX}
-                placeholder={tab === "record" ? "녹음을 시작하면 5분마다 전사 결과가 여기에 추가됩니다." : "회의록이나 메모를 입력하거나 붙여넣으세요."}
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  // 전사 결과를 고치는 것은 붙여넣기로 보지 않는다
-                  if (!recorded) setTyped(true);
-                  setDirty(true);
-                }}
-                onPaste={() => setTyped(true)}
-              />
-              <div className="char-count">
-                {body.length.toLocaleString()} / {NOTE_BODY_MAX.toLocaleString()}자
-              </div>
-            </div>
-
-            <SummaryCard
-              summary={summary}
-              actions={actions}
-              loading={summarizing}
-              disabled={!body.trim() || busy}
-              hint={busy ? "전사가 끝나면 사용할 수 있습니다" : !body.trim() ? "본문을 입력하면 사용할 수 있습니다" : undefined}
-              onGenerate={runSummary}
-              editable={{
-                onSummary: (v) => { setSummary(v); setDirty(true); },
-                onActions: (v) => { setNextActions(v); setDirty(true); },
-                actionsText: nextActions,
-              }}
-            />
-          </div>
-        )}
-
-        {editing && autoSavedAt && (
-          <div className="autosave-note" role="status">
-            ✓ 녹음이 끝나 {autoSavedAt}에 자동 저장되었습니다.
-            {autoSummary === "running" && " AI가 미팅 내용을 요약하는 중입니다… (창을 닫아도 계속됩니다)"}
-            {autoSummary === "done" && " AI 요약과 다음 액션도 정리되었습니다."}
-            {!formLeadId && " 연결 리드를 선택한 뒤 저장하면 리드에 연결됩니다."}
-          </div>
-        )}
-        {error && <div className="modal-error" role="alert">⚠ {error}</div>}
-
-        <div className="modal-foot">
-          {note && (
-            <button type="button" className="btn btn-danger" onClick={remove}>삭제</button>
-          )}
-          <div className="spacer" />
-          {editing ? (
-            <>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  if (note) {
-                    if (busy && !confirm("녹음 또는 전사가 진행 중입니다. 수정을 취소할까요?")) return;
-                    fillForm(note);
-                    setEditing(false);
-                  } else requestClose();
-                }}
+      ) : (
+        /* ───── 작성/수정 모드 ───── */
+        <div className="note-form">
+          <div className="note-form-grid">
+            <Field label="연결 리드" hint={lockLead ? "· 고정" : "· 나중에 지정해도 됩니다"}>
+              <Select
+                value={formLeadId}
+                disabled={lockLead}
+                onChange={(e) => { setFormLeadId(e.target.value); setDirty(true); }}
               >
-                취소
-              </button>
-              <button type="button" className="btn btn-primary" onClick={save} disabled={saving || rec.recording}>
-                {saving ? "저장 중…" : rec.recording ? "녹음 종료 후 저장" : "저장"}
-              </button>
-            </>
-          ) : (
-            <button type="button" className="btn" onClick={onClose}>닫기</button>
-          )}
+                <option value="">리드 미지정</option>
+                {sortedLeads.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.company}{l.contact ? ` — ${l.contact}` : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="미팅 일시 *">
+              <Input type="datetime-local" value={metAt} onChange={(e) => { setMetAt(e.target.value); setDirty(true); }} />
+            </Field>
+          </div>
+          <Field label="제목 *">
+            <Input
+              value={title}
+              maxLength={200}
+              placeholder="예: 한빛소프트 미팅"
+              onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); setDirty(true); }}
+            />
+          </Field>
+
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            items={[
+              { id: "record", label: `🎙 녹음하기${busy ? " •" : ""}` },
+              { id: "paste", label: "📋 직접 입력 / 붙여넣기" },
+            ]}
+          />
+
+          {/* 탭을 바꿔도 녹음이 끊기지 않도록 언마운트하지 않고 숨긴다 */}
+          <div hidden={tab !== "record"}>
+            <MeetingRecorder onTranscript={appendTranscript} onStatus={setRec} onRenameSpeaker={renameSpeakerInBody} />
+          </div>
+
+          <Field
+            label="본문 *"
+            hint={tab === "record" ? "— 전사 결과가 구간 순서대로 이어 붙음, 직접 수정 가능" : "— Ctrl/⌘+V로 붙여넣기, 줄바꿈 유지"}
+          >
+            <Textarea
+              ref={bodyRef}
+              className="note-body-input"
+              value={body}
+              maxLength={NOTE_BODY_MAX}
+              placeholder={tab === "record" ? "녹음을 시작하면 5분마다 전사 결과가 여기에 추가됩니다." : "회의록이나 메모를 입력하거나 붙여넣으세요."}
+              onChange={(e) => {
+                setBody(e.target.value);
+                // 전사 결과를 고치는 것은 붙여넣기로 보지 않는다
+                if (!recorded) setTyped(true);
+                setDirty(true);
+              }}
+              onPaste={() => setTyped(true)}
+            />
+            <div className="char-count">
+              {body.length.toLocaleString()} / {NOTE_BODY_MAX.toLocaleString()}자
+            </div>
+          </Field>
+
+          <SummaryCard
+            summary={summary}
+            actions={actions}
+            loading={summarizing}
+            disabled={!body.trim() || busy}
+            hint={busy ? "전사가 끝나면 사용할 수 있습니다" : !body.trim() ? "본문을 입력하면 사용할 수 있습니다" : undefined}
+            onGenerate={runSummary}
+            editable={{
+              onSummary: (v) => { setSummary(v); setDirty(true); },
+              onActions: (v) => { setNextActions(v); setDirty(true); },
+              actionsText: nextActions,
+            }}
+          />
         </div>
-      </div>
-    </div>
+      )}
+
+      {editing && autoSavedAt && (
+        <Alert tone="success" className="modal-alert autosave-note">
+          녹음이 끝나 {autoSavedAt}에 자동 저장되었습니다.
+          {autoSummary === "running" && " AI가 미팅 내용을 요약하는 중입니다… (창을 닫아도 계속됩니다)"}
+          {autoSummary === "done" && " AI 요약과 다음 액션도 정리되었습니다."}
+          {!formLeadId && " 연결 리드를 선택한 뒤 저장하면 리드에 연결됩니다."}
+        </Alert>
+      )}
+      {error && <Alert tone="danger" className="modal-alert">{error}</Alert>}
+
+      <ModalFooter start={note && <Button variant="danger" onClick={remove}>삭제</Button>}>
+        {editing ? (
+          <>
+            <Button
+              onClick={() => {
+                if (note) {
+                  if (busy && !confirm("녹음 또는 전사가 진행 중입니다. 수정을 취소할까요?")) return;
+                  fillForm(note);
+                  setEditing(false);
+                } else requestClose();
+              }}
+            >
+              취소
+            </Button>
+            <Button variant="primary" onClick={save} disabled={saving || rec.recording}>
+              {saving ? "저장 중…" : rec.recording ? "녹음 종료 후 저장" : "저장"}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose}>닫기</Button>
+        )}
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -506,25 +476,23 @@ interface SummaryCardProps {
 function SummaryCard({ summary, actions, loading, disabled, hint, onGenerate, editable }: SummaryCardProps) {
   const has = Boolean(summary || actions.length);
   return (
-    <section className="ai-card">
-      <div className="ai-card-head">
-        <b>✨ AI 요약</b>
-        {hint && <span className="muted">{hint}</span>}
-        <span className="spacer" />
-        <button type="button" className="btn btn-sm" onClick={onGenerate} disabled={disabled || loading}>
-          {loading ? "생성 중…" : has ? "↻ 다시 생성" : "AI 요약 생성"}
-        </button>
-      </div>
+    <Panel
+      className="ai-card"
+      title={<>✨ AI 요약{hint && <span className="muted"> {hint}</span>}</>}
+      actions={
+        <Button size="sm" icon={has ? "refresh" : "sparkle"} onClick={onGenerate} disabled={disabled || loading}>
+          {loading ? "생성 중…" : has ? "다시 생성" : "AI 요약 생성"}
+        </Button>
+      }
+    >
       {editable && has ? (
         <div className="ai-card-grid">
-          <div className="field">
-            <label>요약 · 고객 니즈/이슈</label>
-            <textarea rows={6} value={summary} onChange={(e) => editable.onSummary(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>다음 액션 (한 줄에 하나)</label>
-            <textarea rows={6} value={editable.actionsText} onChange={(e) => editable.onActions(e.target.value)} />
-          </div>
+          <Field label="요약 · 고객 니즈/이슈">
+            <Textarea rows={6} value={summary} onChange={(e) => editable.onSummary(e.target.value)} />
+          </Field>
+          <Field label="다음 액션 (한 줄에 하나)">
+            <Textarea rows={6} value={editable.actionsText} onChange={(e) => editable.onActions(e.target.value)} />
+          </Field>
         </div>
       ) : has ? (
         <div className="ai-card-grid">
@@ -546,6 +514,6 @@ function SummaryCard({ summary, actions, loading, disabled, hint, onGenerate, ed
       ) : (
         <p className="muted ai-empty">미팅 내용을 요약하고 고객 니즈와 다음 액션을 정리합니다.</p>
       )}
-    </section>
+    </Panel>
   );
 }

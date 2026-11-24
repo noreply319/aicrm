@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { extractClip, splitAudioFile } from "@/lib/audioFile";
 import { AUDIO_MAX_BYTES, RECORD_MAX_SEC, RECORD_SEGMENT_SEC, RECORD_WARN_SEC } from "@/lib/constants";
+import { Alert, Button, Input, buttonClass } from "./ui";
 
 /**
  * 미팅 녹음
@@ -526,9 +527,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
 
   return (
     <div className="recorder">
-      <div className="notice">
-        ⚠ 녹음 전에 참석자에게 녹음 사실을 알리세요. 음성은 텍스트 변환을 위해 OpenAI로 전송되며 원본은 저장되지 않습니다.
-      </div>
+      <Alert tone="warning">
+        녹음 전에 참석자에게 녹음 사실을 알리세요. 음성은 텍스트 변환을 위해 OpenAI로 전송되며 원본은 저장되지 않습니다.
+      </Alert>
 
       <div className={`rec-box${phase === "recording" ? " live" : ""}`}>
         <span className="rec-dot" aria-hidden />
@@ -549,21 +550,21 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
         <span className="rec-max">/ {mmss(RECORD_MAX_SEC)}</span>
         <div className="rec-actions">
           {!active && (
-            <button type="button" className="btn btn-primary" onClick={start} disabled={disabled || pending > 0 || fileBusy}>
+            <Button variant="primary" onClick={start} disabled={disabled || pending > 0 || fileBusy}>
               ● 녹음 시작
-            </button>
+            </Button>
           )}
           {phase === "recording" && (
-            <button type="button" className="btn" onClick={pause}>❚❚ 일시정지</button>
+            <Button onClick={pause}>❚❚ 일시정지</Button>
           )}
           {phase === "paused" && (
-            <button type="button" className="btn" onClick={resume}>▶ 재개</button>
+            <Button onClick={resume}>▶ 재개</Button>
           )}
           {phase === "interrupted" && (
-            <button type="button" className="btn" onClick={() => recover()}>▶ 녹음 재개</button>
+            <Button onClick={() => recover()}>▶ 녹음 재개</Button>
           )}
           {(phase === "recording" || phase === "paused" || phase === "interrupted") && (
-            <button type="button" className="btn btn-primary" onClick={stop}>■ 녹음 종료</button>
+            <Button variant="primary" onClick={stop}>■ 녹음 종료</Button>
           )}
         </div>
       </div>
@@ -576,13 +577,13 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       )}
 
       {notices.map((n, i) => (
-        <div key={i} className="rec-gap">⏸ {n}</div>
+        <Alert key={i} tone="neutral" plain>⏸ {n}</Alert>
       ))}
 
       {/* 잠금 화면에서도 녹음해야 할 때: 휴대폰 녹음 앱 파일 업로드 */}
       {!active && (
         <div className="rec-file">
-          <label className={`btn btn-sm${disabled || pending > 0 || fileBusy ? " disabled" : ""}`}>
+          <label className={buttonClass({ size: "sm", disabled: disabled || pending > 0 || fileBusy })}>
             📁 녹음 파일 업로드
             <input
               type="file"
@@ -630,7 +631,7 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
           <span className="muted">화자 이름 (바꾸면 본문과 다음 구간에 반영)</span>
           <div className="speaker-list">
             {speakers.map((name) => (
-              <input
+              <Input
                 key={name}
                 className="speaker-input"
                 defaultValue={name}
@@ -650,19 +651,17 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       )}
 
       {failed.map((s) => (
-        <div key={s.index} className="rec-error" role="alert">
-          <span>
-            {s.index + 1}구간({labelOf(s)}) 전사 실패: {s.error}
-          </span>
-          <span className="rec-error-actions">
-            <button type="button" className="btn btn-sm" onClick={() => retry(s.index)} disabled={!s.blob}>
-              ↻ 다시 시도
-            </button>
-          </span>
-        </div>
+        <Alert
+          key={s.index}
+          tone="danger"
+          plain
+          action={<Button size="sm" icon="refresh" onClick={() => retry(s.index)} disabled={!s.blob}>다시 시도</Button>}
+        >
+          {s.index + 1}구간({labelOf(s)}) 전사 실패: {s.error}
+        </Alert>
       ))}
 
-      {error && <div className="rec-error" role="alert"><span>⚠ {error}</span></div>}
+      {error && <Alert tone="danger">{error}</Alert>}
     </div>
   );
 }

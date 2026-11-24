@@ -11,7 +11,9 @@ import { useSchedules } from "@/lib/useSchedules";
 import type {
   CalendarEvent, CalendarEventInput, LeadInput, MeetingNoteInput, ScheduledMeeting, StageId,
 } from "@/lib/types";
-import Header, { type View } from "./Header";
+import Header from "./Header";
+import Sidebar, { type View } from "./Sidebar";
+import { Alert, Button } from "./ui";
 import StatsBar from "./StatsBar";
 import Board from "./Board";
 import LeadModal, { type LeadModalTab } from "./LeadModal";
@@ -397,98 +399,102 @@ export default function CrmApp() {
   const bannerError = error ?? meetings.error;
 
   return (
-    <>
-      <Header
-        view={view}
-        query={query}
-        onQuery={setQuery}
-        onAdd={onAdd}
-        assistantOpen={assistantOpen}
-        onToggleAssistant={() => setAssistantOpen((v) => !v)}
-        me={auth.me}
-        onLogout={auth.logout}
-      />
-      {auth.me?.calendar.state === "expired" && view !== "settings" && (
-        <div className="error-banner warn-banner" role="status">
-          <span>⚠ 구글 캘린더 연동이 만료되었습니다. 캘린더 기능을 쓰려면 다시 연동하세요.</span>
-          <a className="btn" href="/api/calendar/connect">다시 연동</a>
-        </div>
-      )}
-      {/* 토큰은 캘린더·Gmail 공용이라 캘린더 배너가 있으면 그것만 보여준다 */}
-      {auth.me?.gmail.state === "expired" && auth.me.calendar.state !== "expired" && view !== "settings" && (
-        <div className="error-banner warn-banner" role="status">
-          <span>⚠ Gmail 연동이 만료되었습니다. 리드 이메일을 보려면 다시 연동하세요.</span>
-          <a className="btn" href="/api/gmail/connect">다시 연동</a>
-        </div>
-      )}
-      {view === "pipeline" && <StatsBar leads={leads} />}
-      {bannerError && (
-        <div className="error-banner" role="alert">
-          <span>⚠ {bannerError}</span>
-          <button
-            className="btn"
-            onClick={() => {
-              clearError();
-              meetings.clearError();
-              reload();
-              meetings.reload();
-            }}
+    <div className="app-shell">
+      <Sidebar view={view} me={auth.me} onLogout={auth.logout} />
+      <div className="app-main">
+        <Header
+          view={view}
+          query={query}
+          onQuery={setQuery}
+          onAdd={onAdd}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => setAssistantOpen((v) => !v)}
+        />
+        {auth.me?.calendar.state === "expired" && view !== "settings" && (
+          <Alert tone="warning" banner action={<Button size="sm" href="/api/calendar/connect">다시 연동</Button>}>
+            구글 캘린더 연동이 만료되었습니다. 캘린더 기능을 쓰려면 다시 연동하세요.
+          </Alert>
+        )}
+        {/* 토큰은 캘린더·Gmail 공용이라 캘린더 배너가 있으면 그것만 보여준다 */}
+        {auth.me?.gmail.state === "expired" && auth.me.calendar.state !== "expired" && view !== "settings" && (
+          <Alert tone="warning" banner action={<Button size="sm" href="/api/gmail/connect">다시 연동</Button>}>
+            Gmail 연동이 만료되었습니다. 리드 이메일을 보려면 다시 연동하세요.
+          </Alert>
+        )}
+        {view === "pipeline" && <StatsBar leads={leads} />}
+        {bannerError && (
+          <Alert
+            tone="danger"
+            banner
+            action={
+              <Button
+                size="sm"
+                onClick={() => {
+                  clearError();
+                  meetings.clearError();
+                  reload();
+                  meetings.reload();
+                }}
+              >
+                다시 불러오기
+              </Button>
+            }
           >
-            다시 불러오기
-          </button>
+            {bannerError}
+          </Alert>
+        )}
+        <div className="workspace">
+          <div className="workspace-main">
+            {view === "pipeline" ? (
+              <>
+                {!ready && <div className="loading">불러오는 중…</div>}
+                {ready && (
+                  <Board
+                    leads={visibleLeads}
+                    noteCounts={meetings.countByLead}
+                    nextMeetings={nextMeetings}
+                    onMove={handleMove}
+                    onOpen={(id) => openLead(id)}
+                    onAddInStage={openNew}
+                  />
+                )}
+              </>
+            ) : view === "calendar" ? (
+              <CalendarView
+                me={auth.me}
+                leads={leads}
+                candidates={sched.candidates}
+                query={query}
+                version={sched.version}
+                onNew={(date) => openNewEvent(date)}
+                onOpenEvent={openEvent}
+                onConfirmCandidate={(s) => openSchedule(s)}
+                onDismissCandidate={dismissSchedule}
+                onExpired={auth.reload}
+              />
+            ) : view === "settings" ? (
+              <SettingsView
+                me={auth.me}
+                onSetCalendar={auth.setCalendarId}
+                onDisconnect={auth.disconnectCalendar}
+                onDisconnectGmail={auth.disconnectGmail}
+                onLogout={auth.logout}
+                onNotice={showToast}
+              />
+            ) : (
+              <MeetingList
+                notes={meetings.notes}
+                leads={leads}
+                query={query}
+                ready={meetings.ready && ready}
+                onOpen={(id) => openNote(id)}
+                onNew={() => openNewNote()}
+              />
+            )}
+          </div>
+          {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
+          <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
         </div>
-      )}
-      <div className="workspace">
-        <div className="workspace-main">
-          {view === "pipeline" ? (
-            <>
-              {!ready && <div className="loading">불러오는 중…</div>}
-              {ready && (
-                <Board
-                  leads={visibleLeads}
-                  noteCounts={meetings.countByLead}
-                  nextMeetings={nextMeetings}
-                  onMove={handleMove}
-                  onOpen={(id) => openLead(id)}
-                  onAddInStage={openNew}
-                />
-              )}
-            </>
-          ) : view === "calendar" ? (
-            <CalendarView
-              me={auth.me}
-              leads={leads}
-              candidates={sched.candidates}
-              query={query}
-              version={sched.version}
-              onNew={(date) => openNewEvent(date)}
-              onOpenEvent={openEvent}
-              onConfirmCandidate={(s) => openSchedule(s)}
-              onDismissCandidate={dismissSchedule}
-              onExpired={auth.reload}
-            />
-          ) : view === "settings" ? (
-            <SettingsView
-              me={auth.me}
-              onSetCalendar={auth.setCalendarId}
-              onDisconnect={auth.disconnectCalendar}
-              onDisconnectGmail={auth.disconnectGmail}
-              onLogout={auth.logout}
-              onNotice={showToast}
-            />
-          ) : (
-            <MeetingList
-              notes={meetings.notes}
-              leads={leads}
-              query={query}
-              ready={meetings.ready && ready}
-              onOpen={(id) => openNote(id)}
-              onNew={() => openNewNote()}
-            />
-          )}
-        </div>
-        {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-        <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       </div>
       {modal.open && (
         <LeadModal
@@ -561,6 +567,6 @@ export default function CrmApp() {
         />
       )}
       <Toast message={toast?.msg ?? null} />
-    </>
+    </div>
   );
 }

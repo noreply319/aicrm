@@ -1,8 +1,9 @@
 "use client";
 
-import { AVATAR_COLORS, PRIORITY_LABEL } from "@/lib/constants";
+import { PRIORITY_LABEL, PRIORITY_TONE } from "@/lib/constants";
 import { formatDateTime, formatWon, isOverdue } from "@/lib/format";
 import type { Lead } from "@/lib/types";
+import { Avatar, Badge } from "./ui";
 
 interface Props {
   lead: Lead;
@@ -17,9 +18,6 @@ interface Props {
 }
 
 export default function LeadCard({ lead, noteCount, nextMeeting, dragging, onDragStart, onDragEnd, onClick }: Props) {
-  const initial = (lead.contact || lead.company || "?").trim().slice(0, 1);
-  const colorIdx =
-    [...(lead.company || "")].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
   const overdue = lead.stage !== "won" && lead.stage !== "lost" && isOverdue(lead.closeDate);
 
   return (
@@ -43,21 +41,19 @@ export default function LeadCard({ lead, noteCount, nextMeeting, dragging, onDra
             {lead.title ? ` · ${lead.title}` : ""}
           </div>
         </div>
-        <div className="avatar" style={{ background: AVATAR_COLORS[colorIdx] }}>
-          {initial}
-        </div>
+        <Avatar name={lead.contact || lead.company} seed={lead.company} size="sm" />
       </div>
       <div className="card-value">{formatWon(lead.value)}</div>
       <div className="card-foot">
         <span className="card-tags">
-          <span className={`tag prio-${lead.priority}`}>{PRIORITY_LABEL[lead.priority] ?? "보통"}</span>
+          <Badge tone={PRIORITY_TONE[lead.priority] ?? "warning"}>{PRIORITY_LABEL[lead.priority] ?? "보통"}</Badge>
           {noteCount > 0 && (
-            <span className="note-badge" title={`미팅 노트 ${noteCount}개`}>📝 {noteCount}</span>
+            <Badge tone="brand" className="note-badge" title={`미팅 노트 ${noteCount}개`}>📝 {noteCount}</Badge>
           )}
           {nextMeeting && (
-            <span className="meeting-badge" title={`다음 미팅 ${formatDateTime(nextMeeting)}`}>
+            <Badge tone="info" className="meeting-badge" title={`다음 미팅 ${formatDateTime(nextMeeting)}`}>
               🗓 {formatDateTime(nextMeeting).slice(5, 10).replace("-", "/")}
-            </span>
+            </Badge>
           )}
         </span>
         {lead.closeDate && (
