@@ -178,10 +178,11 @@ AI CRM/                      # git 저장소 루트
 - 설정 → Gmail → `/api/gmail/connect`로 `gmail.readonly` 권한 추가 (같은 콜백, purpose `gmail`). Google Cloud Console에서 **Gmail API 사용 설정** 필요, 테스트 사용자만 사용 가능(제한 범위).
 - 리프레시 토큰은 사용자당 하나(`users.google_refresh_token`)를 캘린더·Gmail이 공유. 기능별 사용 여부는 `users.calendar_enabled`·`gmail_enabled`, 만료는 `calendar_expired`(공통). 상태 계산은 `lib/auth.ts`의 `featureState()`.
 - 연동 해제(`disconnectFeature`): 다른 기능이 켜져 있으면 해당 기능만 끄고, 마지막 기능이면 구글에 토큰 폐기 후 삭제 (구글 폐기는 앱 권한 전체를 없애므로).
-- 서버: `lib/gmail.ts`(Gmail REST, fetch). 메일은 DB에 저장하지 않고 매번 조회. 검색 대상은 `leadTarget()`: 리드 이메일이 회사 도메인이면 `@도메인` 전체(같은 회사 다른 사람 포함, 화면에 "회사" 배지), 무료 메일(`FREE_MAIL_DOMAINS`)·내 계정과 같은 도메인이면 담당자 주소만. 검색어 `{from:x to:x cc:x bcc:x}` 후 헤더로 정확히 다시 거른다(`involvesTarget`).
-- API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(목록, `?pageToken=`), `/api/leads/[id]/emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
-- 화면: 리드 상세 `이메일` 탭(`LeadEmails`), 설정 Gmail 카드.
-- AI Assistant: `search_lead_emails` 도구(leadId 지정 시 최근 5건 본문 일부, 미지정 시 진행 중 리드 최근 30일 미리보기). 이메일 주소는 이름만 남기고 본문·제목은 `maskPii` 후 OpenAI로 전송.
+- 서버: `lib/gmail.ts`(Gmail REST, fetch). 검색 대상은 `leadTarget()`: 리드 이메일이 회사 도메인이면 `@도메인` 전체(같은 회사 다른 사람 포함, 화면에 "회사" 배지), 무료 메일(`FREE_MAIL_DOMAINS`)·내 계정과 같은 도메인이면 담당자 주소만. 검색어 `{from:x to:x cc:x bcc:x}` 후 헤더로 정확히 다시 거른다(`involvesTarget`).
+- 메일 캐시 `lead_emails`(`lib/emailStore.ts`): 사용자·리드별로 제목·헤더·미리보기·AI 요약 저장, **본문은 저장 안 함**(요약할 때·열 때만 Gmail에서 읽음). 동기화는 Gmail id 목록만 받아 처음 보는 메일만 저장 → `summary_status = pending` → 10건씩 묶어 OpenAI 요약(`done`/`failed`). 이미 저장·요약한 메일은 다시 불러오거나 요약하지 않음. Gmail 연동 해제 시 해당 사용자 행 삭제.
+- API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(GET 저장된 목록, Gmail 호출 없음), `.../emails/sync`(POST 새 메일 저장, `{pageToken}`이면 이전 페이지), `.../emails/summarize`(POST pending 요약, 최대 20건, `{retryFailed}`), `.../emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
+- 화면: 리드 상세 `이메일` 탭(`LeadEmails`: 저장 목록 즉시 표시 → sync → summarize, 목록에 AI 요약), 설정 Gmail 카드.
+- AI Assistant: 컨텍스트 `emails`에 **질문과 관련된 저장 메일만**(`findRelevantEmails`: 질문에 나온 회사·담당자의 메일 + 제목·요약 키워드 일치, 최대 30건, 제목·요약만). `search_lead_emails` 도구는 저장된 요약 검색(leadId면 새 메일 동기화·요약 후). 이메일 주소는 이름만 남기고 제목·요약은 `maskPii` 후 전송.
 
 ## 참고 문서
 

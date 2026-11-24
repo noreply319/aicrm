@@ -3,7 +3,8 @@ import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
 import { featureState, getSessionUser, type ConnectionState, type SessionUser } from "./auth";
-import { displayNames, getMessage, involvesAddress, involvesTarget, leadTarget, listLeadMessages, stripQuoted } from "./gmail";
+import { findRelevantEmails, searchStoredEmails, summarizePending, syncLeadEmails, type EmailContext } from "./emailStore";
+import { leadTarget } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
 import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
 import type { ChatMessage } from "./types";
@@ -74,7 +75,7 @@ interface NoteContextRow {
  * DB에서 현재 리드 + 변경 이력 + 미팅 노트를 읽어 모델 컨텍스트 문자열을 만든다.
  * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
  */
-async function buildContext(question: string): Promise<string> {
+async function buildContext(question: string, emails: EmailContext[] = []): Promise<string> {
   const [leadsRes, eventsRes, notesRes, schedulesRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
     pool.query<LeadEvent & { by: string | null }>(
@@ -159,23 +160,26 @@ async function buildContext(question: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ leads, events, meetingNotes, scheduledMeetings });
+  // 질문과 관련된 저장 메일(제목·AI 요약)만. 본문은 넣지 않는다
+  return JSON.stringify({ leads, events, meetingNotes, scheduledMeetings, emails });
 }
 
 type CalendarState = ConnectionState;
 
 function gmailRules(state: ConnectionState, userName: string): string {
   const who = userName ? `${userName}님` : "로그인한 사용자";
-  if (state !== "connected") {
-    return `- Gmail: ${who}의 Gmail이 ${state === "expired" ? "연동 만료 상태" : "연동되지 않은 상태"}입니다.
-  이메일 내용 질문에는 그 사실을 먼저 알리고("설정 → Gmail에서 연동하세요"), 나머지 CRM 데이터로 답할 수 있는 부분만 답하세요.`;
-  }
-  return `- Gmail: search_lead_emails 도구로 ${who}의 Gmail에서 리드 담당자와 주고받은 메일을 조회할 수 있습니다.
-  특정 리드(회사)에 대한 질문(현황, 요약, 다음 할 일, 고객 반응, 견적·계약 이야기 등)에는 leads의 id로 이메일도 조회해
-  리드 정보·이력·미팅 노트·일정과 함께 종합해서 답하세요. "최근 메일 온 고객", "답장 안 한 메일"처럼 리드를 특정하지 않은 질문은 leadId 없이 조회하세요.
+  const base = `- emails는 ${who}의 Gmail에서 리드와 주고받은 메일 중 이 질문과 관련된 것만 골라 넣은 목록입니다(제목·AI 요약, 본문 없음).
   direction: sent(내가 보냄), received(고객 쪽에서 받음). with: contact(리드 담당자 본인), colleague(같은 회사 도메인의 다른 사람).
-  이메일을 근거로 답할 때는 "(출처: 메일 제목, 날짜)"를 붙이세요.
-  메일 주소·전화번호는 [이메일]/[전화번호]로 가려져 있습니다.`;
+  메일을 근거로 답할 때는 "(출처: 메일 제목, 날짜)"를 붙이세요. 메일 주소·전화번호는 [이메일]/[전화번호]로 가려져 있습니다.`;
+  if (state !== "connected") {
+    return `${base}
+  ${who}의 Gmail이 ${state === "expired" ? "연동 만료 상태라 새 메일은 가져올 수 없습니다" : "연동되지 않았습니다"}.
+  메일 질문에 emails로 답할 수 없으면 그 사실을 알리고("설정 → Gmail에서 연동하세요"), 나머지 CRM 데이터로 답하세요.`;
+  }
+  return `${base}
+  특정 리드(회사)에 대한 질문(현황, 요약, 다음 할 일, 고객 반응, 견적·계약 등)인데 emails에 그 리드 메일이 없거나 최신 메일이 필요하면
+  search_lead_emails 도구에 leads의 id를 넣어 조회하세요(Gmail에서 새 메일만 가져와 요약). 리드를 특정하지 않은 메일 검색은 leadId 없이 query로 조회하세요.
+  메일과 함께 리드 정보·이력·미팅 노트·일정을 종합해서 답하세요.`;
 }
 
 function calendarRules(state: CalendarState, userName: string): string {
@@ -263,24 +267,20 @@ async function runCalendarTool(user: SessionUser, args: unknown): Promise<unknow
   };
 }
 
-// 이메일 도구: 최대 건수, 본문을 넣을 메일 수·길이 (토큰 비용 제한)
+// 이메일 도구: 최대 건수
 const EMAIL_TOOL_MAX = 20;
-const EMAIL_BODY_COUNT = 5;
-const EMAIL_BODY_CHARS = 2000;
-// 리드를 지정하지 않은 검색에서 함께 찾을 리드 수 (Gmail 검색어 길이 제한)
-const EMAIL_TOOL_MAX_ADDRESSES = 30;
 
 const EMAIL_TOOL: ToolDef = {
   name: "search_lead_emails",
   description:
-    "로그인한 사용자의 Gmail에서 리드 담당자 이메일 주소(회사 도메인이면 같은 회사 사람 전체)와 주고받은 메일을 최신순으로 조회합니다. " +
-    "leadId를 주면 그 리드의 메일(최근 메일은 본문 포함), 없으면 진행 중인 모든 리드와 주고받은 최근 메일(미리보기만)을 찾습니다.",
+    "로그인한 사용자가 리드와 주고받은 메일의 제목·AI 요약을 최신순으로 조회합니다. " +
+    "leadId를 주면 그 리드의 새 메일을 Gmail에서 먼저 가져와 요약한 뒤 조회하고, 없으면 저장된 메일 전체에서 query·days로 찾습니다.",
   parameters: {
     type: "object",
     properties: {
       leadId: { type: "string", description: "CRM 데이터 leads[].id (선택)" },
-      query: { type: "string", description: "추가 검색어: 제목·본문 키워드 (선택, 예: 견적)" },
-      days: { type: "integer", description: "최근 N일 이내 메일만 (선택, 1~365. leadId가 없으면 기본 30)" },
+      query: { type: "string", description: "제목·요약 검색어 (선택, 예: 견적)" },
+      days: { type: "integer", description: "최근 N일 이내 메일만 (선택, 1~365)" },
       max: { type: "integer", description: "최대 건수 (선택, 1~20, 기본 10)" },
     },
     additionalProperties: false,
@@ -291,59 +291,33 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : fallback;
 
 /**
- * 이메일 도구 실행: 제목·날짜·방향·보낸/받는 사람 이름·미리보기(·본문 일부)만 반환.
- * 이메일 주소·전화번호는 보내지 않는다 (이름만 남기고 본문은 maskPii).
+ * 이메일 도구 실행: 저장된 메일의 제목·요약만 반환 (본문·이메일 주소는 보내지 않음).
+ * leadId가 있으면 Gmail에서 그 리드의 새 메일만 가져와 요약해 둔 뒤 조회한다.
  */
 async function runEmailTool(user: SessionUser, args: unknown): Promise<unknown> {
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-  const leadId = typeof a.leadId === "string" && a.leadId ? a.leadId : null;
+  const leadId = typeof a.leadId === "string" && a.leadId ? a.leadId : undefined;
   if (leadId && !UUID_RE.test(leadId)) return { error: "leadId가 올바르지 않습니다. CRM 데이터 leads[].id를 쓰세요" };
   const max = clampInt(a.max, 1, EMAIL_TOOL_MAX, 10);
-  const days = a.days === undefined && !leadId ? 30 : a.days === undefined ? undefined : clampInt(a.days, 1, 365, 30);
-  const query = typeof a.query === "string" ? a.query : undefined;
+  const days = a.days === undefined ? undefined : clampInt(a.days, 1, 365, 30);
+  const query = typeof a.query === "string" ? a.query.slice(0, 100) : undefined;
 
-  const { rows } = await pool.query<{ id: string; company: string; email: string }>(
-    leadId
-      ? "SELECT id, company, email FROM leads WHERE id = $1"
-      : "SELECT id, company, email FROM leads WHERE stage NOT IN ('won','lost') AND email <> '' ORDER BY updated_at DESC LIMIT $1",
-    [leadId ?? EMAIL_TOOL_MAX_ADDRESSES]
-  );
-  if (leadId && !rows[0]) return { error: "리드를 찾을 수 없습니다" };
-  const leads = rows.flatMap((r) => {
-    const target = leadTarget(r.email, user.email);
-    return target ? [{ ...r, target }] : [];
-  });
-  if (leads.length === 0) return { count: 0, messages: [], note: leadId ? "이 리드에는 이메일 주소가 없습니다" : "이메일 주소가 있는 진행 중 리드가 없습니다" };
-
-  const { messages } = await listLeadMessages(user, leads.map((l) => l.target), { max, query, newerThanDays: days });
-  const leadOf = (m: { from: string; to: string; cc: string }) => leads.find((l) => involvesTarget(m, l.target)) ?? null;
-
-  // 리드를 지정하면 최근 몇 건은 본문까지 (인용된 이전 메일은 제외)
-  const bodies = leadId
-    ? await Promise.all(messages.slice(0, EMAIL_BODY_COUNT).map((m) => getMessage(user, m.id).catch(() => null)))
-    : [];
-
-  return {
-    count: messages.length,
-    ...(days ? { days } : {}),
-    messages: messages.map((m, i) => {
-      const body = bodies[i]?.body ? stripQuoted(bodies[i].body).slice(0, EMAIL_BODY_CHARS) : "";
-      const lead = leadOf(m);
-      return {
-        company: lead?.company ?? null,
-        // contact: 리드 담당자 본인, colleague: 담당자는 아니지만 같은 회사 도메인의 다른 사람
-        with: lead && involvesAddress(m, lead.target.address) ? "contact" : "colleague",
-        date: kstDateTime(m.date),
-        direction: m.direction,
-        from: maskPii(displayNames(m.from)) || "(이름 없음)",
-        to: maskPii(displayNames(m.to)) || "(이름 없음)",
-        subject: maskPii(m.subject),
-        ...(m.unread ? { unread: true } : {}),
-        ...(bodies[i]?.attachments.length ? { attachments: bodies[i]?.attachments.length } : m.hasAttachments ? { attachments: true } : {}),
-        ...(body ? { body: maskPii(body) } : { snippet: maskPii(m.snippet) }),
-      };
-    }),
-  };
+  let note: string | undefined;
+  if (leadId) {
+    const { rows } = await pool.query<{ email: string }>("SELECT email FROM leads WHERE id = $1", [leadId]);
+    if (!rows[0]) return { error: "리드를 찾을 수 없습니다" };
+    const target = leadTarget(rows[0].email, user.email);
+    if (!target) return { count: 0, emails: [], note: "이 리드에는 이메일 주소가 없습니다" };
+    try {
+      await syncLeadEmails(user, leadId, target);
+      await summarizePending(user, { leadId, max: EMAIL_TOOL_MAX });
+    } catch (e) {
+      // Gmail·요약 실패여도 저장된 메일로 답한다
+      note = `새 메일을 가져오지 못했습니다: ${e instanceof Error ? e.message : "알 수 없는 오류"}`;
+    }
+  }
+  const emails = await searchStoredEmails(user, { leadId, query, days, max });
+  return { count: emails.length, ...(days ? { days } : {}), ...(note ? { note } : {}), emails };
 }
 
 /**
@@ -352,7 +326,9 @@ async function runEmailTool(user: SessionUser, args: unknown): Promise<unknown> 
  */
 export async function askAssistant(messages: ChatMessage[]): Promise<string> {
   const question = messages.at(-1)?.content ?? "";
-  const [context, user] = await Promise.all([buildContext(question), getSessionUser()]);
+  const user = await getSessionUser();
+  const emails = user ? await findRelevantEmails(user, question) : [];
+  const context = await buildContext(question, emails);
   const state = featureState(user, "calendar");
   const gmail = featureState(user, "gmail");
   const chat = [

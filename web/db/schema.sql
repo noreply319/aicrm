@@ -198,3 +198,39 @@ BEGIN
     GRANT SELECT, INSERT, UPDATE, DELETE ON users, sessions, scheduled_meetings TO crm_app;
   END IF;
 END $$;
+
+-- 리드 이메일 캐시: 사용자 Gmail에서 리드와 주고받은 메일의 제목·요약 (본문은 저장하지 않고 열 때 Gmail에서 읽는다)
+-- 한 번 불러온 메일은 다시 불러오거나 다시 요약하지 않는다. Gmail 연동 해제 시 해당 사용자 행 삭제.
+CREATE TABLE IF NOT EXISTS lead_emails (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,   -- 메일함 소유자
+  lead_id          uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  gmail_id         text NOT NULL,
+  thread_id        text NOT NULL DEFAULT '',
+  subject          text NOT NULL DEFAULT '',
+  from_header      text NOT NULL DEFAULT '',
+  to_header        text NOT NULL DEFAULT '',
+  cc_header        text NOT NULL DEFAULT '',
+  direction        text NOT NULL CHECK (direction IN ('sent','received')),
+  sent_at          timestamptz NOT NULL,
+  snippet          text NOT NULL DEFAULT '',
+  has_attachments  boolean NOT NULL DEFAULT false,
+  summary          text NOT NULL DEFAULT '',
+  summary_status   text NOT NULL DEFAULT 'pending' CHECK (summary_status IN ('pending','done','failed')),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, lead_id, gmail_id)
+);
+CREATE INDEX IF NOT EXISTS lead_emails_lead_idx ON lead_emails (user_id, lead_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS lead_emails_user_idx ON lead_emails (user_id, sent_at DESC);
+
+ALTER TABLE lead_emails ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'lead_emails' AND policyname = 'lead_emails_crm_app') THEN
+      CREATE POLICY lead_emails_crm_app ON lead_emails FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON lead_emails TO crm_app;
+  END IF;
+END $$;

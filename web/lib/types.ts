@@ -108,13 +108,26 @@ export interface EmailDetail extends EmailSummary {
   attachments: string[];
 }
 
+/** DB에 저장된 리드 메일: 제목·헤더 + AI 요약 (본문은 저장하지 않음) */
+export interface StoredEmail extends EmailSummary {
+  /** 1~2문장 AI 요약. 요약 전이면 빈 문자열 */
+  summary: string;
+  summaryStatus: "pending" | "done" | "failed";
+}
+
 export interface LeadEmails {
   /** 검색한 리드 이메일 주소 */
   address: string;
   /** 함께 검색한 회사 도메인 (무료 메일·사내 도메인이면 null) */
   domain: string | null;
-  messages: EmailSummary[];
+  /** 저장된 메일 (최신순) */
+  messages: StoredEmail[];
+  /** Gmail에서 더 이전 메일을 가져올 페이지 토큰 (동기화 응답에만) */
   nextPageToken: string | null;
+  /** 이번 동기화로 새로 저장한 메일 수 */
+  added?: number;
+  /** 아직 요약하지 않은 메일 수 */
+  pending: number;
 }
 
 /** 구글 캘린더 목록 항목 (쓰기 가능한 캘린더) */

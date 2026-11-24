@@ -190,15 +190,15 @@ export const involvesTarget = (m: HeaderFields, t: LeadTarget) =>
   involvesAddress(m, t.address) || (t.domain !== null && involvesDomain(m, t.domain));
 
 /**
- * 리드 담당자 주소·회사 도메인과 주고받은 메일 목록 (최신순). 스팸·휴지통은 제외된다.
+ * 리드 담당자 주소·회사 도메인과 주고받은 메일 id 목록 (최신순). 스팸·휴지통은 제외된다.
  * opts.newerThanDays: 최근 N일, opts.query: 추가 검색어
  */
-export async function listLeadMessages(
+export async function listLeadMessageIds(
   user: TokenUser,
   targets: LeadTarget[],
   opts: { max?: number; pageToken?: string; query?: string; newerThanDays?: number } = {}
-): Promise<{ messages: EmailSummary[]; nextPageToken: string | null }> {
-  if (targets.length === 0) return { messages: [], nextPageToken: null };
+): Promise<{ ids: string[]; nextPageToken: string | null }> {
+  if (targets.length === 0) return { ids: [], nextPageToken: null };
   const q =
     targetQuery(targets) +
     (opts.newerThanDays ? ` newer_than:${Math.max(1, Math.round(opts.newerThanDays))}d` : "") +
@@ -207,8 +207,17 @@ export async function listLeadMessages(
   if (opts.pageToken) params.set("pageToken", opts.pageToken);
 
   const list = obj(await gfetch(user, `/messages?${params}`));
-  const ids = arr(list.messages).map((x) => s(obj(x).id)).filter((id) => MESSAGE_ID_RE.test(id));
+  return {
+    ids: arr(list.messages).map((x) => s(obj(x).id)).filter((id) => MESSAGE_ID_RE.test(id)),
+    nextPageToken: s(list.nextPageToken) || null,
+  };
+}
 
+/**
+ * 메일 헤더·미리보기 (본문 제외). 지워진 메일이거나 대상 리드와 관계없는 메일이면 null
+ * (Gmail 검색은 부분 일치라 헤더로 한 번 더 확인한다)
+ */
+export async function getMessagesMeta(user: TokenUser, ids: string[], targets: LeadTarget[]): Promise<EmailSummary[]> {
   const meta = new URLSearchParams({ format: "metadata" });
   for (const h of ["From", "To", "Cc", "Subject", "Date"]) meta.append("metadataHeaders", h);
   const messages = await Promise.all(
@@ -220,11 +229,7 @@ export async function listLeadMessages(
       })
     )
   );
-  return {
-    // Gmail 검색은 부분 일치라 헤더로 한 번 더 확인한다
-    messages: messages.filter((m): m is EmailSummary => m !== null && targets.some((t) => involvesTarget(m, t))),
-    nextPageToken: s(list.nextPageToken) || null,
-  };
+  return messages.filter((m): m is EmailSummary => m !== null && targets.some((t) => involvesTarget(m, t)));
 }
 
 /** 메일 본문 포함 상세. 없으면 null */
