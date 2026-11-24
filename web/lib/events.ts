@@ -1,11 +1,13 @@
 import "server-only";
 import type { PoolClient } from "pg";
+import { requestUserId } from "./auth";
 import { pool } from "./db";
 import type { Lead, LeadInput } from "./types";
 
 export type LeadEventType =
   | "created" | "updated" | "moved" | "deleted"
-  | "note_created" | "note_updated" | "note_deleted";
+  | "note_created" | "note_updated" | "note_deleted"
+  | "meeting_scheduled" | "meeting_rescheduled" | "meeting_canceled";
 
 export type FieldChange = { from: unknown; to: unknown };
 
@@ -41,7 +43,7 @@ export function snapshot(l: LeadInput): Record<string, unknown> {
   };
 }
 
-/** 이벤트 기록. 리드 변경과 같은 트랜잭션의 client로 호출한다. */
+/** 이벤트 기록. 리드 변경과 같은 트랜잭션의 client로 호출한다. 변경자는 로그인 사용자(proxy가 넘긴 id). */
 export async function recordEvent(
   client: PoolClient,
   leadId: string,
@@ -50,8 +52,8 @@ export async function recordEvent(
   changes: Record<string, unknown>
 ) {
   await client.query(
-    "INSERT INTO lead_events (lead_id, company, type, changes) VALUES ($1, $2, $3, $4)",
-    [leadId, company, type, JSON.stringify(changes)]
+    "INSERT INTO lead_events (lead_id, company, type, changes, user_id) VALUES ($1, $2, $3, $4, $5)",
+    [leadId, company, type, JSON.stringify(changes), await requestUserId()]
   );
 }
 

@@ -1,20 +1,22 @@
 "use client";
 
 import { AVATAR_COLORS, PRIORITY_LABEL } from "@/lib/constants";
-import { formatWon, isOverdue } from "@/lib/format";
+import { formatDateTime, formatWon, isOverdue } from "@/lib/format";
 import type { Lead } from "@/lib/types";
 
 interface Props {
   lead: Lead;
   /** 미팅 노트 개수 (0이면 배지 숨김) */
   noteCount: number;
+  /** 다음 미팅 시작 시각 (ISO). 없으면 배지 숨김 */
+  nextMeeting: string | null;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
   onClick: () => void;
 }
 
-export default function LeadCard({ lead, noteCount, dragging, onDragStart, onDragEnd, onClick }: Props) {
+export default function LeadCard({ lead, noteCount, nextMeeting, dragging, onDragStart, onDragEnd, onClick }: Props) {
   const initial = (lead.contact || lead.company || "?").trim().slice(0, 1);
   const colorIdx =
     [...(lead.company || "")].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
@@ -51,6 +53,11 @@ export default function LeadCard({ lead, noteCount, dragging, onDragStart, onDra
           <span className={`tag prio-${lead.priority}`}>{PRIORITY_LABEL[lead.priority] ?? "보통"}</span>
           {noteCount > 0 && (
             <span className="note-badge" title={`미팅 노트 ${noteCount}개`}>📝 {noteCount}</span>
+          )}
+          {nextMeeting && (
+            <span className="meeting-badge" title={`다음 미팅 ${formatDateTime(nextMeeting)}`}>
+              🗓 {formatDateTime(nextMeeting).slice(5, 10).replace("-", "/")}
+            </span>
           )}
         </span>
         {lead.closeDate && (

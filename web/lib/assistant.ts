@@ -2,8 +2,11 @@ import "server-only";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
-import { chatCompletion, maskPii } from "./openai";
+import { getSessionUser, type SessionUser } from "./auth";
+import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
+import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
 import type { ChatMessage } from "./types";
+import { parseDateRange } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
 
@@ -36,6 +39,25 @@ function readableChanges(changes: Record<string, unknown>): Record<string, unkno
   return out;
 }
 
+// 컨텍스트에 넣을 CRM 일정 상한
+const MAX_SCHEDULES = 200;
+// 캘린더 도구: 한 번에 조회할 최대 기간·건수
+const TOOL_MAX_DAYS = 90;
+const TOOL_MAX_EVENTS = 100;
+
+interface ScheduleContextRow {
+  leadId: string | null;
+  company: string | null;
+  status: string;
+  certainty: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date;
+  allDay: boolean;
+  location: string;
+  owner: string | null;
+}
+
 interface NoteContextRow {
   leadId: string | null;
   company: string | null;
@@ -52,11 +74,12 @@ interface NoteContextRow {
  * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
  */
 async function buildContext(question: string): Promise<string> {
-  const [leadsRes, eventsRes, notesRes] = await Promise.all([
+  const [leadsRes, eventsRes, notesRes, schedulesRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
-    pool.query<LeadEvent>(
-      `SELECT lead_id AS "leadId", company, type, changes, created_at AS "createdAt"
-       FROM lead_events ORDER BY created_at DESC, id DESC LIMIT $1`,
+    pool.query<LeadEvent & { by: string | null }>(
+      `SELECT e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
+       FROM lead_events e LEFT JOIN users u ON u.id = e.user_id
+       ORDER BY e.created_at DESC, e.id DESC LIMIT $1`,
       [MAX_EVENTS]
     ),
     pool.query<NoteContextRow>(
@@ -65,6 +88,15 @@ async function buildContext(question: string): Promise<string> {
        FROM meeting_notes m LEFT JOIN leads l ON l.id = m.lead_id
        ORDER BY m.met_at DESC LIMIT $1`,
       [MAX_NOTES]
+    ),
+    pool.query<ScheduleContextRow>(
+      `SELECT m.lead_id AS "leadId", l.company, m.status, m.certainty, m.title, m.starts_at AS "startsAt",
+              m.ends_at AS "endsAt", m.all_day AS "allDay", m.location, coalesce(u.name, u.email) AS "owner"
+       FROM scheduled_meetings m
+       LEFT JOIN leads l ON l.id = m.lead_id LEFT JOIN users u ON u.id = m.user_id
+       WHERE m.status IN ('candidate','scheduled') AND m.ends_at > now() - interval '30 days'
+       ORDER BY m.starts_at LIMIT $1`,
+      [MAX_SCHEDULES]
     ),
   ]);
 
@@ -88,6 +120,21 @@ async function buildContext(question: string): Promise<string> {
     company: e.company,
     type: e.type,
     changes: readableChanges(e.changes),
+    ...(e.by ? { by: e.by } : {}),
+  }));
+
+  // CRM에서 잡은 다음 미팅 (팀 전체). scheduled = 등록자 구글 캘린더에 등록됨, candidate = 노트에서 찾았지만 미확정
+  const scheduledMeetings = schedulesRes.rows.map((m) => ({
+    leadId: m.leadId,
+    company: m.company ?? "(리드 미지정)",
+    status: m.status,
+    certainty: m.certainty,
+    title: maskPii(m.title),
+    start: m.allDay ? kstDate(m.startsAt) : kstDateTime(m.startsAt),
+    end: m.allDay ? kstDate(new Date(m.endsAt.getTime() - 1)) : kstDateTime(m.endsAt),
+    allDay: m.allDay,
+    location: maskPii(m.location) || undefined,
+    owner: m.owner ?? undefined,
   }));
 
   // 질문에 회사명이 나온 리드의 노트는 본문 포함, 나머지는 요약(없으면 본문 앞부분)만
@@ -111,15 +158,29 @@ async function buildContext(question: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ leads, events, meetingNotes });
+  return JSON.stringify({ leads, events, meetingNotes, scheduledMeetings });
 }
 
-function systemPrompt(context: string): string {
+type CalendarState = "connected" | "expired" | "none";
+
+function calendarRules(state: CalendarState, userName: string): string {
+  const who = userName ? `${userName}님` : "로그인한 사용자";
+  if (state !== "connected") {
+    return `- 구글 캘린더: ${who}의 캘린더가 ${state === "expired" ? "연동 만료 상태" : "연동되지 않은 상태"}입니다.
+  일정 질문에는 그 사실을 먼저 알리고("설정 → Google 연동에서 연결하세요"), scheduledMeetings만으로 답하세요.`;
+  }
+  return `- 구글 캘린더: list_calendar_events 도구로 ${who}의 구글 캘린더 일정을 조회할 수 있습니다.
+  "오늘/이번 주/다음 주 일정", "비어 있는 시간", 특정 회사 미팅 일시 등 일정 질문에는 필요한 기간만 조회해서 답하세요.
+  비어 있는 시간을 물으면 조회한 일정 사이의 빈 시간을 업무 시간(09:00~18:00) 기준으로 알려주세요.
+  도구 결과의 crmCompany가 있으면 CRM 리드와 연결된 일정입니다. 제목이 "[AI CRM]"으로 시작하면 CRM에서 등록한 일정입니다.`;
+}
+
+function systemPrompt(context: string, state: CalendarState = "none", userName = ""): string {
   return `당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 리드 관련 질문에 한국어로 간결하게 답합니다.
 
 규칙:
 - 아래 CRM 데이터만 근거로 답하세요. 데이터에 없는 내용은 추측하지 말고 "기록이 없습니다"라고 답하세요.
-- 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())}
+- 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())} (${"일월화수목금토"[new Date(kst(Date.now()).slice(0, 10) + "T00:00:00Z").getUTCDay()]}요일)
 - 금액은 원화(₩)이며 천 단위 구분 기호를 붙이세요.
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
 - events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
@@ -129,20 +190,78 @@ function systemPrompt(context: string): string {
   body는 질문에 회사명이 언급된 리드의 노트에만 포함됩니다. 노트를 근거로 답할 때는 "(출처: 노트 제목, 미팅 일시)"를 붙이세요.
   본문은 녹음 전사일 수 있어 오인식이 있을 수 있습니다.
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
+  meeting_scheduled/meeting_rescheduled/meeting_canceled(다음 미팅 등록/변경/취소). by는 변경한 사용자입니다.
 - 이력은 최근 ${MAX_EVENTS}건까지만 포함됩니다.
+- scheduledMeetings는 CRM에서 잡은 다음 미팅입니다(팀 전체). status: scheduled(등록자 owner의 구글 캘린더에 등록됨),
+  candidate(미팅 노트에서 찾았지만 아직 확정 안 됨, certainty=tentative면 시간 미정). 다른 팀원의 미팅은 여기서 답하세요.
+  candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
+${calendarRules(state, userName)}
 - 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
+  일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.
 - 답변은 짧은 문장이나 "- " 목록으로 작성하고, 마크다운 강조(**, #)는 쓰지 마세요 (일반 텍스트로 표시됩니다).
 
 CRM 데이터(JSON):
 ${context}`;
 }
 
-/** 대화 내역을 받아 OpenAI로 답변을 생성한다 */
+const CALENDAR_TOOL: ToolDef = {
+  name: "list_calendar_events",
+  description: "로그인한 사용자의 구글 캘린더 일정을 기간으로 조회합니다 (한국 시간). 기간은 최대 90일.",
+  parameters: {
+    type: "object",
+    properties: {
+      start: { type: "string", description: "시작일 YYYY-MM-DD (포함)" },
+      end: { type: "string", description: "종료일 YYYY-MM-DD (포함)" },
+      query: { type: "string", description: "제목·장소 검색어 (선택)" },
+    },
+    required: ["start", "end"],
+    additionalProperties: false,
+  },
+};
+
+/** 캘린더 도구 실행: 제목·시간·장소·CRM 연결만 반환 (참석자·설명·회의 링크는 보내지 않음) */
+async function runCalendarTool(user: SessionUser, args: unknown): Promise<unknown> {
+  const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const range = parseDateRange(
+    typeof a.start === "string" ? a.start : null,
+    typeof a.end === "string" ? a.end : null,
+    TOOL_MAX_DAYS
+  );
+  if (!range.ok) return { error: range.error };
+  const query = typeof a.query === "string" ? a.query.trim().slice(0, 100) : "";
+  const events = await listEvents(user, fromKst(range.data.start), fromKst(addDays(range.data.end, 1)), {
+    query: query || undefined,
+    max: TOOL_MAX_EVENTS,
+  });
+  return {
+    range: range.data,
+    count: events.length,
+    events: events.map((e) => ({
+      title: maskPii(e.title),
+      start: e.allDay ? e.start : kstDateTime(e.start),
+      end: e.allDay ? e.end : kstDateTime(e.end),
+      allDay: e.allDay,
+      ...(e.location ? { location: maskPii(e.location) } : {}),
+      ...(e.crm?.company ? { crmCompany: e.crm.company } : {}),
+    })),
+  };
+}
+
+/** 대화 내역을 받아 OpenAI로 답변을 생성한다. 캘린더가 연동돼 있으면 캘린더 조회 도구를 쓸 수 있다. */
 export async function askAssistant(messages: ChatMessage[]): Promise<string> {
   const question = messages.at(-1)?.content ?? "";
-  const context = await buildContext(question);
-  return chatCompletion(
-    [{ role: "system", content: systemPrompt(context) }, ...messages.map((m) => ({ ...m, content: maskPii(m.content) }))],
-    { maxTokens: 1200 }
+  const [context, user] = await Promise.all([buildContext(question), getSessionUser()]);
+  const state: CalendarState = !user?.refreshToken ? "none" : user.calendarExpired ? "expired" : "connected";
+  const chat = [
+    { role: "system" as const, content: systemPrompt(context, state, user?.name ?? "") },
+    ...messages.map((m) => ({ ...m, content: maskPii(m.content) })),
+  ];
+  if (!user || state !== "connected") return chatCompletion(chat, { maxTokens: 1200 });
+
+  return chatWithTools(
+    chat,
+    [CALENDAR_TOOL],
+    (name, args) => (name === CALENDAR_TOOL.name ? runCalendarTool(user, args) : Promise.resolve({ error: "알 수 없는 도구" })),
+    { maxTokens: 1200, maxRounds: 3, timeoutMs: 40_000 }
   );
 }

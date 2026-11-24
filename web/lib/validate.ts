@@ -1,5 +1,5 @@
-import { NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES } from "./constants";
-import type { ChatMessage, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId } from "./types";
+import { NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix } from "./constants";
+import type { CalendarEventInput, ChatMessage, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId } from "./types";
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
 const PRIORITIES = new Set<string>(["high", "mid", "low"]);
@@ -111,4 +111,70 @@ export function parseSummarizeInput(body: unknown): { ok: true; data: { title: s
   if (!text) return { ok: false, error: "요약할 본문이 없습니다" };
   if (text.length > NOTE_BODY_MAX) return { ok: false, error: `본문은 ${NOTE_BODY_MAX.toLocaleString()}자 이하여야 합니다` };
   return { ok: true, data: { title: str(b.title, NOTE_TITLE_MAX), body: text } };
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const optionalUuid = (v: unknown): string | null | false =>
+  v === null || v === undefined || v === "" ? null : typeof v === "string" && UUID_RE.test(v) ? v : false;
+
+/** 일정 등록/수정 요청 검증 */
+export function parseEventInput(body: unknown): { ok: true; data: CalendarEventInput } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+
+  // 구글 일정 제목의 [AI CRM] 표시는 저장하지 않는다 (등록할 때 다시 붙임)
+  const title = stripCrmPrefix(str(b.title, 200));
+  if (!title) return { ok: false, error: "일정 제목을 입력하세요" };
+
+  const allDay = b.allDay === true;
+  const start = typeof b.start === "string" ? b.start.trim() : "";
+  const end = typeof b.end === "string" ? b.end.trim() : "";
+  let startIso = start;
+  let endIso = end;
+  if (allDay) {
+    if (!DATE_RE.test(start) || !DATE_RE.test(end)) return { ok: false, error: "날짜를 입력하세요" };
+    if (end < start) return { ok: false, error: "종료일이 시작일보다 빠릅니다" };
+  } else {
+    const s = new Date(start);
+    const e = new Date(end);
+    if (!start || !end || Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return { ok: false, error: "시작·종료 시각을 입력하세요" };
+    if (e <= s) return { ok: false, error: "종료 시각이 시작 시각보다 늦어야 합니다" };
+    startIso = s.toISOString();
+    endIso = e.toISOString();
+  }
+  const days = (Date.parse(allDay ? end : endIso) - Date.parse(allDay ? start : startIso)) / 86_400_000;
+  if (days > 31) return { ok: false, error: "일정 기간은 31일 이하로 입력하세요" };
+
+  const leadId = optionalUuid(b.leadId);
+  const noteId = optionalUuid(b.noteId);
+  const scheduleId = optionalUuid(b.scheduleId);
+  if (leadId === false || noteId === false || scheduleId === false) return { ok: false, error: "잘못된 요청입니다" };
+
+  return {
+    ok: true,
+    data: {
+      title,
+      allDay,
+      start: startIso,
+      end: endIso,
+      location: str(b.location, 300),
+      description: typeof b.description === "string" ? b.description.trim().slice(0, 4000) : "",
+      leadId,
+      noteId,
+      scheduleId,
+      invite: b.invite === true,
+    },
+  };
+}
+
+/** 'YYYY-MM-DD' 조회 기간 검증 (end 포함) */
+export function parseDateRange(start: string | null, end: string | null, maxDays: number):
+  { ok: true; data: { start: string; end: string } } | { ok: false; error: string } {
+  if (!start || !end || !DATE_RE.test(start) || !DATE_RE.test(end) || end < start) {
+    return { ok: false, error: "조회 기간이 올바르지 않습니다" };
+  }
+  if ((Date.parse(end) - Date.parse(start)) / 86_400_000 > maxDays) {
+    return { ok: false, error: `조회 기간은 ${maxDays}일 이하로 지정하세요` };
+  }
+  return { ok: true, data: { start, end } };
 }

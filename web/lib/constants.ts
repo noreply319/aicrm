@@ -45,3 +45,12 @@ export const NOTE_SOURCE_LABEL: Record<NoteSource, string> = {
   recording: "녹음",
   mixed: "녹음+붙여넣기",
 };
+
+/** CRM이 구글 일정 설명에 붙이는 구분선 (앞부분 = 사용자 메모) */
+export const CRM_DESCRIPTION_MARK = "— Pipeline CRM에서 등록";
+
+/** CRM에서 만든 구글 캘린더 일정 제목 앞에 붙이는 표시 (DB에는 붙이지 않은 제목을 저장) */
+export const CRM_TITLE_PREFIX = "[AI CRM]";
+/** 제목에서 CRM 표시를 뗀다 */
+export const stripCrmPrefix = (title: string) =>
+  title.startsWith(CRM_TITLE_PREFIX) ? title.slice(CRM_TITLE_PREFIX.length).trim() : title;

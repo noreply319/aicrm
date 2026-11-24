@@ -24,7 +24,7 @@
   - 로컬: 로컬 PostgreSQL `ai_crm` DB
   - 배포: Supabase (`aicrm` 프로젝트, 도쿄 리전)
 - **배포**: Vercel (`aicrm` 프로젝트, Root Directory = `web`, GitHub push 시 자동 배포)
-- **인증**: 없음 (아래 보안 항목 참고)
+- **인증**: 구글 로그인(직접 구현, DB 세션 + httpOnly 쿠키), `ALLOWED_EMAILS` 허용 목록. 아래 "로그인 / 구글 캘린더" 참고
 - **테스트/린트**: 아직 없음
 - **패키지 매니저**: npm
 - **Node**: nvm으로 설치 (`nvm use node`)
@@ -131,7 +131,8 @@ AI CRM/                      # git 저장소 루트
 ## 보안 / 하지 말아야 할 것
 
 - `.env*` 파일, DB 비밀번호, 토큰을 커밋하거나 코드에 하드코딩하지 않음. 출력에 비밀번호를 노출하지 않음.
-- **인증이 없음**: 배포 URL을 아는 누구나 리드를 수정·삭제 가능. 실제 영업 데이터 투입 전 인증 추가 필요.
+- **인증**: `web/proxy.ts`가 `/login`·`/api/auth/*` 외 모든 페이지·API에서 세션을 확인 (페이지 → /login, API → 401, 다른 사이트의 변경 요청 → 403). 새 API도 자동 보호됨. 데이터는 로그인 사용자 전체(팀) 공유.
+- 구글 리프레시 토큰은 `TOKEN_ENCRYPTION_KEY`로 암호화해 `users`에 저장. 토큰·세션 값은 로그·응답에 남기지 않음.
 - Supabase `leads` 테이블은 RLS 활성화 + `crm_app` 역할 전용 정책만 존재 (anon/authenticated 차단). 새 테이블도 RLS를 켜고 정책을 명시.
 - Supabase(운영 DB)에 쓰기 SQL 실행, 테이블 삭제, 데이터 삭제, 비밀번호 변경 등 되돌리기 어려운 작업은 실행 전 반드시 확인 요청. 조회는 `--read-only` 사용.
 - 새 패키지 추가 전 기존 의존성으로 해결 가능한지 검토하고, 추가 시 이유를 설명. 버전은 정확히 고정(`--save-exact`)하고 `npm audit` 확인.
@@ -145,6 +146,19 @@ AI CRM/                      # git 저장소 루트
 - 사용자가 "명령어만 알려줘"처럼 범위를 정하면 그 범위만 답변.
 - 작업 후 변경한 파일과 확인 방법을 간단히 요약.
 - 답변과 코드 주석은 한국어, 변수·함수명은 영어.
+
+## 로그인 / 구글 캘린더
+
+- 문서: `docs/google-calendar/requirements.md`
+- 흐름: `/login` → `/api/auth/google`(openid email profile) → `/api/auth/callback` → 세션 쿠키 7일. 설정 → Google 연동은 `/api/calendar/connect`로 캘린더 권한 추가(같은 콜백, state 쿠키의 purpose로 구분).
+- 구글 OAuth 앱은 "외부 + 테스트" 상태 → 리프레시 토큰 7일 만료. 만료되면 `users.calendar_expired = true`, 설정에서 다시 연동.
+- 서버: `lib/auth.ts`(세션·허용 이메일), `lib/google.ts`(OAuth·토큰), `lib/calendar.ts`(Calendar REST, fetch), `lib/schedules.ts`(노트 → 다음 미팅 후보 AI 추출), `lib/crypto.ts`.
+- API: `/api/me`, `/api/calendar/{connect,connection,calendars,events,events/[eventId]}`, `/api/schedules`, `/api/meetings/[id]/schedule-candidates`.
+- 화면: 헤더 메뉴 `캘린더`(`/calendar`, CalendarView·EventModal), `설정`(`/settings`, SettingsView). 노트 저장 후 ScheduleSuggestModal, 리드 상세 `다음 미팅` 탭.
+- 테이블: `users`, `sessions`, `scheduled_meetings`(candidate → scheduled/dismissed, scheduled → canceled). 이력 타입 `meeting_scheduled/rescheduled/canceled`, `lead_events.user_id`(변경자).
+- 노트 저장 시 날짜·시간이 확정된 다음 미팅은 확인 없이 자동 등록(`extractAndAutoRegister`), 시간 미정은 후보. CRM 일정 제목은 구글에 `[AI CRM]` 접두어(`CRM_TITLE_PREFIX`), DB에는 접두어 없이 저장.
+- 일정 수정·삭제는 CRM에서 등록한 **본인** 일정만. AI Assistant는 `list_calendar_events` 도구(function calling)로 본인 캘린더 조회 — 제목·시간·장소만 OpenAI로 전송.
+- 로컬 OAuth 콜백은 `http://localhost:3000/api/auth/callback`만 등록돼 있으므로 개발 서버는 3000 포트로 실행.
 
 ## 참고 문서
 

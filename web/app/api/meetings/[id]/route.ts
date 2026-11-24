@@ -66,6 +66,8 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!UUID_RE.test(id)) return notFound();
 
   const deleted = await withTransaction(async (client) => {
+    // 이 노트에서 찾았지만 확정하지 않은 다음 미팅 후보도 함께 지운다 (등록된 일정은 남긴다)
+    await client.query(`DELETE FROM scheduled_meetings WHERE note_id = $1 AND status IN ('candidate','dismissed')`, [id]);
     const { rows } = await client.query<NoteRow>(`DELETE FROM meeting_notes WHERE id=$1 RETURNING ${NOTE_COLUMNS}`, [id]);
     if (!rows[0]) return false;
     const note = toNote(rows[0]);
