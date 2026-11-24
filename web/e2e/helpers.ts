@@ -1,0 +1,52 @@
+import type { APIRequestContext, Page } from "@playwright/test";
+import pg from "pg";
+import { assertSafeTestDb, TEST_DATABASE_URL } from "../test/setup/config";
+
+/** 각 테스트 전에 테스트 DB를 비운다 */
+export async function resetDb() {
+  assertSafeTestDb(TEST_DATABASE_URL);
+  const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query("TRUNCATE meeting_notes, lead_events, leads RESTART IDENTITY CASCADE");
+  } finally {
+    await c.end();
+  }
+}
+
+export async function createLead(request: APIRequestContext, company: string, stage = "new") {
+  const res = await request.post("/api/leads", { data: { company, contact: "김민수", value: 30_000_000, stage } });
+  return (await res.json()) as { id: string; company: string };
+}
+
+/**
+ * 가짜 마이크: 실제 마이크 대신 사인파 소리를 내는 스트림으로 getUserMedia를 바꾼다.
+ * (전사는 page.route로 가짜 응답을 주므로 소리 내용은 상관없다)
+ */
+export async function fakeMicrophone(page: Page) {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const dest = ctx.createMediaStreamDestination();
+      osc.connect(dest);
+      osc.start();
+      return dest.stream;
+    };
+  });
+}
+
+/** 화자 구분 전사 API 가짜 응답 */
+export async function fakeTranscribe(page: Page) {
+  await page.route("**/api/meetings/transcribe", (route) =>
+    route.fulfill({
+      json: {
+        text: "안녕하세요 네 반갑습니다",
+        utterances: [
+          { speaker: "A", start: 0, end: 2.5, text: "안녕하세요, 견적 관련 미팅입니다." },
+          { speaker: "B", start: 2.6, end: 3, text: "네 반갑습니다." },
+        ],
+      },
+    })
+  );
+}

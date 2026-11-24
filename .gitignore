@@ -3,3 +3,6 @@ node_modules/
 .env*
 !.env.example
 supabase/.temp/
+
+# git worktree 작업 폴더 (CLAUDE.md 참고)
+worktress/

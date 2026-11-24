@@ -25,7 +25,7 @@
   - 배포: Supabase (`aicrm` 프로젝트, 도쿄 리전)
 - **배포**: Vercel (`aicrm` 프로젝트, Root Directory = `web`, GitHub push 시 자동 배포)
 - **인증**: 없음 (아래 보안 항목 참고)
-- **테스트/린트**: 아직 없음
+- **테스트**: Vitest(unit·integration) + Playwright(e2e). 린트는 아직 없음
 - **패키지 매니저**: npm
 - **Node**: nvm으로 설치 (`nvm use node`)
 
@@ -118,8 +118,21 @@ AI CRM/                      # git 저장소 루트
 
 ## 테스트
 
-- 자동화된 테스트는 아직 없음. 작업 완료 전 최소한 `npm run build`(타입 체크 포함) 통과 확인.
-- API 변경 시 curl로 `/api/leads` 엔드포인트 동작 확인.
+`web/` 폴더에서 실행. 작업 완료 전 `npm run build`(타입 체크) + 관련 테스트 통과 확인.
+
+```bash
+npm test                  # unit + integration (Vitest)
+npm run test:unit         # 순수 함수·OpenAI 응답 처리 (DB·네트워크 없음, fetch는 가짜)
+npm run test:integration  # Route Handler를 로컬 테스트 DB에 직접 호출
+npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(3100)를 띄워 Chrome으로 확인
+```
+
+- 위치: `web/test/unit`, `web/test/integration`, `web/e2e`. 설정: `vitest.config.mts`, `playwright.config.ts`.
+- **테스트 DB**: 로컬 `ai_crm_test` (없으면 자동 생성 + `schema.sql` 적용, 테스트마다 TRUNCATE).
+  `TEST_DATABASE_URL`로 변경 가능하지만 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
+- OpenAI는 실제로 호출하지 않는다: unit·integration은 `fetch`를, e2e는 `page.route`로 API 응답을 가짜로 대체. e2e 녹음은 가짜 마이크(`getUserMedia` 대체) 사용.
+- e2e는 설치된 Chrome(`channel: "chrome"`)을 쓰므로 브라우저 다운로드 불필요. 순서대로 1개씩 실행(같은 DB).
+- 새 기능을 추가하면 중요한 흐름은 테스트를 함께 추가. API 변경 시 integration 테스트로 이력(`lead_events`) 기록까지 확인.
 
 ## Git / 작업 규칙
 
@@ -127,6 +140,19 @@ AI CRM/                      # git 저장소 루트
 - commit·push는 사용자가 요청할 때만. 기본적으로 사용자가 직접 실행하므로 명령어를 안내.
 - zsh 사용 — 명령어 안내 시 `!`가 들어간 문자열은 작은따옴표로 감쌀 것 (히스토리 확장 에러 방지).
 - **사용자의 모든 프롬프트를 `prompts/history.md`에 기록**: 번호, 날짜, 제목, 프롬프트 원문 인용, 결과 한 줄.
+
+### Git worktree
+
+- 별도 브랜치 작업용 worktree는 저장소 안의 **`worktress/`** 폴더에 만든다 (`.gitignore`에 포함).
+  ```bash
+  # 프로젝트 루트에서
+  git worktree add worktress/<작업명> -b <브랜치명> main
+  cd worktress/<작업명>/web && npm install   # worktree마다 node_modules 따로 설치
+  git worktree list                          # 목록
+  git worktree remove worktress/<작업명>      # 작업 후 정리 (브랜치는 merge 후 git branch -d)
+  ```
+- worktree에는 `.env.local`이 없다(커밋되지 않음). 필요하면 원본의 `web/.env.local`을 복사하되 커밋하지 않는다. 테스트는 `.env.local` 없이 동작한다.
+- 원본 checkout에서 `npm run dev`가 3000을 쓰고 있으면 worktree에서는 다른 포트(`npx next dev -p 3001`)를 쓴다. 다른 사람이 띄운 dev 서버를 포트 기준으로 종료하지 말 것.
 
 ## 보안 / 하지 말아야 할 것
 
