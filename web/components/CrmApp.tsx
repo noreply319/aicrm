@@ -138,9 +138,13 @@ export default function CrmApp() {
     } catch {}
   };
 
-  const handleSaveNote = async (input: MeetingNoteInput, id: string | null) => {
+  const handleSaveNote = async (input: MeetingNoteInput, id: string | null, opts?: { auto?: boolean }) => {
     const saved = id ? await meetings.updateNote(id, input) : await meetings.addNote(input);
-    showToast(id ? "미팅 노트가 수정되었습니다" : "미팅 노트가 저장되었습니다");
+    showToast(
+      opts?.auto
+        ? "녹음이 끝나 미팅 노트가 자동 저장되었습니다"
+        : id ? "미팅 노트가 수정되었습니다" : "미팅 노트가 저장되었습니다"
+    );
     return saved;
   };
 

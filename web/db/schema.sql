@@ -62,11 +62,11 @@ ALTER TABLE lead_events DROP CONSTRAINT IF EXISTS lead_events_type_check;
 ALTER TABLE lead_events ADD CONSTRAINT lead_events_type_check
   CHECK (type IN ('created','updated','moved','deleted','note_created','note_updated','note_deleted'));
 
--- 미팅 노트: 리드 1개에 연결, 리드 삭제 시 함께 삭제
+-- 미팅 노트: 리드에 연결(나중에 지정 가능 → NULL 허용), 리드 삭제 시 함께 삭제
 -- 녹음 원본은 저장하지 않고 전사 텍스트만 body에 저장한다
 CREATE TABLE IF NOT EXISTS meeting_notes (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id       uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  lead_id       uuid REFERENCES leads(id) ON DELETE CASCADE,
   title         text NOT NULL CHECK (length(trim(title)) > 0),
   met_at        timestamptz NOT NULL DEFAULT now(),
   body          text NOT NULL CHECK (length(trim(body)) > 0 AND length(body) <= 50000),
@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
+
+-- 이미 만들어진 테이블: 리드 미지정 노트 허용 (녹음 완료 시 자동 저장 후 리드를 나중에 지정, 재실행 안전)
+ALTER TABLE meeting_notes ALTER COLUMN lead_id DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS meeting_notes_lead_idx ON meeting_notes (lead_id, met_at DESC);
 CREATE INDEX IF NOT EXISTS meeting_notes_met_at_idx ON meeting_notes (met_at DESC);

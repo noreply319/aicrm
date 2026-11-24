@@ -37,8 +37,8 @@ function readableChanges(changes: Record<string, unknown>): Record<string, unkno
 }
 
 interface NoteContextRow {
-  leadId: string;
-  company: string;
+  leadId: string | null;
+  company: string | null;
   title: string;
   metAt: Date;
   source: string;
@@ -62,7 +62,7 @@ async function buildContext(question: string): Promise<string> {
     pool.query<NoteContextRow>(
       `SELECT m.lead_id AS "leadId", l.company, m.title, m.met_at AS "metAt", m.source,
               m.summary, m.next_actions AS "nextActions", m.body
-       FROM meeting_notes m JOIN leads l ON l.id = m.lead_id
+       FROM meeting_notes m LEFT JOIN leads l ON l.id = m.lead_id
        ORDER BY m.met_at DESC LIMIT $1`,
       [MAX_NOTES]
     ),
@@ -94,12 +94,12 @@ async function buildContext(question: string): Promise<string> {
   const q = question.toLowerCase();
   let bodyBudget = NOTE_BODY_TOTAL_CHARS;
   const meetingNotes = notesRes.rows.map((n) => {
-    const mentioned = q.includes(n.company.toLowerCase());
+    const mentioned = n.company !== null && q.includes(n.company.toLowerCase());
     const bodyText = mentioned && bodyBudget > 0 ? n.body.slice(0, Math.min(NOTE_BODY_CHARS, bodyBudget)) : "";
     bodyBudget -= bodyText.length;
     return {
       leadId: n.leadId,
-      company: n.company,
+      company: n.company ?? "(리드 미지정)",
       title: maskPii(n.title),
       metAt: kst(n.metAt),
       source: n.source,
@@ -125,6 +125,7 @@ function systemPrompt(context: string): string {
 - events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
   note_created/note_updated/note_deleted(미팅 노트 작성/수정/삭제).
 - meetingNotes는 리드별 미팅 노트입니다(최근 ${MAX_NOTES}건, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.
+  company가 "(리드 미지정)"인 노트는 아직 리드에 연결되지 않은 노트입니다.
   body는 질문에 회사명이 언급된 리드의 노트에만 포함됩니다. 노트를 근거로 답할 때는 "(출처: 노트 제목, 미팅 일시)"를 붙이세요.
   본문은 녹음 전사일 수 있어 오인식이 있을 수 있습니다.
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.

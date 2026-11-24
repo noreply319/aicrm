@@ -96,7 +96,7 @@ export function useMeetings() {
   /** 리드별 노트 개수 (카드 배지·삭제 확인용) */
   const countByLead = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const n of notes) m[n.leadId] = (m[n.leadId] ?? 0) + 1;
+    for (const n of notes) if (n.leadId) m[n.leadId] = (m[n.leadId] ?? 0) + 1;
     return m;
   }, [notes]);
 

@@ -38,7 +38,8 @@ export type NoteSource = "manual" | "recording" | "mixed";
 /** 미팅 노트 (목록용: 본문은 미리보기만) */
 export interface MeetingNoteSummary {
   id: string;
-  leadId: string;
+  /** 연결된 리드. null이면 리드 미지정 (녹음 후 자동 저장된 노트 등) */
+  leadId: string | null;
   title: string;
   metAt: string; // ISO
   source: NoteSource;

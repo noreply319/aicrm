@@ -15,6 +15,9 @@ interface Props {
 
 type Period = "all" | "7" | "30" | "90";
 
+// 리드 필터: "" 전체, UNASSIGNED 리드 미지정, 그 외 리드 id
+const UNASSIGNED = "__unassigned__";
+
 const PERIODS: { id: Period; label: string }[] = [
   { id: "all", label: "전체 기간" },
   { id: "7", label: "최근 7일" },
@@ -34,14 +37,16 @@ export default function MeetingList({ notes, leads, query, ready, onOpen, onNew 
     return leads.filter((l) => ids.has(l.id)).sort((a, b) => a.company.localeCompare(b.company, "ko"));
   }, [notes, leads]);
 
+  const unassignedCount = useMemo(() => notes.filter((n) => n.leadId === null).length, [notes]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const since = period === "all" ? 0 : Date.now() - Number(period) * 86_400_000;
     return notes.filter((n) => {
-      if (leadFilter && n.leadId !== leadFilter) return false;
+      if (leadFilter === UNASSIGNED ? n.leadId !== null : leadFilter && n.leadId !== leadFilter) return false;
       if (since && new Date(n.metAt).getTime() < since) return false;
       if (!q) return true;
-      const company = leadById.get(n.leadId)?.company ?? "";
+      const company = (n.leadId && leadById.get(n.leadId)?.company) || "";
       return [n.title, n.preview, n.summary, n.nextActions, company].some((v) => v.toLowerCase().includes(q));
     });
   }, [notes, leadFilter, period, query, leadById]);
@@ -53,6 +58,7 @@ export default function MeetingList({ notes, leads, query, ready, onOpen, onNew 
       <div className="meetings-toolbar">
         <select value={leadFilter} onChange={(e) => setLeadFilter(e.target.value)} aria-label="리드 필터">
           <option value="">리드: 전체</option>
+          {unassignedCount > 0 && <option value={UNASSIGNED}>리드 미지정 ({unassignedCount})</option>}
           {leadOptions.map((l) => (
             <option key={l.id} value={l.id}>{l.company}</option>
           ))}
@@ -81,7 +87,12 @@ export default function MeetingList({ notes, leads, query, ready, onOpen, onNew 
       ) : (
         <div className="note-list">
           {visible.map((n) => (
-            <NoteListItem key={n.id} note={n} lead={leadById.get(n.leadId)} onClick={() => onOpen(n.id)} />
+            <NoteListItem
+              key={n.id}
+              note={n}
+              lead={n.leadId ? leadById.get(n.leadId) : undefined}
+              onClick={() => onOpen(n.id)}
+            />
           ))}
         </div>
       )}

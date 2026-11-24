@@ -16,7 +16,8 @@ interface Props {
   lockLead: boolean;
   leads: Lead[];
   getNote: (id: string) => Promise<MeetingNote>;
-  onSave: (input: MeetingNoteInput, id: string | null) => Promise<MeetingNote>;
+  /** auto: 녹음 완료 후 자동 저장 */
+  onSave: (input: MeetingNoteInput, id: string | null, opts?: { auto?: boolean }) => Promise<MeetingNote>;
   onDelete: (id: string) => Promise<void>;
   onOpenLead: (leadId: string) => void;
   onClose: () => void;
@@ -25,6 +26,10 @@ interface Props {
 type Tab = "record" | "paste";
 
 const nowIso = () => new Date().toISOString();
+
+/** 기본 제목: 리드가 있으면 "{회사명} 미팅", 없으면 "{날짜} 미팅" */
+const defaultTitle = (company: string | undefined, metAtLocal: string) =>
+  company ? `${company} 미팅` : `${metAtLocal.slice(0, 10) || nowIso().slice(0, 10)} 미팅`;
 
 export default function MeetingNoteModal({
   noteId, leadId, lockLead, leads, getNote, onSave, onDelete, onOpenLead, onClose,
@@ -51,6 +56,9 @@ export default function MeetingNoteModal({
   const [summarizing, setSummarizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  // 녹음 전사가 본문에 추가됐는데 아직 자동 저장하지 않았는지
+  const autoSavePendingRef = useRef(false);
+  const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
 
   const sortedLeads = useMemo(
     () => [...leads].sort((a, b) => a.company.localeCompare(b.company, "ko")),
@@ -60,7 +68,7 @@ export default function MeetingNoteModal({
 
   // 폼을 노트 값으로 채운다
   const fillForm = useCallback((n: MeetingNote) => {
-    setFormLeadId(n.leadId);
+    setFormLeadId(n.leadId ?? "");
     setTitle(n.title);
     setTitleTouched(true);
     setMetAt(toLocalInput(n.metAt));
@@ -90,12 +98,12 @@ export default function MeetingNoteModal({
     };
   }, [noteId, getNote, fillForm]);
 
-  // 리드를 고르면 기본 제목 "{회사명} 미팅"
+  // 기본 제목: 리드를 고르면 "{회사명} 미팅", 리드가 없으면 "{날짜} 미팅"
   useEffect(() => {
     if (!editing || titleTouched) return;
     const company = leads.find((l) => l.id === formLeadId)?.company;
-    setTitle(company ? `${company} 미팅` : "");
-  }, [formLeadId, titleTouched, editing, leads]);
+    setTitle(defaultTitle(company, metAt));
+  }, [formLeadId, titleTouched, editing, leads, metAt]);
 
   const busy = rec.recording || rec.pending > 0;
 
@@ -119,9 +127,51 @@ export default function MeetingNoteModal({
     });
     setRecorded(true);
     setDirty(true);
+    autoSavePendingRef.current = true;
   }, []);
 
   const source: NoteSource = recorded ? (typed ? "mixed" : "recording") : "manual";
+
+  // 자동 저장에서 최신 폼 값을 읽기 위한 ref (렌더마다 갱신)
+  const latest = useRef({ formLeadId, title, metAt, body, source, summary, nextActions, note, saving });
+  latest.current = { formLeadId, title, metAt, body, source, summary, nextActions, note, saving };
+
+  /** 녹음(또는 파일 업로드) 전사가 모두 끝나면 리드가 없어도 자동 저장한다. 리드는 나중에 지정. */
+  useEffect(() => {
+    if (!editing || rec.recording || rec.pending > 0 || !autoSavePendingRef.current) return;
+    const v = latest.current;
+    const iso = fromLocalInput(v.metAt);
+    if (v.saving || !v.body.trim() || !iso) return;
+    autoSavePendingRef.current = false;
+    const company = leads.find((l) => l.id === v.formLeadId)?.company;
+
+    setSaving(true);
+    onSave(
+      {
+        leadId: v.formLeadId || null,
+        title: v.title.trim() || defaultTitle(company, v.metAt),
+        metAt: iso,
+        body: v.body,
+        source: v.source,
+        summary: v.summary,
+        nextActions: v.nextActions,
+      },
+      v.note?.id ?? null,
+      { auto: true }
+    )
+      .then((saved) => {
+        setNote(saved);
+        // 저장하는 사이 사용자가 고치지 않았으면 저장된 상태로 표시
+        if (latest.current.body === v.body && latest.current.formLeadId === v.formLeadId) setDirty(false);
+        setAutoSavedAt(formatDateTime(saved.updatedAt).slice(11));
+        setError(null);
+      })
+      .catch((e: Error) => {
+        autoSavePendingRef.current = true; // 다음 변경 때 다시 시도
+        setError(`자동 저장 실패: ${e.message}`);
+      })
+      .finally(() => setSaving(false));
+  }, [rec, editing, leads, onSave]);
 
   /** AI 요약 생성 → 폼에 채움 (보기 모드에서는 바로 저장) */
   const runSummary = async () => {
@@ -162,7 +212,6 @@ export default function MeetingNoteModal({
     if (rec.failed > 0 && !confirm(`전사에 실패한 구간이 ${rec.failed}개 있습니다. 그대로 저장할까요?`)) return;
 
     const iso = fromLocalInput(metAt);
-    if (!formLeadId) return setError("연결할 리드를 선택하세요");
     if (!title.trim()) return setError("제목을 입력하세요");
     if (!iso) return setError("미팅 일시를 입력하세요");
     if (!body.trim()) return setError("본문을 입력하거나 녹음하세요");
@@ -171,7 +220,7 @@ export default function MeetingNoteModal({
     setError(null);
     try {
       const saved = await onSave(
-        { leadId: formLeadId, title: title.trim(), metAt: iso, body, source, summary, nextActions },
+        { leadId: formLeadId || null, title: title.trim(), metAt: iso, body, source, summary, nextActions },
         note?.id ?? null
       );
       if (note) {
@@ -226,10 +275,15 @@ export default function MeetingNoteModal({
           <div className="note-view">
             <div className="note-view-meta">
               <span>📅 {formatDateTime(note.metAt)}</span>
-              {lead && (
+              {lead ? (
                 <button type="button" className="link-btn" onClick={() => onOpenLead(lead.id)}>
                   🔗 {lead.company}{lead.contact ? ` — ${lead.contact}` : ""}
                 </button>
+              ) : (
+                <>
+                  <span className="unassigned-pill">리드 미지정</span>
+                  <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>🔗 리드 지정</button>
+                </>
               )}
               {stage && <span className="stage-pill" style={{ "--stage": stage.color } as CSSProperties}>{stage.name}</span>}
               <span>{note.source === "manual" ? "📋" : "🎙"} {NOTE_SOURCE_LABEL[note.source]}</span>
@@ -252,13 +306,16 @@ export default function MeetingNoteModal({
           <div className="note-form">
             <div className="note-form-grid">
               <div className="field">
-                <label>연결 리드 *{lockLead && <span className="muted"> · 고정</span>}</label>
+                <label>
+                  연결 리드{" "}
+                  <span className="muted">{lockLead ? "· 고정" : "· 나중에 지정해도 됩니다"}</span>
+                </label>
                 <select
                   value={formLeadId}
                   disabled={lockLead}
                   onChange={(e) => { setFormLeadId(e.target.value); setDirty(true); }}
                 >
-                  <option value="">리드 선택…</option>
+                  <option value="">리드 미지정</option>
                   {sortedLeads.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.company}{l.contact ? ` — ${l.contact}` : ""}
@@ -337,6 +394,12 @@ export default function MeetingNoteModal({
           </div>
         )}
 
+        {editing && autoSavedAt && (
+          <div className="autosave-note" role="status">
+            ✓ 녹음이 끝나 {autoSavedAt}에 자동 저장되었습니다.
+            {!formLeadId && " 연결 리드를 선택한 뒤 저장하면 리드에 연결됩니다."}
+          </div>
+        )}
         {error && <div className="modal-error" role="alert">⚠ {error}</div>}
 
         <div className="modal-foot">

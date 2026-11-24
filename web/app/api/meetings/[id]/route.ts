@@ -30,10 +30,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     ).rows[0];
     if (!before) return "not_found" as const;
 
-    const lead = (
-      await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1 FOR SHARE", [d.leadId])
-    ).rows[0];
-    if (!lead) return "no_lead" as const;
+    const lead = d.leadId
+      ? (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1 FOR SHARE", [d.leadId])).rows[0]
+      : undefined;
+    if (d.leadId && !lead) return "no_lead" as const;
 
     const { rows } = await client.query<NoteRow>(
       `UPDATE meeting_notes SET lead_id=$2, title=$3, met_at=$4, body=$5, source=$6,
@@ -44,7 +44,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
     );
     const changes = diffNote(toNote(before), d);
     if (Object.keys(changes).length > 0) {
-      await recordEvent(client, d.leadId, lead.company, "note_updated", { noteId: id, title: d.title, ...changes });
+      const payload = { noteId: id, title: d.title, ...changes };
+      // 이력은 리드 기준: 새로 연결된(또는 계속 연결된) 리드에 기록
+      if (d.leadId && lead) await recordEvent(client, d.leadId, lead.company, "note_updated", payload);
+      // 다른 리드로 옮기거나 연결을 해제하면 이전 리드에도 남긴다
+      if (before.leadId && before.leadId !== d.leadId) {
+        const prev = (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1", [before.leadId])).rows[0];
+        if (prev) await recordEvent(client, before.leadId, prev.company, "note_updated", payload);
+      }
     }
     return toNote(rows[0]);
   });
@@ -62,10 +69,12 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     const { rows } = await client.query<NoteRow>(`DELETE FROM meeting_notes WHERE id=$1 RETURNING ${NOTE_COLUMNS}`, [id]);
     if (!rows[0]) return false;
     const note = toNote(rows[0]);
-    // FK(ON DELETE CASCADE)로 리드는 항상 존재
-    const company = (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1", [note.leadId]))
-      .rows[0]?.company ?? "";
-    await recordEvent(client, note.leadId, company, "note_deleted", noteSnapshot(note));
+    // 리드에 연결된 노트만 리드 이력에 남긴다 (FK로 연결된 리드는 항상 존재)
+    if (note.leadId) {
+      const company = (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1", [note.leadId]))
+        .rows[0]?.company ?? "";
+      await recordEvent(client, note.leadId, company, "note_deleted", noteSnapshot(note));
+    }
     return true;
   });
   return deleted ? new NextResponse(null, { status: 204 }) : notFound();

@@ -31,6 +31,7 @@ export default function NoteListItem({ note, lead, onClick }: Props) {
               {stage.name}
             </span>
           )}
+          {note.leadId === null && <span className="unassigned-pill">리드 미지정</span>}
           {note.summary && <span className="ai-pill">AI 요약</span>}
         </span>
         {lead && (

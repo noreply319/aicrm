@@ -73,8 +73,9 @@ export function parseNoteInput(body: unknown): { ok: true; data: MeetingNoteInpu
   if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
   const b = body as Record<string, unknown>;
 
-  const leadId = typeof b.leadId === "string" ? b.leadId : "";
-  if (!UUID_RE.test(leadId)) return { ok: false, error: "연결할 리드를 선택하세요" };
+  // 리드는 나중에 지정할 수 있다 (null 또는 빈 문자열 = 미지정)
+  const leadId = typeof b.leadId === "string" && b.leadId !== "" ? b.leadId : null;
+  if (leadId !== null && !UUID_RE.test(leadId)) return { ok: false, error: "리드가 올바르지 않습니다" };
 
   const title = str(b.title, NOTE_TITLE_MAX);
   if (!title) return { ok: false, error: "제목은 필수입니다" };

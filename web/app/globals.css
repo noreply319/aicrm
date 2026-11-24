@@ -307,6 +307,10 @@ button { font: inherit; cursor: pointer; }
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
   color: var(--stage); background: color-mix(in srgb, var(--stage) 14%, transparent);
 }
+.unassigned-pill {
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: var(--prio-mid-bg); color: var(--prio-mid-fg);
+}
 .ai-pill {
   font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
   background: var(--primary-soft); color: var(--primary);
@@ -346,6 +350,11 @@ button { font: inherit; cursor: pointer; }
 .note-view-meta { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; color: var(--text-2); font-size: 13px; }
 .link-btn { border: none; background: none; padding: 0; color: var(--primary); font-weight: 500; text-decoration: underline; }
 .char-count { align-self: flex-end; color: var(--text-3); font-size: 12px; }
+.autosave-note {
+  margin: 0 22px 8px; padding: 9px 12px; border-radius: 9px; font-size: 13px;
+  background: var(--prio-low-bg); color: var(--prio-low-fg);
+}
+@media (max-width: 640px) { .autosave-note { margin: 0 16px 8px; } }
 .modal-error {
   margin: 0 22px; padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 500;
   background: var(--prio-high-bg); color: var(--prio-high-fg);
