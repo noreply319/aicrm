@@ -30,7 +30,7 @@ const CALENDAR_ERRORS: Record<string, string> = {
 /** Gmail 연동 실패 코드 → 안내 문구 (공통 코드는 캘린더 문구 사용) */
 const GMAIL_ERRORS: Record<string, string> = {
   ...CALENDAR_ERRORS,
-  scope: "Gmail 권한이 체크되지 않았습니다. 동의 화면에서 Gmail 읽기 항목을 체크하세요.",
+  scope: "Gmail 권한이 체크되지 않았습니다. 동의 화면에서 Gmail 읽기·보내기 항목을 체크하세요.",
 };
 
 export default function SettingsView({ me, onSetCalendar, onDisconnect, onDisconnectGmail, onLogout, onNotice }: Props) {
@@ -170,9 +170,14 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
               ? "리드 상세의 이메일 탭에서 리드 이메일 주소와 주고받은 메일을 볼 수 있습니다. AI Assistant도 메일을 참고해 답합니다."
               : gmail === "expired"
                 ? "연동 토큰이 만료되었습니다. 다시 연동하세요."
-                : "Gmail 연동을 누르고 동의 화면에서 Gmail 읽기 권한을 허용하세요."}
+                : "Gmail 연동을 누르고 동의 화면에서 Gmail 읽기·보내기 권한을 허용하세요."}
           </span>
         </div>
+        {gmail === "connected" && !me.gmail.canSend && (
+          <Alert tone="warning">
+            계약서·견적서를 메일로 보내려면 발송 권한이 필요합니다. 다시 연동을 누르고 동의 화면에서 ‘이메일 보내기’를 허용하세요.
+          </Alert>
+        )}
         <div className="settings-actions">
           <Button variant={gmail === "connected" ? "secondary" : "primary"} href="/api/gmail/connect">
             <GoogleIcon /> {gmail === "none" ? "Gmail 연동" : "다시 연동"}
@@ -182,7 +187,8 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
           )}
         </div>
         <p className="muted settings-note">
-          읽기 전용 권한만 받습니다 (메일 보내기·삭제 불가). 메일은 CRM에 저장하지 않고 볼 때마다 Gmail에서 읽어옵니다.
+          메일 읽기·보내기 권한을 받습니다 (수정·삭제 불가). 보내기는 계약서 메뉴에서 ‘보내기’를 누를 때만 사용합니다.
+          메일 본문은 CRM에 저장하지 않고 볼 때마다 Gmail에서 읽어옵니다.
           AI Assistant 답변을 위해 메일 제목·이름·본문 일부가 OpenAI로 전송되며, 이메일 주소·전화번호는 가려서 보냅니다.
         </p>
       </Panel>

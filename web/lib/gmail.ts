@@ -282,3 +282,42 @@ export function displayNames(headerValue: string): string {
     .filter(Boolean)
     .join(", ");
 }
+
+/**
+ * 메일 보내기 (gmail.send). raw는 RFC 2822 메시지 문자열 (lib/mime.ts의 buildMime).
+ * 보낸 메일은 사용자 Gmail 보낸편지함에 남는다. 401이면 토큰을 새로 받아 1회 재시도.
+ */
+export async function sendRawMessage(user: TokenUser, raw: string, attempt = 0): Promise<{ id: string; threadId: string }> {
+  const token = await getAccessToken(user, "gmail");
+  const res = await fetch(`${API}/messages/send`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: Buffer.from(raw, "utf8").toString("base64url") }),
+    signal: AbortSignal.timeout(30_000),
+  }).catch((e: unknown) => {
+    const timeout = e instanceof Error && e.name === "TimeoutError";
+    throw new GoogleError(timeout ? "Gmail 응답 시간이 초과되었습니다" : "Gmail에 연결할 수 없습니다", 502);
+  });
+  if (res.status === 401 && attempt === 0) {
+    forgetAccessToken(user.id);
+    return sendRawMessage(user, raw, 1);
+  }
+  const body: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const reason = JSON.stringify(body) ?? "";
+    // 받는 사람·본문은 로그에 남기지 않는다
+    console.error("[gmail] send error", res.status, reason.slice(0, 300));
+    if (res.status === 403 && reason.includes("insufficient")) {
+      throw new GoogleError("Gmail 발송 권한이 없습니다. 설정에서 Gmail을 다시 연동하세요", 403, "scope");
+    }
+    if (res.status === 403 && (reason.includes("accessNotConfigured") || reason.includes("SERVICE_DISABLED"))) {
+      throw new GoogleError("Gmail API가 사용 설정되지 않았습니다 (Google Cloud Console 확인)", 503);
+    }
+    if (res.status === 400) throw new GoogleError("받는 사람 주소나 메일 내용이 올바르지 않습니다", 400, "invalid");
+    if (res.status === 413) throw new GoogleError("첨부 파일이 너무 큽니다", 413);
+    if (res.status === 429 || reason.includes("rateLimit")) throw new GoogleError("Gmail 발송 한도를 초과했습니다. 잠시 후 다시 시도하세요", 429);
+    throw new GoogleError("메일을 보내지 못했습니다. 잠시 후 다시 시도하세요", 502);
+  }
+  const b = obj(body);
+  return { id: s(b.id), threadId: s(b.threadId) };
+}

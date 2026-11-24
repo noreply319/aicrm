@@ -8,7 +8,7 @@ export async function resetDb() {
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
   await c.connect();
   try {
-    await c.query("TRUNCATE meeting_notes, lead_events, leads RESTART IDENTITY CASCADE");
+    await c.query("TRUNCATE document_sends, documents, document_templates, meeting_notes, lead_events, leads RESTART IDENTITY CASCADE");
   } finally {
     await c.end();
   }

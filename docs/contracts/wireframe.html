@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>계약서·견적서 — Low-fi Wireframe</title>
+<style>
+  /* Low fidelity: 흑백 + 손그림 느낌, 실제 디자인 아님 */
+  :root { --ink:#333; --line:#888; --soft:#bbb; --fill:#eee; --bg:#fafafa; --note:#fff8c4; --hit:#d6ecff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Comic Sans MS","Chalkboard SE","Apple SD Gothic Neo",sans-serif; color:var(--ink); background:#ddd; font-size:14px; }
+  .toc { position:sticky; top:0; z-index:10; background:#333; color:#fff; padding:10px 16px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .toc b { margin-right:8px; }
+  .toc button { background:#555; color:#fff; border:1px solid #777; border-radius:4px; padding:4px 9px; cursor:pointer; font:inherit; font-size:12px; }
+  .toc button.on { background:#fff; color:#333; }
+  .screen { display:none; max-width:1200px; margin:20px auto; background:var(--bg); border:2px solid var(--ink); border-radius:6px; overflow:hidden; position:relative; }
+  .screen.on { display:block; }
+  .screen.phone { max-width:390px; border-width:8px; border-radius:22px; }
+  .caption { background:var(--note); border-bottom:2px dashed var(--line); padding:8px 14px; font-size:13px; }
+  .caption b { margin-right:6px; }
+
+  .box { border:2px solid var(--ink); border-radius:4px; background:#fff; }
+  .dash { border:2px dashed var(--line); border-radius:4px; }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:2px solid var(--ink); border-radius:4px; padding:4px 10px; background:#fff; cursor:pointer; font:inherit; color:inherit; }
+  .btn.primary { background:var(--ink); color:#fff; }
+  .btn.sm { padding:2px 7px; font-size:12px; }
+  .btn.dis { opacity:.4; cursor:not-allowed; }
+  .pill { display:inline-block; border:1.5px solid var(--ink); border-radius:10px; padding:0 7px; font-size:11px; }
+  .pill.dark { background:var(--ink); color:#fff; }
+  .line { height:9px; background:var(--soft); border-radius:3px; margin:6px 0; }
+  .muted { color:#777; font-size:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .spacer { flex:1; }
+  .anno { position:absolute; background:var(--note); border:1.5px solid #b9a800; padding:3px 7px; font-size:11px; border-radius:3px; transform:rotate(-1.5deg); box-shadow:2px 2px 0 rgba(0,0,0,.1); z-index:3; max-width:210px; }
+  .anno::before { content:"✎ "; }
+
+  /* 헤더 */
+  .header { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:2px solid var(--ink); background:#fff; }
+  .logo { font-weight:bold; }
+  .tabs { display:flex; border:2px solid var(--ink); border-radius:4px; overflow:hidden; }
+  .tabs span { padding:4px 12px; }
+  .tabs span.on { background:var(--ink); color:#fff; }
+  .subtabs { display:flex; gap:0; border-bottom:2px solid var(--ink); background:#fff; padding:0 14px; }
+  .subtabs span { padding:8px 14px; cursor:pointer; }
+  .subtabs span.on { font-weight:bold; border-bottom:4px solid var(--ink); }
+
+  /* 2단: 왼쪽 Assistant / 오른쪽 문서 */
+  .split { display:grid; grid-template-columns:40% 60%; min-height:600px; }
+  .chat { border-right:2px solid var(--ink); background:#fff; display:flex; flex-direction:column; }
+  .chat-head { padding:10px 12px; border-bottom:2px solid var(--soft); }
+  .progress { height:10px; border:1.5px solid var(--ink); border-radius:6px; overflow:hidden; margin-top:6px; }
+  .progress i { display:block; height:100%; background:var(--ink); }
+  .msgs { flex:1; padding:12px; display:flex; flex-direction:column; gap:8px; overflow:auto; }
+  .bubble { border:1.5px solid var(--ink); border-radius:10px; padding:7px 10px; font-size:13px; max-width:90%; }
+  .bubble.ai { align-self:flex-start; border-top-left-radius:2px; }
+  .bubble.me { align-self:flex-end; background:var(--fill); border-top-right-radius:2px; }
+  .bubble.done { border-style:dashed; font-size:12px; }
+  .quick { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .tpl-btn { border:2px solid var(--ink); border-radius:6px; padding:6px 10px; background:#fff; cursor:pointer; font:inherit; text-align:left; width:100%; display:flex; gap:8px; align-items:center; }
+  .tpl-btn:hover { background:var(--fill); }
+  .composer { border-top:2px solid var(--ink); padding:10px; display:flex; gap:8px; }
+  .composer .input { flex:1; }
+  .input { border:2px solid var(--ink); border-radius:4px; padding:5px 8px; min-height:30px; background:#fff; }
+  .ph { color:#999; }
+
+  .docpane { padding:14px; background:#e9e9e9; position:relative; }
+  .doc-tool { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .paper { background:#fff; border:1.5px solid var(--line); box-shadow:3px 3px 0 rgba(0,0,0,.12); padding:28px 34px; min-height:520px; font-size:12.5px; line-height:1.8; }
+  .paper h2 { text-align:center; font-size:18px; margin:0 0 14px; letter-spacing:4px; }
+  .paper h4 { margin:12px 0 2px; font-size:13px; }
+  .f { display:inline-block; padding:0 5px; border:1.5px dashed var(--line); border-radius:3px; background:var(--fill); color:#888; }
+  .f.ok { border-style:solid; border-color:var(--ink); background:var(--hit); color:var(--ink); }
+  .f.now { outline:3px solid var(--ink); outline-offset:1px; }
+  .f.calc { border-style:dotted; background:#fff; color:var(--ink); }
+  table.items { width:100%; border-collapse:collapse; margin:8px 0; font-size:12px; }
+  table.items th, table.items td { border:1.5px solid var(--ink); padding:3px 6px; }
+  table.items th { background:var(--fill); }
+  table.items td.n { text-align:right; }
+  table.items tr.new td { background:var(--hit); }
+  .pop { position:absolute; background:#fff; border:2px solid var(--ink); border-radius:6px; padding:8px; width:230px; box-shadow:3px 3px 0 rgba(0,0,0,.15); z-index:4; font-size:12px; }
+
+  /* 모달 */
+  .overlay { background:rgba(0,0,0,.25); padding:30px; min-height:640px; display:flex; justify-content:center; align-items:flex-start; }
+  .modal { width:680px; max-width:100%; background:#fff; }
+  .modal-head { display:flex; align-items:center; padding:10px 14px; border-bottom:2px solid var(--ink); }
+  .modal-head h3 { margin:0; font-size:16px; }
+  .modal-body { padding:14px; }
+  .modal-foot { display:flex; gap:8px; padding:10px 14px; border-top:2px solid var(--ink); }
+  .field { margin-bottom:10px; }
+  .field label { display:block; font-size:12px; margin-bottom:3px; }
+  .chipbox { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .chip { border:1.5px solid var(--ink); border-radius:12px; padding:1px 8px; font-size:12px; background:var(--fill); }
+  .attach { display:flex; gap:10px; align-items:center; padding:8px 10px; }
+  .fileicon { width:30px; height:36px; border:2px solid var(--ink); border-radius:2px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; }
+  .textarea { min-height:150px; padding:8px; font-size:13px; line-height:1.6; white-space:pre-line; }
+  .banner { border:2px dashed var(--ink); padding:8px 10px; margin-bottom:10px; font-size:12px; }
+
+  /* 목록 */
+  .main { padding:14px; }
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .select { border:2px solid var(--ink); border-radius:4px; padding:3px 8px; background:#fff; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .tcard { padding:12px; }
+  .tcard h4 { margin:6px 0 4px; }
+  table.list { width:100%; border-collapse:collapse; background:#fff; }
+  table.list th, table.list td { border-bottom:1.5px solid var(--soft); padding:8px; text-align:left; font-size:13px; }
+  table.list th { border-bottom:2px solid var(--ink); font-size:12px; }
+  table.list tr:hover td { background:var(--fill); }
+
+  /* 템플릿 편집 */
+  .editor { display:grid; grid-template-columns:1fr 330px; min-height:620px; }
+  .ed-main { padding:14px; border-right:2px solid var(--ink); position:relative; }
+  .ed-side { padding:12px; background:#fff; }
+  .src { font-family:Menlo,monospace; font-size:12px; line-height:1.8; padding:12px; min-height:380px; white-space:pre-wrap; }
+  .sel { background:#ffe08a; outline:1.5px solid #b9a800; }
+  .tok { background:var(--hit); border:1.5px solid var(--ink); border-radius:3px; padding:0 3px; }
+  .frow { border:1.5px solid var(--ink); border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
+  .frow .grip { cursor:grab; color:#999; margin-right:4px; }
+  .frow.open { background:var(--fill); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .hidden { display:none !important; }
+
+  /* 모바일 */
+  .m-toggle { display:flex; border:2px solid var(--ink); border-radius:6px; overflow:hidden; margin:10px 12px; }
+  .m-toggle span { flex:1; text-align:center; padding:6px 0; }
+  .m-toggle span.on { background:var(--ink); color:#fff; }
+  .dotmark { display:inline-block; width:8px; height:8px; border-radius:50%; background:#fff; margin-left:4px; border:1.5px solid var(--ink); }
+  .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:84px; background:var(--ink); color:#fff; border-radius:16px; padding:5px 14px; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <b>계약서·견적서 Wireframe</b>
+  <button data-go="s1" class="on">1. 템플릿 선택</button>
+  <button data-go="s2">2. 리드 선택·자동 채움</button>
+  <button data-go="s3">3. 한 개씩 질문</button>
+  <button data-go="s4">4. 견적서 품목</button>
+  <button data-go="s5">5. 완성 → PDF</button>
+  <button data-go="s6">6. 메일 보내기</button>
+  <button data-go="s7">7. 발송 완료 / 권한 없음</button>
+  <button data-go="s8">8. 템플릿 목록</button>
+  <button data-go="s9">9. 템플릿 편집</button>
+  <button data-go="s10">10. 작성한 문서</button>
+  <button data-go="s11">11. 모바일</button>
+</nav>
+
+<!-- 공통 헤더 템플릿은 JS로 삽입 -->
+
+<!-- ───────── 1. 템플릿 선택 ───────── -->
+<section class="screen on" id="s1">
+  <div class="caption"><b>①</b> <code>/contracts</code> 첫 진입. 왼쪽 Assistant가 "어떤 문서를 만들까요?" + 템플릿 버튼. 오른쪽은 빈 상태. 다른 페이지의 오른쪽 조회형 Assistant 패널은 이 페이지에서 숨김 (FR-3, FR-16)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span class="on">새 문서</span><span data-go="s10">작성한 문서</span><span data-go="s8">템플릿</span></div>
+  <div class="split">
+    <div class="chat">
+      <div class="chat-head"><b>✦ 문서 작성 Assistant</b></div>
+      <div class="msgs">
+        <div class="bubble ai">안녕하세요! 어떤 문서를 만들까요?
+          <div class="quick" style="flex-direction:column">
+            <button class="tpl-btn" data-go="s2"><span class="pill dark">계약서</span> SaaS 서비스 이용 계약서 <span class="spacer"></span><span class="muted">항목 12</span></button>
+            <button class="tpl-btn" data-go="s4"><span class="pill">견적서</span> 표준 견적서 <span class="spacer"></span><span class="muted">항목 6 + 품목</span></button>
+            <button class="tpl-btn"><span class="pill dark">계약서</span> 비밀유지계약(NDA) <span class="spacer"></span><span class="muted">항목 7</span></button>
+            <button class="tpl-btn"><span class="pill">견적서</span> 컨설팅 견적서 <span class="spacer"></span><span class="muted">항목 5 + 품목</span></button>
+            <button class="btn sm" data-go="s8">+ 새 템플릿 등록</button>
+          </div>
+        </div>
+      </div>
+      <div class="composer"><div class="input ph">버튼을 누르거나 "견적서"처럼 입력하세요</div><button class="btn primary">전송</button></div>
+    </div>
+    <div class="docpane">
+      <div class="dash" style="height:540px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;background:#f4f4f4">
+        <div style="font-size:30px">📄</div>
+        <div>템플릿을 고르면 여기에 문서가 표시돼요</div>
+        <div class="muted">답변할 때마다 바뀌는 부분이 채워집니다</div>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="left:30px;top:330px">최근 사용순 최대 6개 + 더 보기. 템플릿 0개면 "기본 템플릿 불러오기"</div>
+</section>
+
+<!-- ───────── 2. 리드 선택 ───────── -->
+<section class="screen" id="s2">
+  <div class="caption"><b>②</b> 템플릿 선택 → 문서가 오른쪽에 표시(모든 항목 회색 칩) + 자동 저장(작성 중). 다음 질문 "어느 리드?" → 고르면 회사명·담당자·이메일·금액을 리드에서 한 번에 채움 (FR-17, FR-18)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span class="on">새 문서</span><span>작성한 문서</span><span>템플릿</span></div>
+  <div class="split">
+    <div class="chat">
+      <div class="chat-head"><b>✦ 문서 작성 Assistant</b> <span class="muted">· SaaS 서비스 이용 계약서</span>
+        <div class="row muted" style="margin-top:4px">필수 4/9 <span class="spacer"></span>임시 저장됨 ✓</div>
+        <div class="progress"><i style="width:44%"></i></div></div>
+      <div class="msgs">
+        <div class="bubble me">SaaS 서비스 이용 계약서</div>
+        <div class="bubble ai">좋아요. 어느 리드의 계약서인가요?
+          <div class="quick">
+            <button class="btn sm on" style="background:var(--ink);color:#fff">에이스상사 · 김민수</button>
+            <button class="btn sm">블루웨이브 · 이지은</button>
+            <button class="btn sm">한빛물류 · 박정호</button>
+          </div>
+          <div class="input ph" style="margin-top:6px;font-size:12px">🔍 리드 검색…</div>
+          <div class="quick"><button class="btn sm">리드 없이 작성</button></div>
+        </div>
+        <div class="bubble me">에이스상사 · 김민수</div>
+        <div class="bubble done">✓ 리드에서 채움 — 회사명 <b>에이스상사</b>, 담당자 <b>김민수</b>, 이메일 <b>kim@ace.co.kr</b>, 계약 금액 <b>12,000,000원</b><br>다른 값이 있으면 말씀해 주세요.</div>
+        <div class="bubble ai"><b>계약 시작일</b>은 언제인가요?
+          <div class="quick"><button class="btn sm">오늘</button><button class="btn sm">다음 달 1일 (12/1)</button><button class="btn sm">📅 날짜 선택</button></div>
+        </div>
+      </div>
+      <div class="composer"><div class="input ph">답변 입력… (예: 다음 달 1일)</div><button class="btn primary" data-go="s3">전송</button></div>
+    </div>
+    <div class="docpane">
+      <div class="doc-tool"><b>SaaS 서비스 이용 계약서</b> <span class="pill">작성 중</span><span class="spacer"></span><span class="pill">미입력 5</span><button class="btn sm dis">PDF</button></div>
+      <div class="paper">
+        <h2>서비스 이용 계약서</h2>
+        <p><span class="f ok">에이스상사</span>(이하 "고객")와 노마진 주식회사(이하 "회사")는 회사가 제공하는 <span class="f">[서비스명]</span> 이용에 관하여 다음과 같이 계약을 체결한다.</p>
+        <h4>제1조 (계약 기간)</h4>
+        <p>계약 기간은 <span class="f now">[계약 시작일]</span>부터 <span class="f">[계약 종료일]</span>까지로 한다.</p>
+        <h4>제2조 (이용 요금)</h4>
+        <p>고객은 이용 요금으로 금 <span class="f ok">12,000,000</span>원(부가세 별도)을 <span class="f">[결제 방식]</span>으로 지급한다.</p>
+        <h4>제3조 (담당자)</h4>
+        <p>고객 담당자: <span class="f ok">김민수</span> (<span class="f ok">kim@ace.co.kr</span>)</p>
+        <div class="line" style="width:90%"></div><div class="line" style="width:75%"></div>
+        <p style="margin-top:24px">계약일: <span class="f">[계약일]</span></p>
+        <div class="row" style="justify-content:space-between;margin-top:10px"><div>고객: <span class="f ok">에이스상사</span><br>대표: <span class="f">[고객 대표자]</span> (인)</div><div>회사: 노마진 주식회사<br>대표: 홍길동 (인)</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="right:30px;top:150px">칩: 회색 점선 = 미입력, 파란 실선 = 입력됨, 굵은 테두리 = 지금 묻는 항목</div>
+  <div class="anno" style="left:30px;top:520px">리드 이메일·전화번호는 OpenAI로 보내지 않음 (DB에서 바로 채움)</div>
+</section>
+
+<!-- ───────── 3. 한 개씩 질문 ───────── -->
+<section class="screen" id="s3">
+  <div class="caption"><b>③</b> 한 번에 하나씩 질문 → 답변을 해석해 즉시 문서에 반영(칩 깜빡임·스크롤). 한 답변에 여러 값이 있으면 함께 채움. 대화로 수정 또는 칩 클릭으로 직접 수정 (FR-19~23)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span class="on">새 문서</span><span>작성한 문서</span><span>템플릿</span></div>
+  <div class="split">
+    <div class="chat">
+      <div class="chat-head"><b>✦ 문서 작성 Assistant</b> <span class="muted">· SaaS 서비스 이용 계약서</span>
+        <div class="row muted" style="margin-top:4px">필수 7/9 <span class="spacer"></span>임시 저장됨 ✓</div>
+        <div class="progress"><i style="width:78%"></i></div></div>
+      <div class="msgs">
+        <div class="bubble ai"><b>계약 시작일</b>은 언제인가요?</div>
+        <div class="bubble me">다음달 1일부터 1년</div>
+        <div class="bubble done">✓ 계약 시작일 <b>2026-12-01</b>, 계약 종료일 <b>2027-11-30</b> 입력</div>
+        <div class="bubble ai"><b>결제 방식</b>을 골라 주세요.
+          <div class="quick"><button class="btn sm">월 분할</button><button class="btn sm">연 일시불</button><button class="btn sm">분기 분할</button></div></div>
+        <div class="bubble me">연 일시불</div>
+        <div class="bubble done">✓ 결제 방식 <b>연 일시불</b> 입력</div>
+        <div class="bubble me">아 금액은 1,100만원으로 바꿔줘</div>
+        <div class="bubble done">✓ 이용 요금 12,000,000 → <b>11,000,000원</b> 수정</div>
+        <div class="bubble ai"><b>고객 대표자</b> 성함을 알려주세요.
+          <div class="quick"><button class="btn sm">건너뛰기</button></div></div>
+      </div>
+      <div class="composer"><div class="input ph">답변 입력… "완료"라고 하면 지금 상태로 완성</div><button class="btn primary">전송</button></div>
+    </div>
+    <div class="docpane">
+      <div class="doc-tool"><b>SaaS 서비스 이용 계약서</b> <span class="pill">작성 중</span><span class="spacer"></span><span class="pill">미입력 2</span><button class="btn sm" data-go="s5">완성하기</button></div>
+      <div class="paper">
+        <h2>서비스 이용 계약서</h2>
+        <p><span class="f ok">에이스상사</span>(이하 "고객")와 노마진 주식회사(이하 "회사")는 회사가 제공하는 <span class="f ok">Pipeline CRM</span> 이용에 관하여 다음과 같이 계약을 체결한다.</p>
+        <h4>제1조 (계약 기간)</h4>
+        <p>계약 기간은 <span class="f ok">2026-12-01</span>부터 <span class="f ok">2027-11-30</span>까지로 한다.</p>
+        <h4>제2조 (이용 요금)</h4>
+        <p>고객은 이용 요금으로 금 <span class="f ok" id="pop-anchor">11,000,000</span>원(부가세 별도)을 <span class="f ok">연 일시불</span>으로 지급한다.</p>
+        <h4>제3조 (담당자)</h4>
+        <p>고객 담당자: <span class="f ok">김민수</span> (<span class="f ok">kim@ace.co.kr</span>)</p>
+        <div class="line" style="width:90%"></div><div class="line" style="width:75%"></div>
+        <p style="margin-top:24px">계약일: <span class="f">[계약일]</span></p>
+        <div class="row" style="justify-content:space-between;margin-top:10px"><div>고객: <span class="f ok">에이스상사</span><br>대표: <span class="f now">[고객 대표자]</span> (인)</div><div>회사: 노마진 주식회사<br>대표: 홍길동 (인)</div></div>
+      </div>
+      <div class="pop" style="left:240px;top:290px">
+        <b>이용 요금</b> <span class="muted">· 금액(원)</span>
+        <div class="input" style="margin:6px 0">11,000,000</div>
+        <div class="row"><span class="muted">Enter 저장 · Esc 취소</span><span class="spacer"></span><button class="btn sm primary">저장</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="right:270px;top:250px">칩 클릭 → 직접 수정 팝오버 (대화에도 "수정됨" 기록)</div>
+  <div class="anno" style="left:30px;top:350px">날짜·금액은 서버가 먼저 해석, 실패할 때만 AI. 불확실하면 값을 넣지 않고 다시 질문</div>
+</section>
+
+<!-- ───────── 4. 견적서 품목 ───────── -->
+<section class="screen" id="s4">
+  <div class="caption"><b>④</b> 견적서: 품목 표는 "품목 · 수량 · 단가"를 말할 때마다 행 추가. 공급가액·부가세·합계·한글 금액은 서버 계산(AI 계산 아님). `품목 추가 완료` 또는 "끝"으로 다음 항목 (FR-12, FR-21)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span class="on">새 문서</span><span>작성한 문서</span><span>템플릿</span></div>
+  <div class="split">
+    <div class="chat">
+      <div class="chat-head"><b>✦ 문서 작성 Assistant</b> <span class="muted">· 표준 견적서</span>
+        <div class="row muted" style="margin-top:4px">필수 4/6 · 품목 2 <span class="spacer"></span>임시 저장됨 ✓</div>
+        <div class="progress"><i style="width:66%"></i></div></div>
+      <div class="msgs">
+        <div class="bubble ai">품목을 알려주세요. 예: "CRM 라이선스 10개 단가 5만원"</div>
+        <div class="bubble me">CRM 라이선스 20개 월 5만원 12개월</div>
+        <div class="bubble done">✓ 품목 1 추가 — CRM 라이선스(12개월) · 20 · 600,000 = <b>12,000,000</b></div>
+        <div class="bubble me">초기 세팅 비용 1식 150만원</div>
+        <div class="bubble done">✓ 품목 2 추가 — 초기 세팅 · 1 · 1,500,000 = <b>1,500,000</b><br>합계 <b>14,850,000원</b> (부가세 포함)</div>
+        <div class="bubble ai">더 추가할 품목이 있나요?
+          <div class="quick"><button class="btn sm primary">품목 추가 완료</button><button class="btn sm">품목 2 삭제</button></div></div>
+      </div>
+      <div class="composer"><div class="input ph">품목 입력 또는 "끝"</div><button class="btn primary">전송</button></div>
+    </div>
+    <div class="docpane">
+      <div class="doc-tool"><b>표준 견적서</b> <span class="pill">작성 중</span><span class="spacer"></span><span class="pill">미입력 2</span><button class="btn sm">완성하기</button></div>
+      <div class="paper">
+        <h2>견 적 서</h2>
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div>견적번호: <span class="f calc">Q-2026-0014</span><br>견적일: <span class="f calc">2026-11-24</span><br>수신: <span class="f ok">에이스상사</span> <span class="f ok">김민수</span> 귀하<br>유효기간: <span class="f">[유효기간]</span></div>
+          <div class="box" style="padding:6px 10px;font-size:11.5px">공급자: 노마진 주식회사<br>사업자번호: 123-45-67890<br>담당: 홍길동 (인)</div>
+        </div>
+        <p style="margin:12px 0 4px">아래와 같이 견적합니다. 합계 금액: <b><span class="f calc">일금 일천사백팔십오만원정 (₩14,850,000)</span></b></p>
+        <table class="items">
+          <tr><th>No</th><th>품목</th><th>규격</th><th>수량</th><th>단가</th><th>금액</th></tr>
+          <tr><td>1</td><td>CRM 라이선스</td><td>12개월</td><td class="n">20</td><td class="n">600,000</td><td class="n">12,000,000</td></tr>
+          <tr class="new"><td>2</td><td>초기 세팅</td><td>1식</td><td class="n">1</td><td class="n">1,500,000</td><td class="n">1,500,000</td></tr>
+          <tr><td colspan="5" class="n">공급가액</td><td class="n"><span class="f calc">13,500,000</span></td></tr>
+          <tr><td colspan="5" class="n">부가세(10%)</td><td class="n"><span class="f calc">1,350,000</span></td></tr>
+          <tr><td colspan="5" class="n"><b>합계</b></td><td class="n"><b><span class="f calc">14,850,000</span></b></td></tr>
+        </table>
+        <h4>비고</h4><p><span class="f">[비고]</span></p>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="right:30px;top:190px">점선 칩 = 계산·시스템 항목 (질문 안 함)</div>
+</section>
+
+<!-- ───────── 5. 완성 → PDF ───────── -->
+<section class="screen" id="s5">
+  <div class="caption"><b>⑤</b> 필수 항목 완료 또는 "완료" 발화 → 미입력이 있으면 확인 → 완성. 결과 카드에 PDF 다운로드 / 메일로 보내기 / 계속 수정 (FR-24, FR-27~29)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span class="on">새 문서</span><span>작성한 문서</span><span>템플릿</span></div>
+  <div class="split">
+    <div class="chat">
+      <div class="chat-head"><b>✦ 문서 작성 Assistant</b> <span class="muted">· SaaS 서비스 이용 계약서</span>
+        <div class="row muted" style="margin-top:4px">필수 8/9</div><div class="progress"><i style="width:89%"></i></div></div>
+      <div class="msgs">
+        <div class="bubble me">이 정도면 됐어, 완료</div>
+        <div class="bubble ai">필수 항목 1개(<b>계약일</b>)가 비어 있어요. 그래도 완성할까요?
+          <div class="quick"><button class="btn sm">계약일 채우기</button><button class="btn sm">오늘(2026-11-24)로 채우기</button><button class="btn sm">빈칸으로 완성</button></div></div>
+        <div class="bubble me">오늘로 채우기</div>
+        <div class="bubble done">✓ 계약일 <b>2026-11-24</b> 입력 · 문서를 완성했어요</div>
+        <div class="box" style="padding:10px;align-self:stretch">
+          <div class="row"><div class="fileicon">PDF</div><div><b>SaaS 서비스 이용 계약서 — 에이스상사</b><div class="muted">계약서_에이스상사_2026-11-24.pdf · 3쪽 · 184KB</div></div></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn">⬇ PDF 다운로드</button>
+            <button class="btn primary" data-go="s6">✉ 메일로 보내기</button>
+            <button class="btn sm">계속 수정</button>
+          </div>
+        </div>
+      </div>
+      <div class="composer"><div class="input ph">수정할 내용이 있으면 말씀하세요</div><button class="btn primary">전송</button></div>
+    </div>
+    <div class="docpane">
+      <div class="doc-tool"><b>SaaS 서비스 이용 계약서</b> <span class="pill dark">완성</span><span class="spacer"></span><button class="btn sm">⬇ PDF</button><button class="btn sm primary" data-go="s6">✉ 메일</button></div>
+      <div class="paper">
+        <div class="muted" style="text-align:right">C-2026-0031 · 1 / 3</div>
+        <h2>서비스 이용 계약서</h2>
+        <p>에이스상사(이하 "고객")와 노마진 주식회사(이하 "회사")는 회사가 제공하는 Pipeline CRM 이용에 관하여 다음과 같이 계약을 체결한다.</p>
+        <h4>제1조 (계약 기간)</h4><p>계약 기간은 2026-12-01부터 2027-11-30까지로 한다.</p>
+        <h4>제2조 (이용 요금)</h4><p>고객은 이용 요금으로 금 11,000,000원(부가세 별도)을 연 일시불로 지급한다.</p>
+        <div class="line" style="width:90%"></div><div class="line" style="width:80%"></div><div class="line" style="width:60%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="right:30px;top:150px">완성 후 미리보기 = PDF 레이아웃 (칩 강조 제거)</div>
+</section>
+
+<!-- ───────── 6. 메일 보내기 모달 ───────── -->
+<section class="screen" id="s6">
+  <div class="caption"><b>⑥</b> 메일 작성 모달: 받는 사람은 사용자가 입력(기본값 = 리드 이메일, 수정 가능). 제목·본문은 템플릿 메일 양식을 채운 결과를 보여주고 수정 가능. 첨부 PDF 표시. `보내기` → 내 Gmail로 발송 (FR-30, FR-31)</div>
+  <div class="overlay">
+    <div class="modal box">
+      <div class="modal-head"><h3>✉ 메일 보내기</h3><span class="spacer"></span><button class="btn sm" data-go="s5">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>보낸 사람</label><div class="muted">hong@nomargin.kr (내 Gmail)</div></div>
+        <div class="field"><label>받는 사람 *</label>
+          <div class="input chipbox"><span class="chip">kim@ace.co.kr ✕</span><span class="ph">주소 입력 후 Enter</span></div>
+          <div class="muted">리드 담당자 이메일로 채웠어요. 여러 명은 쉼표 또는 Enter</div></div>
+        <div class="field"><label>참조 (CC)</label><div class="input ph">선택</div></div>
+        <div class="field"><label>제목</label><div class="input">[노마진] 에이스상사 SaaS 서비스 이용 계약서 송부드립니다</div></div>
+        <div class="field"><label>본문</label>
+          <div class="input textarea">김민수 님, 안녕하세요.
+노마진 홍길동입니다.
+
+논의드린 내용으로 SaaS 서비스 이용 계약서를 첨부드립니다.
+계약 기간: 2026-12-01 ~ 2027-11-30
+검토 후 회신 부탁드립니다.
+
+감사합니다.
+홍길동 드림 | hong@nomargin.kr</div></div>
+        <div class="field"><label>첨부</label>
+          <div class="box attach"><div class="fileicon">PDF</div><div><span class="input" style="display:inline-block;padding:1px 6px;min-height:0">계약서_에이스상사_2026-11-24.pdf</span><div class="muted">184KB · 3쪽</div></div><span class="spacer"></span><button class="btn sm">👁 미리보기</button></div></div>
+      </div>
+      <div class="modal-foot"><span class="muted">보낸편지함에 저장되고 리드 이력에 기록돼요</span><span class="spacer"></span><button class="btn" data-go="s5">취소</button><button class="btn primary" data-go="s7">보내기</button></div>
+    </div>
+  </div>
+  <div class="anno" style="left:40px;top:160px">받는 사람 비어 있거나 형식 오류면 보내기 비활성</div>
+  <div class="anno" style="right:40px;top:520px">첨부는 제거 불가, 파일명만 수정. 클릭 시 새 탭 PDF 미리보기</div>
+</section>
+
+<!-- ───────── 7. 발송 완료 / 권한 없음 ───────── -->
+<section class="screen" id="s7">
+  <div class="caption"><b>⑦</b> 왼쪽: 발송 성공 → 토스트 + Assistant 메시지 + 리드 이력 기록(+단계 이동 제안, Q4). 오른쪽: Gmail 발송 권한이 없을 때 안내 + 설정 연동 / 발송 실패 배너 (FR-31~33)</div>
+  <div class="hdr"></div>
+  <div class="two" style="padding:14px;gap:14px">
+    <div class="box" style="padding:12px;position:relative;min-height:420px">
+      <b>A. 발송 성공</b>
+      <div class="msgs" style="padding:8px 0">
+        <div class="bubble done">✓ <b>kim@ace.co.kr</b>에 계약서를 보냈어요 (11:42)<br><a href="#">Gmail에서 보기 ↗</a></div>
+        <div class="bubble ai">에이스상사 리드를 <b>협상</b> 단계로 옮길까요?
+          <div class="quick"><button class="btn sm">협상으로 이동</button><button class="btn sm">그대로 두기</button></div></div>
+      </div>
+      <div class="dash" style="padding:8px;margin-top:6px;font-size:12px">
+        <b>리드 상세 › 이력</b>
+        <div style="margin-top:4px">📄 11:42 계약서 발송 — kim@ace.co.kr · 홍길동 <a href="#">문서 열기</a></div>
+        <div class="muted">10:05 단계 변경 니즈 확인 → 제안/견적</div>
+      </div>
+      <div class="toast" style="bottom:14px">에이스상사(kim@ace.co.kr)에 보냈어요</div>
+    </div>
+    <div class="box" style="padding:12px;min-height:420px">
+      <b>B. Gmail 발송 권한 없음</b>
+      <div class="box" style="padding:10px;margin-top:8px">
+        <div class="row"><div class="fileicon">PDF</div><div><b>계약서_에이스상사_2026-11-24.pdf</b></div></div>
+        <div class="row" style="margin-top:8px"><button class="btn">⬇ PDF 다운로드</button><button class="btn dis">✉ 메일로 보내기</button></div>
+        <div class="banner" style="margin-top:8px">🔒 메일을 보내려면 Gmail 발송 권한이 필요해요. 이미 Gmail을 연동했어도 한 번 다시 연동해야 합니다.
+          <div style="margin-top:6px"><button class="btn sm primary">설정에서 Gmail 연동 →</button> <span class="muted">연동 후 이 문서로 돌아와요</span></div></div>
+      </div>
+      <b style="display:block;margin-top:14px">C. 발송 실패 (모달 유지)</b>
+      <div class="banner">⚠ 메일을 보내지 못했어요: 구글 연동이 만료됐어요. 설정에서 다시 연동해 주세요. <button class="btn sm">다시 시도</button></div>
+      <div class="muted">다른 오류: 받는 사람 주소 오류 / 첨부 용량 초과(10MB) / Gmail 일시 오류</div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 8. 템플릿 목록 ───────── -->
+<section class="screen" id="s8">
+  <div class="caption"><b>⑧</b> 템플릿 탭: 종류 필터, 카드(이름·종류·항목 수·수정일). 메뉴 수정 / 복제 / 보관 (FR-5~7)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span data-go="s1">새 문서</span><span data-go="s10">작성한 문서</span><span class="on">템플릿</span></div>
+  <div class="main">
+    <div class="toolbar"><div class="tabs" style="font-size:12px"><span class="on">전체</span><span>계약서</span><span>견적서</span></div><label class="muted"><input type="checkbox"> 보관함 보기</label><span class="spacer"></span><button class="btn primary" data-go="s9">+ 템플릿 등록</button></div>
+    <div class="grid3">
+      <div class="box tcard"><span class="pill dark">계약서</span><h4>SaaS 서비스 이용 계약서</h4><div class="muted">항목 12 · 문서 8건</div><div class="muted">11/20 홍길동 수정</div><div class="row" style="margin-top:8px"><button class="btn sm" data-go="s9">수정</button><button class="btn sm">복제</button><button class="btn sm">보관</button><span class="spacer"></span><button class="btn sm primary" data-go="s2">이걸로 작성</button></div></div>
+      <div class="box tcard"><span class="pill">견적서</span><h4>표준 견적서</h4><div class="muted">항목 6 + 품목 표 · 문서 21건</div><div class="muted">11/18 이지은 수정</div><div class="row" style="margin-top:8px"><button class="btn sm">수정</button><button class="btn sm">복제</button><button class="btn sm">보관</button><span class="spacer"></span><button class="btn sm primary" data-go="s4">이걸로 작성</button></div></div>
+      <div class="box tcard"><span class="pill dark">계약서</span><h4>비밀유지계약(NDA)</h4><div class="muted">항목 7 · 문서 3건</div><div class="muted">11/02 홍길동 수정</div><div class="row" style="margin-top:8px"><button class="btn sm">수정</button><button class="btn sm">복제</button><button class="btn sm">보관</button><span class="spacer"></span><button class="btn sm primary">이걸로 작성</button></div></div>
+      <div class="box tcard"><span class="pill">견적서</span><h4>컨설팅 견적서</h4><div class="muted">항목 5 + 품목 표 · 문서 2건</div><div class="muted">10/28 박정호 수정</div><div class="row" style="margin-top:8px"><button class="btn sm">수정</button><button class="btn sm">복제</button><button class="btn sm">보관</button><span class="spacer"></span><button class="btn sm primary">이걸로 작성</button></div></div>
+      <div class="dash tcard" style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px"><div>+ 새 템플릿</div><button class="btn sm">기본 템플릿 불러오기</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 9. 템플릿 편집 ───────── -->
+<section class="screen" id="s9">
+  <div class="caption"><b>⑨</b> 템플릿 편집: 본문 붙여넣기 → 바뀌는 글자 드래그 → `항목으로 지정` (또는 <code>{{항목}}</code> 직접 입력). 오른쪽 항목 패널에서 유형·질문·필수·리드 자동 채움·순서 설정. 견적서는 품목 표 삽입. 메일 양식 탭 (FR-8~15)</div>
+  <div class="hdr"></div>
+  <div class="row" style="padding:10px 14px;border-bottom:2px solid var(--ink);background:#fff">
+    <button class="btn sm" data-go="s8">← 템플릿</button>
+    <div class="input" style="width:280px">SaaS 서비스 이용 계약서</div>
+    <div class="tabs" style="font-size:12px"><span class="on">계약서</span><span>견적서</span></div>
+    <span class="spacer"></span><button class="btn sm">미리보기</button><button class="btn primary">저장</button>
+  </div>
+  <div class="editor">
+    <div class="ed-main">
+      <div class="row" style="margin-bottom:8px"><div class="tabs" style="font-size:12px"><span class="on">본문</span><span>메일 양식</span></div><span class="spacer"></span><button class="btn sm">+ 항목 삽입</button><button class="btn sm">▦ 품목 표 삽입</button><span class="muted">서식: # 제목 · ## 조항 · - 목록</span></div>
+      <div class="box src"># 서비스 이용 계약서
+
+<span class="tok">{{회사명}}</span>(이하 "고객")와 노마진 주식회사(이하 "회사")는 회사가 제공하는 <span class="tok">{{서비스명}}</span> 이용에 관하여 다음과 같이 계약을 체결한다.
+
+## 제1조 (계약 기간)
+계약 기간은 <span class="tok">{{계약 시작일}}</span>부터 <span class="tok">{{계약 종료일}}</span>까지로 한다.
+
+## 제2조 (이용 요금)
+고객은 이용 요금으로 금 <span class="sel">12,000,000</span>원(부가세 별도)을 <span class="tok">{{결제 방식}}</span>으로 지급한다.
+
+## 제3조 (담당자)
+고객 담당자: <span class="tok">{{담당자}}</span> (<span class="tok">{{담당자 이메일}}</span>)
+...
+계약일: <span class="tok">{{계약일}}</span>
+대표: <span class="tok">{{고객 대표자}}</span> (인)</div>
+      <div class="pop" style="left:300px;top:250px">
+        <b>선택한 글자를 항목으로 지정</b>
+        <div class="muted">"12,000,000"</div>
+        <div class="input" style="margin:6px 0">이용 요금</div>
+        <label class="muted"><input type="checkbox" checked> 본문의 같은 글자 2곳 모두 바꾸기</label>
+        <div class="row" style="margin-top:6px"><span class="spacer"></span><button class="btn sm">취소</button><button class="btn sm primary">항목으로 지정</button></div>
+      </div>
+      <div class="anno" style="left:30px;bottom:30px">붙여넣은 Word 문서의 줄바꿈·조항 번호는 유지, 표·이미지는 텍스트로</div>
+    </div>
+    <div class="ed-side">
+      <div class="row"><b>항목 9</b><span class="muted">질문 순서 (드래그)</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>회사명</b> <span class="pill">텍스트</span> <span class="pill">필수</span> <span class="muted">← 리드: 회사명</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>서비스명</b> <span class="pill">선택지</span> <span class="muted">기본 Pipeline CRM</span></div>
+      <div class="frow open"><span class="grip">⠿</span><b>계약 시작일</b> <span class="pill">날짜</span> <span class="pill">필수</span>
+        <div style="margin-top:6px">
+          <div class="field"><label>유형</label><div class="select">날짜 ▾</div></div>
+          <div class="field"><label>질문 문구</label><div class="input">계약 시작일은 언제인가요?</div></div>
+          <div class="two"><div class="field"><label>필수</label><div class="select">예 ▾</div></div><div class="field"><label>리드 자동 채움</label><div class="select">없음 ▾</div></div></div>
+          <div class="field"><label>예시·설명</label><div class="input ph">예: 2026-12-01</div></div>
+        </div></div>
+      <div class="frow"><span class="grip">⠿</span><b>계약 종료일</b> <span class="pill">날짜</span> <span class="muted">= 시작일 + 기간</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>이용 요금</b> <span class="pill">금액</span> <span class="pill">필수</span> <span class="muted">← 리드: 예상 금액</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>결제 방식</b> <span class="pill">선택지</span> <span class="muted">월/연/분기</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>담당자</b> <span class="pill">텍스트</span> <span class="muted">← 리드: 담당자</span></div>
+      <div class="frow"><span class="grip">⠿</span><b>담당자 이메일</b> <span class="pill">이메일</span> <span class="muted">← 리드: 이메일</span></div>
+      <div class="frow" style="border-style:dashed"><b>계약일</b> <span class="pill">날짜</span> <span class="pill">필수</span></div>
+      <div class="muted" style="margin-top:8px">시스템 항목: {{문서번호}} {{작성일}} {{작성자}} {{작성자_이메일}}<br>견적서 계산 항목: {{공급가액}} {{부가세}} {{합계}} {{합계_한글}}</div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 10. 작성한 문서 ───────── -->
+<section class="screen" id="s10">
+  <div class="caption"><b>⑩</b> 작성한 문서 목록: 종류·상태 필터, 검색. 작성 중 → 대화 이어서, 완성·발송됨 → 미리보기·재발송·복제. 발송됨은 삭제 불가 (FR-34~36)</div>
+  <div class="hdr"></div>
+  <div class="subtabs"><span data-go="s1">새 문서</span><span class="on">작성한 문서</span><span data-go="s8">템플릿</span></div>
+  <div class="main">
+    <div class="toolbar"><div class="input ph" style="width:240px">🔍 제목·회사명</div><div class="select">종류: 전체 ▾</div><div class="select">상태: 전체 ▾</div><label class="muted"><input type="checkbox"> 내 문서만</label></div>
+    <table class="list">
+      <tr><th>제목</th><th>종류</th><th>리드</th><th>상태</th><th>작성자</th><th>수정·발송</th><th></th></tr>
+      <tr data-go="s7"><td>SaaS 서비스 이용 계약서</td><td><span class="pill dark">계약서</span></td><td>에이스상사</td><td><span class="pill dark">발송됨</span></td><td>홍길동</td><td>11/24 11:42 발송</td><td><button class="btn sm">⬇</button> <button class="btn sm">재발송</button> <button class="btn sm">복제</button></td></tr>
+      <tr data-go="s4"><td>표준 견적서</td><td><span class="pill">견적서</span></td><td>에이스상사</td><td><span class="pill">작성 중 4/6</span></td><td>홍길동</td><td>11/24 10:20</td><td><button class="btn sm">이어서 작성</button> <button class="btn sm">🗑</button></td></tr>
+      <tr><td>비밀유지계약(NDA)</td><td><span class="pill dark">계약서</span></td><td>블루웨이브</td><td><span class="pill">완성</span></td><td>이지은</td><td>11/22</td><td><button class="btn sm">⬇</button> <button class="btn sm">메일</button> <button class="btn sm">🗑</button></td></tr>
+      <tr><td>컨설팅 견적서</td><td><span class="pill">견적서</span></td><td>— (리드 없음)</td><td><span class="pill dark">발송됨</span></td><td>박정호</td><td>11/19 발송 (2회)</td><td><button class="btn sm">⬇</button> <button class="btn sm">재발송</button></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ───────── 11. 모바일 ───────── -->
+<section class="screen phone" id="s11">
+  <div class="caption"><b>⑪</b> 모바일: 2단 대신 `대화 / 문서` 토글. 답변하면 토스트 + 문서 탭에 점 (FR-4)</div>
+  <div class="header"><span class="logo">Pipeline CRM</span><span class="spacer"></span>☰</div>
+  <div class="m-toggle"><span class="on">💬 대화</span><span>📄 문서 <i class="dotmark"></i></span></div>
+  <div style="position:relative;min-height:560px;background:#fff">
+    <div style="padding:0 12px" class="muted">SaaS 서비스 이용 계약서 · 필수 7/9</div>
+    <div class="progress" style="margin:4px 12px 0"><i style="width:78%"></i></div>
+    <div class="msgs">
+      <div class="bubble ai"><b>결제 방식</b>을 골라 주세요.<div class="quick"><button class="btn sm">월 분할</button><button class="btn sm">연 일시불</button></div></div>
+      <div class="bubble me">연 일시불</div>
+      <div class="bubble done">✓ 결제 방식 <b>연 일시불</b></div>
+      <div class="bubble ai"><b>고객 대표자</b> 성함을 알려주세요.<div class="quick"><button class="btn sm">건너뛰기</button></div></div>
+    </div>
+    <div class="toast">결제 방식 반영됨 · 문서 보기</div>
+    <div class="composer" style="position:absolute;left:0;right:0;bottom:0;background:#fff"><div class="input ph">답변 입력…</div><button class="btn primary">↑</button></div>
+  </div>
+</section>
+
+<template id="hdr-tpl">
+  <div class="header">
+    <span class="logo">Pipeline CRM</span>
+    <div class="tabs"><span>파이프라인</span><span>미팅 노트</span><span class="on">계약서</span><span>캘린더</span><span>설정</span></div>
+    <span class="spacer"></span><span class="muted">🌓</span><span class="pill">홍길동 ▾</span>
+  </div>
+</template>
+
+<script>
+  // 공통 헤더 삽입
+  const tpl = document.getElementById("hdr-tpl");
+  document.querySelectorAll(".hdr").forEach((h) => h.replaceWith(tpl.content.cloneNode(true)));
+  // 화면 전환 (와이어프레임 내비게이션)
+  function go(id) {
+    document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === id));
+    document.querySelectorAll(".toc button").forEach((b) => b.classList.toggle("on", b.dataset.go === id));
+    history.replaceState(null, "", "#" + id);
+    window.scrollTo(0, 0);
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go]");
+    if (t) { e.preventDefault(); go(t.dataset.go); }
+  });
+  if (location.hash && document.getElementById(location.hash.slice(1))) go(location.hash.slice(1));
+</script>
+</body>
+</html>

@@ -7,11 +7,12 @@ import { useOpenSettings } from "@/lib/settingsModal";
 import type { Me } from "@/lib/types";
 import { Avatar, Badge, Icon, type IconName } from "./ui";
 
-export type View = "pipeline" | "meetings" | "calendar";
+export type View = "pipeline" | "meetings" | "contracts" | "calendar";
 
 export const NAV: { view: View; href: string; label: string; icon: IconName }[] = [
   { view: "pipeline", href: "/", label: "파이프라인", icon: "pipeline" },
   { view: "meetings", href: "/meetings", label: "미팅 노트", icon: "notes" },
+  { view: "contracts", href: "/contracts", label: "계약서", icon: "contract" },
   { view: "calendar", href: "/calendar", label: "캘린더", icon: "calendar" },
 ];
 
@@ -70,8 +71,8 @@ export default function Sidebar({ view, me, onLogout, assistantOpen, onToggleAss
       </div>
       <div className="side-section">메뉴</div>
       <nav className="side-nav" aria-label="메뉴">
-        {/* 모바일 하단 탭 맨 왼쪽: AI Assistant 채팅 (데스크톱은 상단 바 버튼·오른쪽 패널) */}
-        <button
+        {/* 모바일 하단 탭 맨 왼쪽: AI Assistant 채팅 (데스크톱은 상단 바 버튼·오른쪽 패널). 계약서 화면은 문서 작성 Assistant가 따로 있어 숨김 */}
+        {view !== "contracts" && <button
           type="button"
           className={`side-link side-ai${assistantOpen ? " on" : ""}`}
           aria-pressed={assistantOpen}
@@ -80,7 +81,7 @@ export default function Sidebar({ view, me, onLogout, assistantOpen, onToggleAss
         >
           <Icon name="sparkle" size={18} />
           <span className="side-label">AI</span>
-        </button>
+        </button>}
         {NAV.map((n) => (
           <Link
             key={n.view}

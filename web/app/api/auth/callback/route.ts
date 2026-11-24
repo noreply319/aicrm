@@ -74,7 +74,9 @@ export async function GET(req: Request) {
       [user.id, tokens.refresh_token ? encrypt(tokens.refresh_token) : null, scopes, calendarEnabled, gmailEnabled]
     );
     forgetAccessToken(user.id);
-    return go(`/settings?${purpose}=connected`);
+    // 돌아갈 화면(기본: 설정)에 연동 결과 표시
+    const next = safeNext(st.next, "/settings");
+    return go(`${next}${next.includes("?") ? "&" : "?"}${purpose}=connected`);
   } catch (e) {
     if (e instanceof GoogleError) {
       console.error("[auth] callback", e.message);

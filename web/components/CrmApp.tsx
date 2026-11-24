@@ -26,6 +26,7 @@ import CalendarView from "./CalendarView";
 import EventModal, { type EventModalMode } from "./EventModal";
 import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
+import ContractsView from "./ContractsView";
 
 type ModalState = { open: false } | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab };
 
@@ -59,6 +60,7 @@ type EventModalState =
 
 const viewOf = (pathname: string): View =>
   pathname.startsWith("/meetings") ? "meetings"
+    : pathname.startsWith("/contracts") ? "contracts"
     : pathname.startsWith("/calendar") ? "calendar"
         : "pipeline";
 
@@ -523,6 +525,8 @@ export default function CrmApp() {
                   onDismissCandidate={dismissSchedule}
                   onExpired={auth.reload}
                 />
+              ) : view === "contracts" ? (
+                <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
               ) : (
                 <MeetingList
                   notes={meetings.notes}
@@ -535,7 +539,10 @@ export default function CrmApp() {
               )}
             </div>
             {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-            <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+            {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant(다시 열기 탭 포함)를 숨긴다 */}
+            <div className="assistant-slot" hidden={view === "contracts"}>
+              <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+            </div>
           </div>
         </div>
         {modal.open && (
