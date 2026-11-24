@@ -3,10 +3,11 @@
 import { api } from "./api";
 
 /**
- * 실시간 자막 (OpenAI Realtime 전사, gpt-live-transcribe)
+ * 실시간 자막 (OpenAI Realtime 전사, 기본 gpt-4o-transcribe)
  *  - 서버(/api/meetings/realtime-token)가 발급한 임시 키로 브라우저가 WebSocket에 직접 연결
  *  - 마이크 → AudioWorklet(24kHz PCM16) → input_audio_buffer.append
- *  - 서버 VAD를 쓰지 않으므로 무음이 이어지거나 너무 길어지면 클라이언트가 직접 commit
+ *  - 서버 VAD를 쓰지 않으므로 클라이언트가 말이 끊기는 지점에서 직접 commit
+ *    (gpt-4o-transcribe·gpt-transcribe는 commit된 단위로 결과를 보내므로 짧은 쉼마다 확정해 자막 지연을 줄인다)
  *  - 연결이 끊기면(세션 시간 한도·네트워크) 새 키로 자동 재연결
  * 실시간 자막은 미리보기다. 본문에는 5분 구간 전사(gpt-transcribe) 결과가 들어간다.
  */
@@ -14,11 +15,13 @@ import { api } from "./api";
 const WS_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 const WORKLET_URL = "/worklets/pcm24k-worklet.js";
 
-// 무음 감지: 말소리 뒤 이 시간 동안 조용하면 한 줄로 확정
+// 무음 감지: 말소리 뒤 이 시간 동안 조용하면 확정
 const SPEECH_RMS = 0.015;
-const SILENCE_COMMIT_MS = 800;
-// 계속 말하는 중이어도 이 시간이 지나면 확정 (자막 줄이 너무 길어지지 않게)
-const MAX_UTTERANCE_MS = 15_000;
+const SILENCE_COMMIT_MS = 600;
+// 계속 말하는 중이면 이 시간 뒤 첫 단어 사이 틈(조용한 100ms)에서 확정 — 단어 중간에서 자르지 않도록
+const SOFT_UTTERANCE_MS = 6_000;
+// 틈이 없어도 이 시간이 지나면 강제로 확정
+const MAX_UTTERANCE_MS = 12_000;
 const MAX_RECONNECTS = 5;
 
 export type LiveState = "connecting" | "live" | "reconnecting" | "unavailable" | "stopped";
@@ -73,7 +76,12 @@ export class LiveTranscriber {
   async attach(stream: MediaStream) {
     this.detachAudio();
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      // 브라우저의 고품질 리샘플러로 24kHz를 직접 받는다 (지원하지 않으면 기본 레이트 + 워크릿 변환)
+      try {
+        this.ctx = new AudioContext({ sampleRate: 24000 });
+      } catch {
+        this.ctx = new AudioContext();
+      }
       await this.ctx.audioWorklet.addModule(WORKLET_URL);
     }
     if (this.ctx.state !== "running") await this.ctx.resume().catch(() => {});
@@ -166,14 +174,18 @@ export class LiveTranscriber {
     this.uncommitted = true;
 
     const now = performance.now();
-    if (rms >= SPEECH_RMS) {
+    const voiced = rms >= SPEECH_RMS;
+    if (voiced) {
       if (!this.hasSpeech) this.utteranceStart = now;
       this.hasSpeech = true;
       this.lastVoiceAt = now;
     }
+    if (!this.hasSpeech) return;
+    const length = now - this.utteranceStart;
     if (
-      this.hasSpeech &&
-      (now - this.lastVoiceAt >= SILENCE_COMMIT_MS || now - this.utteranceStart >= MAX_UTTERANCE_MS)
+      now - this.lastVoiceAt >= SILENCE_COMMIT_MS ||
+      (length >= SOFT_UTTERANCE_MS && !voiced) ||
+      length >= MAX_UTTERANCE_MS
     ) {
       this.commit();
     }

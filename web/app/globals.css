@@ -454,8 +454,8 @@ button { font: inherit; cursor: pointer; }
 .live-connecting, .live-reconnecting { background: var(--prio-mid-fg); }
 .live-unavailable { background: var(--danger); }
 .live-lines { max-height: 160px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
-.live-lines p { margin: 0 0 4px; }
-.live-lines p.partial { color: var(--text-2); }
+.live-lines p { margin: 0; }
+.live-lines .partial { color: var(--text-3); }
 .rec-gap {
   padding: 8px 12px; border-radius: 9px; font-size: 12.5px;
   background: var(--surface-2); color: var(--text-2); border: 1px dashed var(--border);

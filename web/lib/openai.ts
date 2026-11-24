@@ -11,7 +11,8 @@ const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
 // 빠르고 저렴한 기본 모델. OPENAI_MODEL 환경 변수로 변경 가능
 const DEFAULT_CHAT_MODEL = "gpt-6-luna";
 // 음성 전사 기본 모델. OPENAI_TRANSCRIBE_MODEL 환경 변수로 변경 가능
-const DEFAULT_TRANSCRIBE_MODEL = "gpt-transcribe";
+// ⚠ gpt-4o-transcribe는 OpenAI에서 지원 종료 예정(2027년 초) → 종료 전 gpt-transcribe로 교체
+const DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
 
 /** 사용자에게 보여줄 한국어 메시지 + HTTP 상태 코드 */
 export class AiError extends Error {
@@ -114,8 +115,13 @@ export async function transcribeAudio(audio: File): Promise<string> {
 }
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
-// 실시간 자막 기본 모델. OPENAI_LIVE_TRANSCRIBE_MODEL 환경 변수로 변경 가능
-const DEFAULT_LIVE_TRANSCRIBE_MODEL = "gpt-live-transcribe";
+// 실시간 자막 기본 모델: 정확도 우선 (확정 단위로 결과가 옴). OPENAI_LIVE_TRANSCRIBE_MODEL로 변경 가능
+// ⚠ gpt-4o-transcribe 지원 종료 전 gpt-transcribe로 교체. 단어 단위로 더 빠른 자막은 gpt-live-transcribe
+const DEFAULT_LIVE_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
+
+/** Realtime 전사 언어 지정: gpt-4o·whisper 계열은 language(단수), 신규 모델은 languages(배열)만 받는다 */
+const realtimeLanguage = (model: string) =>
+  /^(gpt-4o|whisper)/.test(model) ? { language: "ko" } : { languages: ["ko"] };
 // 임시 키 유효 시간: 이 시간 안에 연결을 시작해야 한다 (연결된 세션은 계속 유지)
 const LIVE_SECRET_TTL_SEC = 120;
 
@@ -124,6 +130,7 @@ const LIVE_SECRET_TTL_SEC = 120;
  * 원래 API 키는 브라우저로 보내지 않는다. 오디오는 24kHz PCM, 커밋은 클라이언트가 직접 한다.
  */
 export async function createLiveTranscribeSecret(): Promise<{ value: string; expiresAt: number }> {
+  const liveModel = process.env.OPENAI_LIVE_TRANSCRIBE_MODEL || DEFAULT_LIVE_TRANSCRIBE_MODEL;
   const body = await send(
     CLIENT_SECRETS_URL,
     {
@@ -137,10 +144,7 @@ export async function createLiveTranscribeSecret(): Promise<{ value: string; exp
             input: {
               format: { type: "audio/pcm", rate: 24000 },
               noise_reduction: { type: "near_field" },
-              transcription: {
-                model: process.env.OPENAI_LIVE_TRANSCRIBE_MODEL || DEFAULT_LIVE_TRANSCRIBE_MODEL,
-                languages: ["ko"],
-              },
+              transcription: { model: liveModel, ...realtimeLanguage(liveModel) },
               turn_detection: null,
             },
           },

@@ -8,8 +8,8 @@ import { LiveTranscriber, type LiveLine, type LiveState } from "@/lib/liveTransc
 
 /**
  * 미팅 녹음
- *  - 실시간 자막: Realtime 전사(gpt-live-transcribe)로 말하는 동안 미리보기
- *  - 본문: 5분 구간마다 gpt-transcribe로 다시 전사한 정확한 텍스트를 이어 붙임
+ *  - 실시간 자막: Realtime 전사(gpt-4o-transcribe)로 말하는 동안 미리보기 (한 문단으로 이어서 표시)
+ *  - 본문: 5분 구간마다 gpt-4o-transcribe로 다시 전사한 정확한 텍스트를 이어 붙임
  *  - 화면 잠금·앱 전환으로 마이크가 끊기면 돌아왔을 때 자동으로 이어서 녹음
  *  - 잠금 중에도 녹음해야 하면 휴대폰 녹음 앱 파일을 업로드해 구간 전사
  */
@@ -54,7 +54,6 @@ const ROTATE_BYTES = AUDIO_MAX_BYTES * 0.85;
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 // 화면이 이 시간 이상 가려졌는데 녹음 데이터가 늘지 않았으면 끊긴 것으로 본다
 const HIDDEN_CHECK_MS = 3000;
-const LIVE_LINES_SHOWN = 6;
 
 const pickMime = () =>
   MIME_CANDIDATES.find((m) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(m)) ?? "";
@@ -515,7 +514,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
   const failed = segments.filter((s) => s.status === "error");
   const totalSlots =
     mode === "file" ? segments.length : Math.max(segments.length, Math.ceil(RECORD_MAX_SEC / RECORD_SEGMENT_SEC));
-  const shownLines = liveLines.slice(-LIVE_LINES_SHOWN);
+  // 쉼마다 확정되는 조각을 줄바꿈 없이 한 문단으로 잇는다
+  const finalText = liveLines.filter((l) => l.final).map((l) => l.text).join(" ");
+  const partialText = liveLines.filter((l) => !l.final && l.text).map((l) => l.text).join(" ");
 
   return (
     <div className="recorder">
@@ -590,12 +591,13 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus }: Pr
             )}
           </div>
           <div className="live-lines" ref={liveBoxRef} aria-live="polite">
-            {shownLines.length === 0 ? (
-              <span className="muted">{phase === "recording" ? "말하면 여기에 바로 표시됩니다…" : ""}</span>
+            {!finalText && !partialText ? (
+              <span className="muted">{phase === "recording" ? "말하면 잠시 후 여기에 표시됩니다…" : ""}</span>
             ) : (
-              shownLines.map((l) => (
-                <p key={l.id} className={l.final ? "" : "partial"}>{l.text || "…"}</p>
-              ))
+              <p>
+                {finalText}
+                {partialText && <span className="partial">{finalText ? " " : ""}{partialText}</span>}
+              </p>
             )}
           </div>
           {liveMsg && <div className="muted">{liveMsg}</div>}
