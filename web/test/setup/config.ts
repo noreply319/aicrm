@@ -14,3 +14,10 @@ export function assertSafeTestDb(url: string) {
     throw new Error(`테스트 DB는 로컬의 *test* DB만 사용할 수 있습니다: ${u.hostname}${u.pathname}`);
   }
 }
+
+/**
+ * e2e 로그인: 테스트 DB에만 만드는 테스트 사용자·세션 (구글 로그인 대신 세션 쿠키를 직접 넣는다).
+ * 로컬 테스트 DB 전용 값이라 고정 토큰을 쓴다.
+ */
+export const E2E_USER_EMAIL = "e2e@test.local";
+export const E2E_SESSION_TOKEN = "e2e-test-session-token-local-only";

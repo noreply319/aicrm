@@ -50,3 +50,20 @@ export async function fakeTranscribe(page: Page) {
     })
   );
 }
+
+/**
+ * 노트 저장 후 AI 요청 가짜 응답 (서버가 OpenAI를 부르지 않도록 브라우저에서 가로챔)
+ *  - 자동 요약: 저장된 노트를 읽어 요약·다음 액션만 채워 돌려준다
+ *  - 다음 미팅 추출: 일정 없음
+ */
+export const FAKE_SUMMARY = "견적 관련 첫 미팅. 고객이 도입 일정을 문의함.";
+export async function fakeNoteAi(page: Page) {
+  await page.route("**/api/meetings/*/summarize", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/")[3];
+    const note = await (await page.request.get(`/api/meetings/${id}`)).json();
+    await route.fulfill({ json: { ...note, summary: FAKE_SUMMARY, nextActions: "- 견적서 발송" } });
+  });
+  await page.route("**/api/meetings/*/schedule-candidates", (route) =>
+    route.fulfill({ json: { registered: [], candidates: [] } })
+  );
+}

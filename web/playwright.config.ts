@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { TEST_DATABASE_URL } from "./test/setup/config";
+import { E2E_SESSION_TOKEN, E2E_USER_EMAIL, TEST_DATABASE_URL } from "./test/setup/config";
 
 const PORT = 3100;
 
@@ -8,6 +8,7 @@ const PORT = 3100;
  *  - 브라우저는 설치된 Chrome 사용 (별도 다운로드 없음)
  *  - OpenAI 호출(전사 등)은 브라우저에서 page.route로 가짜 응답
  *  - 같은 DB를 쓰므로 순서대로 1개씩 실행
+ *  - 로그인: global-setup이 테스트 사용자 세션을 만들고, 모든 페이지·API 요청에 세션 쿠키를 붙인다
  */
 export default defineConfig({
   testDir: "e2e",
@@ -16,13 +17,22 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   reporter: [["list"]],
-  globalSetup: "./test/setup/global-db.ts",
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: `http://localhost:${PORT}`,
     channel: "chrome",
     locale: "ko-KR",
     timezoneId: "Asia/Seoul",
     trace: "retain-on-failure",
+    storageState: {
+      cookies: [
+        {
+          name: "crm_session", value: E2E_SESSION_TOKEN, domain: "localhost", path: "/",
+          expires: -1, httpOnly: true, secure: false, sameSite: "Lax",
+        },
+      ],
+      origins: [],
+    },
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], channel: "chrome" }, testIgnore: /mobile\.spec/ },
@@ -36,6 +46,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
       OPENAI_API_KEY: "e2e-test-key",
+      ALLOWED_EMAILS: E2E_USER_EMAIL,
     },
   },
 });

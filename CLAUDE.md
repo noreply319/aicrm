@@ -145,6 +145,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
   `TEST_DATABASE_URL`로 변경 가능하지만 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
 - OpenAI는 실제로 호출하지 않는다: unit·integration은 `fetch`를, e2e는 `page.route`로 API 응답을 가짜로 대체. e2e 녹음은 가짜 마이크(`getUserMedia` 대체) 사용.
 - e2e는 설치된 Chrome(`channel: "chrome"`)을 쓰므로 브라우저 다운로드 불필요. 순서대로 1개씩 실행(같은 DB).
+- e2e 로그인: `e2e/global-setup.ts`가 테스트 DB에 테스트 사용자·세션을 만들고 모든 요청에 세션 쿠키를 붙인다(서버 `ALLOWED_EMAILS`=테스트 계정). 노트 저장 후 자동 요약·다음 미팅 추출은 `fakeNoteAi`로 가짜 응답.
 - 새 기능을 추가하면 중요한 흐름은 테스트를 함께 추가. API 변경 시 integration 테스트로 이력(`lead_events`) 기록까지 확인.
 
 ## Git / 작업 규칙

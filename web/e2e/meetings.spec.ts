@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createLead, fakeMicrophone, fakeTranscribe, resetDb } from "./helpers";
+import { createLead, FAKE_SUMMARY, fakeMicrophone, fakeNoteAi, fakeTranscribe, resetDb } from "./helpers";
 
 test.beforeEach(resetDb);
+// 노트 저장 후 자동 요약·다음 미팅 추출은 가짜 응답 (OpenAI 호출 없음)
+test.beforeEach(({ page }) => fakeNoteAi(page));
 
 test("붙여넣기로 노트를 작성해 리드에 연결하면, 카드 배지와 리드 상세에 보인다", async ({ page, request }) => {
   const lead = await createLead(request, "한빛소프트");
@@ -44,6 +46,10 @@ test("녹음이 끝나면 리드 없이 자동 저장되고(화자 구분), 나�
   await expect(page.locator(".autosave-note")).toContainText("자동 저장되었습니다");
   const body = page.locator(".note-body-input");
   await expect(body).toHaveValue(/화자 1: 안녕하세요, 견적 관련 미팅입니다\.\n화자 2: 네 반갑습니다\./);
+
+  // 미팅 완료 후 자동 요약 → 요약 칸에 반영
+  await expect(page.locator(".autosave-note")).toContainText("AI 요약과 다음 액션도 정리되었습니다");
+  await expect(page.getByText(FAKE_SUMMARY).first()).toBeVisible();
 
   const saved = await (await request.get("/api/meetings")).json();
   expect(saved).toHaveLength(1);
