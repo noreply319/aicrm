@@ -122,12 +122,20 @@ export default function MeetingNoteModal({
   /** 구간 전사 결과를 본문 끝에 이어 붙인다 */
   const appendTranscript = useCallback((label: string, text: string) => {
     setBody((prev) => {
-      const line = `[${label}] ${text}`;
+      // 화자 구분 결과("화자 1: …" 여러 줄)는 구간 라벨 다음 줄부터
+      const line = text.includes("\n") || /^[^:\n]{1,30}: /.test(text) ? `[${label}]\n${text}` : `[${label}] ${text}`;
       return (prev.trimEnd() ? prev.trimEnd() + "\n\n" : "") + line;
     });
     setRecorded(true);
     setDirty(true);
     autoSavePendingRef.current = true;
+  }, []);
+
+  /** 화자 이름 변경을 본문에 반영 ("화자 1:" → "김민수:") */
+  const renameSpeakerInBody = useCallback((from: string, to: string) => {
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    setBody((prev) => prev.replace(new RegExp(`^${esc}:`, "gm"), `${to}:`));
+    setDirty(true);
   }, []);
 
   const source: NoteSource = recorded ? (typed ? "mixed" : "recording") : "manual";
@@ -349,7 +357,7 @@ export default function MeetingNoteModal({
 
             {/* 탭을 바꿔도 녹음이 끊기지 않도록 언마운트하지 않고 숨긴다 */}
             <div hidden={tab !== "record"}>
-              <MeetingRecorder onTranscript={appendTranscript} onStatus={setRec} />
+              <MeetingRecorder onTranscript={appendTranscript} onStatus={setRec} onRenameSpeaker={renameSpeakerInBody} />
             </div>
 
             <div className="field">

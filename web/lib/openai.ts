@@ -3,16 +3,33 @@ import "server-only";
 /**
  * OpenAI 호출 공통 모듈 (SDK 없이 fetch 사용)
  *  - 채팅: AI Assistant 답변, 미팅 노트 요약
- *  - 전사: 미팅 녹음 → 텍스트 (GPT transcribe)
+ *  - 전사: 미팅 녹음 → 텍스트 (화자 구분)
  */
 
 const CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
 // 빠르고 저렴한 기본 모델. OPENAI_MODEL 환경 변수로 변경 가능
 const DEFAULT_CHAT_MODEL = "gpt-6-luna";
-// 음성 전사 기본 모델. OPENAI_TRANSCRIBE_MODEL 환경 변수로 변경 가능
-// ⚠ gpt-4o-transcribe는 OpenAI에서 지원 종료 예정(2027년 초) → 종료 전 gpt-transcribe로 교체
-const DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
+// 음성 전사 기본 모델: 화자 구분(diarization) 지원 모델. OPENAI_TRANSCRIBE_MODEL 환경 변수로 변경 가능
+// ⚠ gpt-4o-transcribe-diarize는 2027-02-26 지원 종료 예정. 화자 구분을 지원하는 후속 모델이 없으면
+//   gpt-transcribe로 바꾸고(화자 구분 없이 동작) 대안을 검토할 것
+const DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-transcribe-diarize";
+
+/** 화자별 발화 (화자 구분 전사 결과) */
+export interface Utterance {
+  speaker: string;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** 이미 확인된 화자: 이름 + 2~10초 참조 음성. 구간을 따로 전사해도 같은 사람에게 같은 이름이 붙는다 */
+export interface KnownSpeaker {
+  name: string;
+  ref: File;
+}
+
+export const MAX_KNOWN_SPEAKERS = 4;
 
 /** 사용자에게 보여줄 한국어 메시지 + HTTP 상태 코드 */
 export class AiError extends Error {
@@ -93,12 +110,28 @@ function extractChatContent(body: unknown): string | null {
 }
 
 /** 음성 파일 1개를 한국어 텍스트로 전사한다 */
-export async function transcribeAudio(audio: File): Promise<string> {
+export async function transcribeAudio(
+  audio: File,
+  speakers: KnownSpeaker[] = []
+): Promise<{ text: string; utterances: Utterance[] | null }> {
+  const model = process.env.OPENAI_TRANSCRIBE_MODEL || DEFAULT_TRANSCRIBE_MODEL;
+  const diarize = model.includes("diarize");
   const form = new FormData();
   form.append("file", audio, audio.name || "audio.webm");
-  form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || DEFAULT_TRANSCRIBE_MODEL);
+  form.append("model", model);
   form.append("language", "ko");
-  form.append("response_format", "json");
+  if (diarize) {
+    form.append("response_format", "diarized_json");
+    // 30초가 넘는 입력은 필수
+    form.append("chunking_strategy", "auto");
+    for (const s of speakers.slice(0, MAX_KNOWN_SPEAKERS)) {
+      form.append("known_speaker_names[]", s.name);
+      const b64 = Buffer.from(await s.ref.arrayBuffer()).toString("base64");
+      form.append("known_speaker_references[]", `data:${s.ref.type || "audio/wav"};base64,${b64}`);
+    }
+  } else {
+    form.append("response_format", "json");
+  }
 
   // multipart 경계는 fetch가 직접 붙이므로 Content-Type을 지정하지 않는다
   const body = await send(
@@ -107,62 +140,26 @@ export async function transcribeAudio(audio: File): Promise<string> {
     55_000
   );
 
-  // 응답 형식: { text }
+  // 응답 형식: { text, segments?: [{ speaker, start, end, text }] } (segments는 diarized_json일 때)
   if (!body || typeof body !== "object" || !("text" in body) || typeof body.text !== "string") {
     throw new AiError("전사 결과를 읽지 못했습니다", 502);
   }
-  return body.text.trim();
-}
-
-const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
-// 실시간 자막 기본 모델: 정확도 우선 (확정 단위로 결과가 옴). OPENAI_LIVE_TRANSCRIBE_MODEL로 변경 가능
-// ⚠ gpt-4o-transcribe 지원 종료 전 gpt-transcribe로 교체. 단어 단위로 더 빠른 자막은 gpt-live-transcribe
-const DEFAULT_LIVE_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
-
-/** Realtime 전사 언어 지정: gpt-4o·whisper 계열은 language(단수), 신규 모델은 languages(배열)만 받는다 */
-const realtimeLanguage = (model: string) =>
-  /^(gpt-4o|whisper)/.test(model) ? { language: "ko" } : { languages: ["ko"] };
-// 임시 키 유효 시간: 이 시간 안에 연결을 시작해야 한다 (연결된 세션은 계속 유지)
-const LIVE_SECRET_TTL_SEC = 120;
-
-/**
- * 브라우저가 Realtime 전사 세션에 직접 연결할 수 있는 임시 키를 발급한다.
- * 원래 API 키는 브라우저로 보내지 않는다. 오디오는 24kHz PCM, 커밋은 클라이언트가 직접 한다.
- */
-export async function createLiveTranscribeSecret(): Promise<{ value: string; expiresAt: number }> {
-  const liveModel = process.env.OPENAI_LIVE_TRANSCRIBE_MODEL || DEFAULT_LIVE_TRANSCRIBE_MODEL;
-  const body = await send(
-    CLIENT_SECRETS_URL,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey()}` },
-      body: JSON.stringify({
-        expires_after: { anchor: "created_at", seconds: LIVE_SECRET_TTL_SEC },
-        session: {
-          type: "transcription",
-          audio: {
-            input: {
-              format: { type: "audio/pcm", rate: 24000 },
-              noise_reduction: { type: "near_field" },
-              transcription: { model: liveModel, ...realtimeLanguage(liveModel) },
-              turn_detection: null,
-            },
-          },
-        },
-      }),
-    },
-    15_000
-  );
-
-  // 응답 형식: { value: "ek_...", expires_at: (초) }
-  if (
-    !body || typeof body !== "object" ||
-    !("value" in body) || typeof body.value !== "string" ||
-    !("expires_at" in body) || typeof body.expires_at !== "number"
-  ) {
-    throw new AiError("실시간 전사 세션을 만들지 못했습니다", 502);
+  let utterances: Utterance[] | null = null;
+  if (diarize && "segments" in body && Array.isArray(body.segments)) {
+    utterances = body.segments.flatMap((s: unknown): Utterance[] => {
+      if (!s || typeof s !== "object") return [];
+      const r = s as Record<string, unknown>;
+      const text = typeof r.text === "string" ? r.text.trim() : "";
+      if (!text) return [];
+      return [{
+        speaker: typeof r.speaker === "string" && r.speaker ? r.speaker : "?",
+        start: typeof r.start === "number" ? r.start : 0,
+        end: typeof r.end === "number" ? r.end : 0,
+        text,
+      }];
+    });
   }
-  return { value: body.value, expiresAt: body.expires_at * 1000 };
+  return { text: body.text.trim(), utterances };
 }
 
 /** function calling 도구 정의 */
