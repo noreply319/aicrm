@@ -25,3 +25,9 @@ export interface Lead {
 }
 
 export type LeadInput = Omit<Lead, "id" | "createdAt">;
+
+/** AI Assistant 대화 메시지 */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}

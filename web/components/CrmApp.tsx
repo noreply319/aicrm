@@ -9,12 +9,14 @@ import StatsBar from "./StatsBar";
 import Board from "./Board";
 import LeadModal from "./LeadModal";
 import Toast from "./Toast";
+import AssistantPanel from "./AssistantPanel";
 
 type ModalState = { open: false } | { open: true; leadId: string | null; stage: StageId };
 
 export default function CrmApp() {
   const { leads, ready, error, clearError, reload, addLead, updateLead, deleteLead, moveLead } = useLeads();
   const [query, setQuery] = useState("");
+  const [assistantOpen, setAssistantOpen] = useState(true);
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -93,7 +95,13 @@ export default function CrmApp() {
 
   return (
     <>
-      <Header query={query} onQuery={setQuery} onAdd={() => openNew()} />
+      <Header
+        query={query}
+        onQuery={setQuery}
+        onAdd={() => openNew()}
+        assistantOpen={assistantOpen}
+        onToggleAssistant={() => setAssistantOpen((v) => !v)}
+      />
       <StatsBar leads={leads} />
       {error && (
         <div className="error-banner" role="alert">
@@ -101,18 +109,24 @@ export default function CrmApp() {
           <button className="btn" onClick={() => { clearError(); reload(); }}>다시 불러오기</button>
         </div>
       )}
-      {!ready && <div className="loading">불러오는 중…</div>}
-      {ready && (
-        <Board
-          leads={visibleLeads}
-          onMove={handleMove}
-          onOpen={(id) => {
-            const l = leads.find((x) => x.id === id);
-            if (l) setModal({ open: true, leadId: id, stage: l.stage });
-          }}
-          onAddInStage={openNew}
-        />
-      )}
+      <div className="workspace">
+        <div className="workspace-main">
+          {!ready && <div className="loading">불러오는 중…</div>}
+          {ready && (
+            <Board
+              leads={visibleLeads}
+              onMove={handleMove}
+              onOpen={(id) => {
+                const l = leads.find((x) => x.id === id);
+                if (l) setModal({ open: true, leadId: id, stage: l.stage });
+              }}
+              onAddInStage={openNew}
+            />
+          )}
+        </div>
+        {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
+        <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      </div>
       {modal.open && (
         <LeadModal
           lead={editingLead}

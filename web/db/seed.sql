@@ -11,3 +11,11 @@ SELECT * FROM (VALUES
   ('트라이앵글푸드', '임성민', '총무팀',        9000000,   'lost',        'low',  current_date - 10, 8)
 ) AS v
 WHERE NOT EXISTS (SELECT 1 FROM leads);
+
+-- 샘플 리드의 'created' 이력 (이력이 없는 리드만)
+INSERT INTO lead_events (lead_id, company, type, changes, created_at)
+SELECT l.id, l.company, 'created',
+       jsonb_build_object('stage', l.stage, 'value', l.value, 'priority', l.priority),
+       l.created_at
+FROM leads l
+WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);

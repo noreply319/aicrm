@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "@/lib/db";
+import { recordEvent } from "@/lib/events";
 import { isStage, UUID_RE } from "@/lib/validate";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -42,10 +43,18 @@ export async function POST(req: Request, { params }: Ctx) {
       position = (rows[0].max ?? 0) + 1;
     }
 
+    // 이력용: 이동 전 단계 (같은 단계 안에서 순서만 바뀐 경우는 기록하지 않음)
+    const prev = (
+      await client.query<{ stage: string }>("SELECT stage FROM leads WHERE id=$1 FOR UPDATE", [id])
+    ).rows[0];
+
     const { rows } = await client.query<LeadRow>(
       `UPDATE leads SET stage=$2, position=$3, updated_at=now() WHERE id=$1 RETURNING ${LEAD_COLUMNS}`,
       [id, stage, position]
     );
+    if (rows[0] && prev && prev.stage !== stage) {
+      await recordEvent(client, id, rows[0].company, "moved", { stage: { from: prev.stage, to: stage } });
+    }
     await client.query("COMMIT");
     return rows[0]
       ? NextResponse.json(toLead(rows[0]))
