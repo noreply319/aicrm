@@ -97,6 +97,13 @@ test("모바일: 파이프라인은 단계 탭 + 선택한 단계의 리드 세�
   await expect(page.locator(".card").filter({ hasText: "니즈상사" })).toBeVisible();
   await expect(page.locator(".card").filter({ hasText: "신규상사" })).toBeHidden();
 
+  // 단계 탭 줄은 가로로만 스크롤: 세로로 스크롤할 여지가 없어야 끌어도 위아래로 흔들리지 않는다
+  const scroll = await tabs.evaluate((el) => {
+    el.scrollTop = 10; // 세로 스크롤이 가능하면 값이 남는다
+    return { top: el.scrollTop, overflowY: getComputedStyle(el).overflowY, wide: el.scrollWidth > el.clientWidth };
+  });
+  expect(scroll).toEqual({ top: 0, overflowY: "hidden", wide: true });
+
   // 세로 목록: 선택한 단계 컬럼이 화면 폭을 채운다
   const col = page.locator(".column").filter({ hasText: "니즈상사" });
   const box = (await col.boundingBox())!;
