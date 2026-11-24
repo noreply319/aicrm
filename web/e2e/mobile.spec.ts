@@ -62,6 +62,8 @@ test("모바일: 파이프라인은 단계 탭 + 선택한 단계의 리드 세�
 
 test("모바일: 하단 탭 맨 왼쪽 AI 메뉴로 AI Assistant 채팅을 열고, 다른 메뉴로 가면 닫힌다", async ({ page }) => {
   await page.goto("/");
+  // 개발 서버의 Next.js 표시(왼쪽 아래 "N")가 맨 왼쪽 탭을 가리므로 숨긴다 (프로덕션에는 없음)
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
   const nav = page.getByRole("navigation", { name: "메뉴" });
   const ai = nav.getByRole("button", { name: "AI" });
   // 맨 왼쪽

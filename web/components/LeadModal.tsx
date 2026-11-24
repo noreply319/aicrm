@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { PRIORITY_LABEL, STAGES } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
-import type { Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
+import type { CompanyStats } from "@/lib/company";
+import type { Company, Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
 import { CandidateRow } from "./CalendarView";
+import CompanyCombobox from "./CompanyCombobox";
 import LeadEmails from "./LeadEmails";
 import NoteListItem from "./NoteListItem";
 import { Button, EmptyState, Field, Input, Modal, ModalFooter, ModalHeader, Select, Tabs, Textarea } from "./ui";
@@ -34,26 +36,37 @@ interface Props {
   gmailState: Me["gmail"]["state"];
   meEmail: string;
   onGmailExpired: () => void;
+  /** 회사 선택: 회사 목록·리드 집계, 이름만으로 바로 생성, 회사 상세로 이동 */
+  companies: Company[];
+  companyStats: Record<string, CompanyStats>;
+  /** 새 리드를 이 회사가 선택된 상태로 연다 (회사 상세 → 이 회사로 리드 추가) */
+  defaultCompanyId?: string | null;
+  onCreateCompany: (name: string) => Promise<Company>;
+  onOpenCompany: (id: string) => void;
   onClose: () => void;
 }
 
 const empty = (stage: StageId): LeadInput => ({
-  company: "", contact: "", title: "", email: "", phone: "",
+  companyId: null, company: "", contact: "", title: "", email: "", phone: "",
   value: 0, closeDate: "", stage, priority: "mid", notes: "",
 });
 
 export default function LeadModal({
   lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote,
   schedules, meId, onNewSchedule, onOpenSchedule, onDismissSchedule, onSchedulesTab,
-  gmailState, meEmail, onGmailExpired, onClose,
+  gmailState, meEmail, onGmailExpired, companies, companyStats, defaultCompanyId, onCreateCompany, onOpenCompany, onClose,
 }: Props) {
   const [tab, setTab] = useState<LeadModalTab>(lead ? initialTab : "info");
   const [form, setForm] = useState<LeadInput>(() => {
-    if (!lead) return empty(defaultStage);
+    if (!lead) {
+      const preset = defaultCompanyId ? companies.find((c) => c.id === defaultCompanyId) : undefined;
+      return { ...empty(defaultStage), companyId: preset?.id ?? null, company: preset?.name ?? "" };
+    }
     const { id: _id, createdAt: _c, ...rest } = lead;
     return rest;
   });
   const firstRef = useRef<HTMLInputElement>(null);
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
   // 일정 탭: 열 때마다 구글에서 바뀐 내용 반영 (콜백이 렌더마다 바뀌어도 탭 전환 때만 실행)
   const syncRef = useRef(onSchedulesTab);
@@ -77,7 +90,15 @@ export default function LeadModal({
     <Modal
       label={lead ? lead.company : "새 리드 등록"}
       onClose={onClose}
-      onSubmit={() => onSave({ ...form, company: form.company.trim(), value: Number(form.value) || 0 })}
+      onSubmit={() => {
+        if (!form.companyId) {
+          setTab("info");
+          setCompanyError("회사를 선택하거나 새로 만들어 주세요");
+          firstRef.current?.focus();
+          return;
+        }
+        onSave({ ...form, company: form.company.trim(), value: Number(form.value) || 0 });
+      }}
     >
       <ModalHeader title={lead ? lead.company : "새 리드 등록"} onClose={onClose} />
       {lead && (
@@ -130,9 +151,21 @@ export default function LeadModal({
         />
       )}
       <div className="modal-body" hidden={tab !== "info"}>
-        <Field label="회사명 *" full>
-          <Input ref={firstRef} required placeholder="예: 에이아이랩스"
-            value={form.company} onChange={(e) => set("company", e.target.value)} />
+        <Field label="회사 *" full>
+          <CompanyCombobox
+            inputRef={firstRef}
+            companies={companies}
+            stats={companyStats}
+            value={form.companyId}
+            leadEmail={form.email}
+            onChange={(c) => {
+              setForm((f) => ({ ...f, companyId: c?.id ?? null, company: c?.name ?? "" }));
+              if (c) setCompanyError(null);
+            }}
+            onCreate={onCreateCompany}
+            onOpenCompany={lead ? onOpenCompany : undefined}
+          />
+          {companyError && <div className="field-error" role="alert">{companyError}</div>}
         </Field>
         <Field label="담당자">
           <Input placeholder="홍길동" value={form.contact} onChange={(e) => set("contact", e.target.value)} />

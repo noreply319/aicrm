@@ -1,3 +1,10 @@
+/** API 실패: 서버의 { error } 메시지 + 상태 코드 + 응답 본문 (409의 기존 회사 등) */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly body: unknown) {
+    super(message);
+  }
+}
+
 /** 클라이언트 fetch 헬퍼: JSON 요청/응답, 실패 시 서버의 { error } 메시지로 예외 */
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
@@ -14,7 +21,7 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => ({}));
     const msg = body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "";
-    throw new Error(msg || `요청 실패 (${res.status})`);
+    throw new ApiError(msg || `요청 실패 (${res.status})`, res.status, body);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }

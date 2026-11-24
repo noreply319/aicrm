@@ -318,3 +318,75 @@ BEGIN
     GRANT SELECT, INSERT, UPDATE, DELETE ON document_templates, documents, document_sends TO crm_app;
   END IF;
 END $$;
+
+-- ───────── 회사 (docs/companies/requirements.md) ─────────
+-- 회사명 정규화 키: 소문자, 공백 제거, (주)·㈜·주식회사·(유)·유한회사 제거. 중복 판단에 사용.
+-- lib/companyKey.ts의 companyKey()와 같은 규칙이어야 한다 (integration 테스트로 확인).
+CREATE OR REPLACE FUNCTION crm_company_key(name text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT coalesce(
+    nullif(regexp_replace(lower(regexp_replace(coalesce(name, ''), '\(주\)|㈜|주식회사|\(유\)|유한회사', '', 'g')), '\s', '', 'g'), ''),
+    regexp_replace(lower(coalesce(name, '')), '\s', '', 'g'))
+$$;
+
+CREATE TABLE IF NOT EXISTS companies (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
+  name_key         text NOT NULL,
+  website          text NOT NULL DEFAULT '',
+  email_domain     text,                                   -- 소문자, 무료 메일 불가 (서버 검증)
+  industry         text NOT NULL DEFAULT '',
+  size             text CHECK (size IN ('1-10','11-50','51-200','201-1000','1000+')),
+  phone            text NOT NULL DEFAULT '',
+  address          text NOT NULL DEFAULT '',
+  business_number  text NOT NULL DEFAULT '',               -- 숫자 10자리 (하이픈 없이)
+  ceo_name         text NOT NULL DEFAULT '',
+  owner_id         uuid REFERENCES users(id) ON DELETE SET NULL,   -- 담당 영업
+  tier             text CHECK (tier IN ('A','B','C')),
+  tags             text[] NOT NULL DEFAULT '{}',
+  notes            text NOT NULL DEFAULT '' CHECK (length(notes) <= 5000),
+  created_by       uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS companies_name_key_idx ON companies (name_key);
+CREATE UNIQUE INDEX IF NOT EXISTS companies_email_domain_idx ON companies (email_domain) WHERE email_domain IS NOT NULL;
+
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'companies' AND policyname = 'companies_crm_app') THEN
+      CREATE POLICY companies_crm_app ON companies FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON companies TO crm_app;
+  END IF;
+END $$;
+
+-- 리드 → 회사. leads.company는 회사명 사본으로 유지한다 (회사명을 쓰는 곳이 많아 JOIN 대신 사본 + 이름 변경 시 갱신).
+-- 리드가 있는 회사는 삭제할 수 없다 (RESTRICT). NOT NULL은 운영 데이터 연결 확인 후 적용 예정.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id uuid REFERENCES companies(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS leads_company_idx ON leads (company_id);
+
+-- 회사가 연결되지 않은 리드: 정규화한 회사명으로 회사를 만들고(없을 때만) 연결한다. 재실행 안전.
+-- 회사 표기는 그 이름으로 가장 먼저 만든 리드의 회사명. 연결한 리드의 회사명 사본도 회사 표기로 맞춘다.
+CREATE OR REPLACE FUNCTION crm_link_lead_companies() RETURNS integer
+LANGUAGE plpgsql AS $$
+DECLARE
+  linked integer;
+BEGIN
+  INSERT INTO companies (name, name_key)
+  SELECT DISTINCT ON (crm_company_key(company)) left(trim(company), 100), crm_company_key(company)
+  FROM leads
+  WHERE company_id IS NULL
+  ORDER BY crm_company_key(company), created_at
+  ON CONFLICT (name_key) DO NOTHING;
+
+  UPDATE leads l SET company_id = c.id, company = c.name
+  FROM companies c
+  WHERE l.company_id IS NULL AND c.name_key = crm_company_key(l.company);
+  GET DIAGNOSTICS linked = ROW_COUNT;
+  RETURN linked;
+END $$;
+
+SELECT crm_link_lead_companies();

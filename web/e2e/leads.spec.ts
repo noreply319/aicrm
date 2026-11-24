@@ -6,7 +6,10 @@ test.beforeEach(resetDb);
 test("새 리드를 등록하면 신규 리드 컬럼에 카드가 생긴다", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "새 리드" }).click();
-  await page.getByPlaceholder("예: 에이아이랩스").fill("이투이테스트");
+  // 없는 회사는 콤보박스에서 바로 생성
+  await page.getByRole("combobox", { name: "회사" }).fill("이투이테스트");
+  await page.getByRole("option", { name: /"이투이테스트" 새 회사로 생성/ }).click();
+  await expect(page.getByTestId("company-chip")).toContainText("이투이테스트");
   await page.getByPlaceholder("홍길동").fill("박서연");
   await page.getByRole("button", { name: "저장", exact: true }).click();
 

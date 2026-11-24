@@ -22,6 +22,7 @@ const PATHS = {
   logout: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10",
   menu: "M4 7h16M4 12h16M4 17h16",
   mail: "M4 6h16v12H4zM4 7l8 6 8-6",
+  building: "M4 21V5l8-2v18M12 8h8v13M4 21h16M7 8h2M7 12h2M7 16h2M15 12h2M15 16h2",
   panelLeft: "M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2",
   panelLeftOpen: "M4 4h16v16H4zM9 4v16M13 10l2 2-2 2",
   panelRight: "M4 4h16v16H4zM15 4v16M9 10l2 2-2 2",

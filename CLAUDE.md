@@ -69,7 +69,7 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서)
+    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서), CompanyList, CompanyDetail, CompanyModal, CompanyCombobox
     │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
     ├── assets/fonts/        # PDF 한글 폰트 (나눔고딕, OFL)
     ├── lib/
@@ -82,6 +82,8 @@ AI CRM/                      # git 저장소 루트
     │   ├── meetings.ts      # 서버 전용: 미팅 노트 컬럼/매핑/이력 diff, AI 요약
     │   ├── useMeetings.ts   # 클라이언트 미팅 노트 훅 · api.ts: fetch 헬퍼
     │   ├── audioFile.ts     # 클라이언트: 녹음 파일 → 업로드 가능한 WAV 구간으로 분할
+    │   ├── companies.ts     # 서버 전용: 회사 컬럼/매핑, 리드 회사 결정, 중복(409) 처리
+    │   ├── company.ts       # 공용 순수 함수: 회사명 정규화, 사업자번호·도메인, 검색, 회사별 집계 · useCompanies.ts: 클라이언트 훅
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -150,7 +152,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 
 - 위치: `web/test/unit`, `web/test/integration`, `web/e2e`. 설정: `vitest.config.mts`, `playwright.config.ts`.
 - **테스트 DB**: 로컬 `ai_crm_test` (없으면 자동 생성 + `schema.sql` 적용, 테스트마다 TRUNCATE).
-  `TEST_DATABASE_URL`로 변경 가능하지만 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
+  `TEST_DATABASE_URL`로 변경 가능하지만(다른 worktree·세션이 동시에 테스트하면 데이터가 서로 지워지므로 `ai_crm_test_<작업명>`처럼 따로 쓰는 것을 권장) 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
 - OpenAI는 실제로 호출하지 않는다: unit·integration은 `fetch`를, e2e는 `page.route`로 API 응답을 가짜로 대체. e2e 녹음은 가짜 마이크(`getUserMedia` 대체) 사용.
 - e2e는 설치된 Chrome(`channel: "chrome"`)을 쓰므로 브라우저 다운로드 불필요. 순서대로 1개씩 실행(같은 DB).
 - 여러 워크트리에서 동시에 테스트하면 같은 DB·포트를 써서 서로 데이터를 지운다 → 워크트리별로 `TEST_DATABASE_URL=postgresql://localhost:5432/ai_crm_<작업명>_test`, `E2E_PORT=3101` 등을 지정.
@@ -232,6 +234,17 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 발송: `/api/documents/[id]/send` → Gmail `messages.send` → 같은 트랜잭션에서 `document_sends`(받는 사람 주소), 문서 `sent`, `lead_events.document_sent`(주소 없이 받는 사람 수만 — Assistant 컨텍스트로 쓰이므로). 발송 후 리드 단계 이동은 버튼 제안만(견적서 → 제안/견적, 계약서 → 협상).
 - 테이블: `document_templates`, `documents`(`field_values` — `values`는 예약어), `document_sends`.
 - API: `/api/templates`(GET·POST), `[id]`(GET·PATCH·DELETE 보관한 것만), `[id]/duplicate`, `defaults`(기본 템플릿) · `/api/documents`(GET·POST), `[id]`(GET·PATCH 직접 수정·DELETE), `[id]/chat`, `[id]/duplicate`, `[id]/pdf`, `[id]/email-draft`, `[id]/send`.
+
+## 회사
+
+- 문서: `docs/companies/requirements.md`(13장: 구현하면서 바뀐 점), `docs/companies/wireframe.html`
+- 테이블 `companies`(정규화 키 `name_key` 유니크, `email_domain` 유니크), `leads.company_id`(FK `ON DELETE RESTRICT` → 리드가 있는 회사는 삭제 불가).
+  `leads.company`는 **회사명 사본**으로 유지 — 회사명을 바꾸면 `PATCH /api/companies/[id]`가 같은 트랜잭션에서 연결 리드의 사본을 바꾸고 리드마다 `updated {company}` 이력을 남긴다.
+- 정규화: SQL `crm_company_key()` = `lib/company.ts` `companyKey()` (소문자, 공백 제거, (주)·㈜·주식회사·(유)·유한회사 제거). 바꾸면 둘 다 수정 (integration 테스트로 비교).
+- 리드 API: `companyId`로 회사 지정(회사명은 서버가 채움). `companyId` 없이 `company`만 오면 같은 이름의 회사를 찾거나 만든다(`resolveLeadCompany`). 마이그레이션은 `crm_link_lead_companies()`(schema.sql·seed.sql 끝에서 호출, 재실행 안전).
+- API: `/api/companies`(GET·POST, 409면 `{ error, company: 기존 회사 }`), `/api/companies/[id]`(GET·PATCH·DELETE), `/api/team`(담당 영업 선택용 팀원 id·이름).
+- 화면: 사이드바 `회사`(`/companies` CompanyList, `/companies/[id]` CompanyDetail), CompanyModal(등록·수정), 리드 모달 CompanyCombobox(검색·키보드 선택·이름만으로 바로 생성). 회사별 리드 수·금액은 클라이언트 `leads`로 계산(`statsByCompany`).
+- AI Assistant 컨텍스트 `companies`: 이름·업종·규모·등급·태그·담당 영업·도메인, 메모는 질문에 회사명이 나온 회사만. 전화·주소·사업자번호·대표자명은 보내지 않음.
 
 ## 참고 문서
 

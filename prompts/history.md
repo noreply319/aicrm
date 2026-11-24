@@ -528,3 +528,16 @@
 > commit하고 main merge해줘.
 
 - 결과: 선택형 질문 → "전부 커밋 + 기능 브랜치 3개 병합" 선택. 확인해 보니 main 변경은 다른 세션이 이미 `a985d61`로 커밋(설정 모달·Assistant 고정·모바일 배경·모바일 단계 탭 포함), contracts·companies 워크트리는 다른 세션이 main을 병합하는 중(충돌 해결 중), contacts 워크트리는 미커밋 작업 중 → 진행 중 작업과 충돌하지 않게 병합 보류, 사용자에게 보고
+
+## 75. 2026-11-24 — 연락처 기능 구현 (worktree)
+
+> 위에 내용으로 새로운 워크트리에서 구현해줘.
+
+- 결과: 회사 기능(`feature/companies`, 다른 세션 작업)이 커밋·main 병합을 마친 뒤 그 위에 `worktress/contacts`(`feature/contacts`) 생성(선택형 질문으로 결정). `contacts` 테이블·`leads.contact_id`·1회 마이그레이션(`crm_link_lead_contacts`, `crm_migrations`), `/api/contacts` CRUD(이메일 중복 409, 수정 시 모든 연결 리드 담당자 사본·이력 갱신, 삭제 시 연결만 해제), 리드 API `contactId`, 사이드바 `연락처` 목록·상세·등록 모달, 리드 모달 담당자 콤보박스(회사 연락처 먼저·간이 생성·리드 모달 위 연락처 수정, Modal Esc는 맨 위만), 회사 상세 소속 연락처, Assistant 컨텍스트(이메일·전화 제외). unit+integration 102·build 통과, e2e 15개 통과(다른 worktree e2e와 동시 실행 중 부하로 2개가 한 번 시간 초과 → 재실행 통과). 별도 테스트 DB `ai_crm_test_contacts`·`E2E_PORT=3110` 사용. 커밋·로컬 `ai_crm`·운영 스키마 적용은 안 함
+
+## 76. 2026-11-24 — 모바일 하단 탭 맨 왼쪽 AI 메뉴
+
+> 그리고 모바일에서는 메뉴에서 제일 왼쪽에 AI 메뉴 넣어줘. AI 메뉴 누르면 AI Assistant 채팅 나오게 해줘.
+
+- 결과: 모바일(640px 이하) 하단 탭 맨 왼쪽에 "AI"(✨) 메뉴 → 누르면 탭 바 위 전체 화면 AI Assistant 채팅(다시 누르거나 다른 메뉴를 누르면 닫힘, 열려 있으면 AI 탭만 선택 표시). 모바일 상단 바의 AI 버튼은 숨김, 데스크톱은 그대로. e2e 2개 추가(모바일 AI 탭, 데스크톱엔 AI 메뉴 없음) 통과. 작업 중 다른 세션이 feature/contracts를 main에 병합 중(MERGE_HEAD)이었고 그 과정에서 이 변경이 함께 스테이징됨 — git 상태는 건드리지 않음. 커밋 안 함
+

@@ -1,4 +1,4 @@
-import type { NoteSource, Priority, StageId } from "./types";
+import type { CompanySize, CompanyTier, NoteSource, Priority, StageId } from "./types";
 
 // 단계 색: 디자인 시스템 데이터 팔레트 (docs/design-system/design-system.html)
 export const STAGES: { id: StageId; name: string; color: string }[] = [
@@ -77,3 +77,15 @@ export const FREE_MAIL_DOMAINS = new Set([
   "hotmail.com", "outlook.com", "live.com", "msn.com", "yahoo.com", "yahoo.co.kr", "icloud.com", "me.com",
   "mac.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "zoho.com", "korea.com", "dreamwiz.com",
 ]);
+
+// ───────── 회사 ─────────
+/** 회사 규모(직원 수). 바꾸면 db/schema.sql의 companies.size CHECK도 함께 */
+export const COMPANY_SIZES: CompanySize[] = ["1-10", "11-50", "51-200", "201-1000", "1000+"];
+/** 회사 등급. 바꾸면 companies.tier CHECK도 함께 */
+export const COMPANY_TIERS: CompanyTier[] = ["A", "B", "C"];
+export const COMPANY_NAME_MAX = 100;
+export const COMPANY_TAG_MAX = 10;
+export const COMPANY_TAG_LEN = 20;
+export const COMPANY_NOTES_MAX = 5000;
+/** 리드 모달 회사 검색 결과 최대 개수 */
+export const COMPANY_SEARCH_LIMIT = 8;

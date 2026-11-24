@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SettingsModalContext } from "@/lib/settingsModal";
+import { statsByCompany } from "@/lib/company";
 import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
+import { useCompanies } from "@/lib/useCompanies";
 import { useLeads } from "@/lib/useLeads";
 import { useMe } from "@/lib/useMe";
 import { useMeetings } from "@/lib/useMeetings";
 import { useSchedules } from "@/lib/useSchedules";
 import type {
-  CalendarEvent, CalendarEventInput, LeadInput, MeetingNoteInput, ScheduledMeeting, StageId,
+  CalendarEvent, CalendarEventInput, Company, CompanyInput, LeadInput, MeetingNoteInput, ScheduledMeeting, StageId,
 } from "@/lib/types";
 import Header from "./Header";
 import Sidebar, { type View } from "./Sidebar";
@@ -27,8 +29,16 @@ import EventModal, { type EventModalMode } from "./EventModal";
 import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
 import ContractsView from "./ContractsView";
+import CompanyList from "./CompanyList";
+import CompanyDetail from "./CompanyDetail";
+import CompanyModal from "./CompanyModal";
 
-type ModalState = { open: false } | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab };
+type ModalState =
+  | { open: false }
+  | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab; companyId?: string | null };
+
+/** 회사 등록·수정 모달: companyId null이면 새 회사 */
+type CompanyModalState = { open: false } | { open: true; companyId: string | null };
 
 type NoteModalState =
   | { open: false }
@@ -59,7 +69,8 @@ type EventModalState =
     };
 
 const viewOf = (pathname: string): View =>
-  pathname.startsWith("/meetings") ? "meetings"
+  pathname.startsWith("/companies") ? "companies"
+  : pathname.startsWith("/meetings") ? "meetings"
     : pathname.startsWith("/contracts") ? "contracts"
     : pathname.startsWith("/calendar") ? "calendar"
         : "pipeline";
@@ -91,8 +102,14 @@ export default function CrmApp() {
   const pathname = usePathname();
   const router = useRouter();
   const view = viewOf(pathname);
+  /** /companies/[id] 의 회사 id */
+  const detailCompanyId = view === "companies" ? decodeURIComponent(pathname.split("/")[2] ?? "") || null : null;
 
   const { leads, ready, error, clearError, reload, addLead, updateLead, deleteLead, moveLead } = useLeads();
+  const companiesApi = useCompanies();
+  const { companies } = companiesApi;
+  const companyStats = useMemo(() => statsByCompany(leads), [leads]);
+  const [companyModal, setCompanyModal] = useState<CompanyModalState>({ open: false });
   const meetings = useMeetings();
   const auth = useMe();
   const sched = useSchedules();
@@ -262,15 +279,22 @@ export default function CrmApp() {
     if (onSettingsPath) router.replace("/");
   }, [onSettingsPath, router]);
 
+  const openCompany = useCallback((id: string) => {
+    setModal({ open: false });
+    setCompanyModal({ open: false });
+    router.push(`/companies/${id}`);
+  }, [router]);
+
   const onAdd = useCallback(() => {
-    if (view === "meetings") openNewNote();
+    if (view === "companies") setCompanyModal({ open: true, companyId: null });
+    else if (view === "meetings") openNewNote();
     else if (view === "calendar") openNewEvent();
     else if (view === "pipeline") openNew();
   }, [view, openNew, openNewNote, openNewEvent]);
 
   // 'N' 키: 파이프라인에서는 새 리드, 미팅 노트에서는 노트 작성
   // 모달이 늘어나도 의존성 배열 크기가 바뀌지 않게 하나의 값으로 합친다 (HMR 경고 방지)
-  const anyModalOpen = modal.open || noteModal.open || eventModal.open || settingsOpen;
+  const anyModalOpen = modal.open || noteModal.open || eventModal.open || companyModal.open || settingsOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
@@ -303,6 +327,42 @@ export default function CrmApp() {
         showToast(`${lead.company} → ${name}${stage === "won" ? " 🎉" : ""}`);
       }
     } catch {}
+  };
+
+  /** 리드 모달에서 이름만으로 회사 생성 (같은 이름이 이미 있으면 그 회사를 선택) */
+  const createCompanyFromLead = async (name: string): Promise<Company> => {
+    const { company, existing } = await companiesApi.addCompany({ name }, { reuseExisting: true });
+    showToast(existing ? `이미 있는 회사 '${company.name}'를 선택했어요` : `회사 '${company.name}'를 만들었어요`);
+    return company;
+  };
+
+  const editingCompany = companyModal.open && companyModal.companyId
+    ? companies.find((c) => c.id === companyModal.companyId) ?? null
+    : null;
+
+  const saveCompany = async (input: CompanyInput) => {
+    if (!companyModal.open) return;
+    if (editingCompany) {
+      const renamed = editingCompany.name !== input.name;
+      await companiesApi.updateCompany(editingCompany.id, input);
+      // 회사명을 바꾸면 서버가 연결 리드의 회사명도 바꾼다 → 리드 다시 불러오기
+      if (renamed) reload();
+      showToast("회사 정보를 수정했습니다");
+      setCompanyModal({ open: false });
+    } else {
+      const { company } = await companiesApi.addCompany(input);
+      showToast("회사를 등록했습니다");
+      setCompanyModal({ open: false });
+      router.push(`/companies/${company.id}`);
+    }
+  };
+
+  const removeCompany = async () => {
+    if (!editingCompany) return;
+    await companiesApi.deleteCompany(editingCompany.id);
+    setCompanyModal({ open: false });
+    showToast("회사를 삭제했습니다");
+    router.push("/companies");
   };
 
   const handleSave = async (input: LeadInput) => {
@@ -437,7 +497,13 @@ export default function CrmApp() {
     [editingLead, sched.schedules]
   );
 
-  const bannerError = error ?? meetings.error;
+  const bannerError = error ?? meetings.error ?? companiesApi.error;
+  const detailCompany = detailCompanyId ? companies.find((c) => c.id === detailCompanyId) ?? null : null;
+  const companyIndustries = useMemo(
+    () => [...new Set(companies.map((c) => c.industry).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko")),
+    [companies]
+  );
+  const companyTags = useMemo(() => [...new Set(companies.flatMap((c) => c.tags))].sort((a, b) => a.localeCompare(b, "ko")), [companies]);
 
   return (
     <SettingsModalContext value={openSettings}>
@@ -487,8 +553,10 @@ export default function CrmApp() {
                       onClick={() => {
                         clearError();
                         meetings.clearError();
+                        companiesApi.clearError();
                         reload();
                         meetings.reload();
+                        companiesApi.reload();
                       }}
                     >
                       다시 불러오기
@@ -512,6 +580,30 @@ export default function CrmApp() {
                     />
                   )}
                 </>
+              ) : view === "companies" ? (
+                detailCompanyId ? (
+                  <CompanyDetail
+                    company={detailCompany}
+                    ready={companiesApi.ready && ready}
+                    stats={detailCompany ? companyStats[detailCompany.id] : undefined}
+                    leads={detailCompany ? leads.filter((l) => l.companyId === detailCompany.id) : []}
+                    team={companiesApi.team}
+                    onEdit={() => detailCompany && setCompanyModal({ open: true, companyId: detailCompany.id })}
+                    onOpenLead={(id) => openLead(id)}
+                    onAddLead={() => detailCompany && setModal({ open: true, leadId: null, stage: "new", tab: "info", companyId: detailCompany.id })}
+                  />
+                ) : (
+                  <CompanyList
+                    companies={companies}
+                    stats={companyStats}
+                    team={companiesApi.team}
+                    meId={auth.me?.id ?? null}
+                    query={query}
+                    ready={companiesApi.ready && ready}
+                    onOpen={openCompany}
+                    onNew={() => setCompanyModal({ open: true, companyId: null })}
+                  />
+                )
               ) : view === "calendar" ? (
                 <CalendarView
                   me={auth.me}
@@ -565,7 +657,26 @@ export default function CrmApp() {
             gmailState={auth.me?.gmail.state ?? "none"}
             meEmail={auth.me?.email ?? ""}
             onGmailExpired={auth.reload}
+            companies={companies}
+            companyStats={companyStats}
+            defaultCompanyId={modal.companyId ?? null}
+            onCreateCompany={createCompanyFromLead}
+            onOpenCompany={openCompany}
             onClose={() => setModal({ open: false })}
+          />
+        )}
+        {companyModal.open && (
+          <CompanyModal
+            key={companyModal.companyId ?? "new"}
+            company={editingCompany}
+            team={companiesApi.team}
+            industries={companyIndustries}
+            allTags={companyTags}
+            leadCount={editingCompany ? companyStats[editingCompany.id]?.total ?? 0 : 0}
+            onSave={saveCompany}
+            onDelete={editingCompany ? removeCompany : undefined}
+            onOpenCompany={openCompany}
+            onClose={() => setCompanyModal({ open: false })}
           />
         )}
         {noteModal.open && (

@@ -11,6 +11,9 @@ export type Priority = "high" | "mid" | "low";
 
 export interface Lead {
   id: string;
+  /** 연결된 회사. 회사 기능 도입 전 리드는 마이그레이션으로 연결된다 */
+  companyId: string | null;
+  /** 회사명 사본 (회사명을 바꾸면 서버가 함께 갱신) */
   company: string;
   contact: string;
   title: string;
@@ -25,6 +28,40 @@ export interface Lead {
 }
 
 export type LeadInput = Omit<Lead, "id" | "createdAt">;
+
+export type CompanySize = "1-10" | "11-50" | "51-200" | "201-1000" | "1000+";
+export type CompanyTier = "A" | "B" | "C";
+
+/** 회사 (팀 공유) */
+export interface Company {
+  id: string;
+  name: string;
+  website: string;
+  /** 회사 메일 도메인 (소문자). 없으면 null */
+  emailDomain: string | null;
+  industry: string;
+  size: CompanySize | null;
+  phone: string;
+  address: string;
+  /** 사업자등록번호 숫자 10자리 (하이픈 없이) */
+  businessNumber: string;
+  ceoName: string;
+  /** 담당 영업 (users.id) */
+  ownerId: string | null;
+  tier: CompanyTier | null;
+  tags: string[];
+  notes: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+export type CompanyInput = Omit<Company, "id" | "createdAt" | "updatedAt">;
+
+/** 담당 영업 선택용 팀원 */
+export interface TeamMember {
+  id: string;
+  name: string;
+}
 
 /** AI Assistant 대화 메시지 */
 export interface ChatMessage {
