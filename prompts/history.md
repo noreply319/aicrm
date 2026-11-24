@@ -583,3 +583,9 @@
 > 커밋하고 메인에 머지해줘.
 
 - 결과: 코드는 이미 계약서·회사 머지로 main에 반영된 상태 → 남은 `prompts/history.md`(#69·#78~#81, 다른 세션 기록 포함)만 main에 직접 커밋. main에서 작업해 별도 merge 없음. 연락처 작업 중인 `docs/contacts/` 제외. push 안 함, 테스트는 사용자 지시로 skip
+
+## 82. 2026-11-24 — 연락처 기능 커밋·main 병합
+
+> 커밋하고 메인에 머지해줘.
+
+- 결과: `feature/contacts`에 기능 커밋(`a1633ee`) → 그사이 진행된 main(회사·계약서·설정 모달·Assistant 접기 등)을 병합(`b85a7df`). 충돌 8개 해결: CrmApp은 main 구조 위에 연락처 코드 다시 적용, Sidebar는 main 메뉴(설정 제외·계약서 추가)에 연락처 추가, TRUNCATE 목록·Icon·validate import·CLAUDE.md는 양쪽 합침, E2E_PORT는 main 쪽 사용. npm install(계약서 PDF 패키지), 타입 체크·build 통과, 병합된 schema.sql 임시 DB에 2회 적용 확인(이후 삭제). 테스트는 다른 세션이 전달한 지시로 실행 안 함. main 체크아웃의 예전 `docs/contacts` 사본(미추적, 이전 초안) 삭제 후 main fast-forward. push·운영 DB 적용은 안 함(배포 때 함께 적용하기로 함)
