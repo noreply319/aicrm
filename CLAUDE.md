@@ -118,7 +118,7 @@ AI CRM/                      # git 저장소 루트
 - 메뉴 접기(`html.sb-collapsed`, `crm.sidebar`)·Assistant 숨기기(`.assistant.closed`, `crm.assistant`)는 localStorage에 저장, 첫 페인트 전 적용은 `layout.tsx` 스크립트. 전환 애니메이션은 `html.ui-anim`이 붙은 뒤에만.
 - `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
 - 새 색상 토큰은 라이트(`:root`)와 다크(`[data-theme="dark"]`) 모두에 정의. 다크는 테마 버튼으로만 켜짐(기기 다크 모드 안 따름).
-- 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일만 떠 있는 시트.
+- 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일(640px 이하)은 하단 탭 `AI` → 하단 메뉴·상단 바·메인을 숨기고 채팅이 화면 전체를 쓰는 별도 화면(`.app-shell.ai-open`, 팝업·시트 아님), 상단 왼쪽 뒤로 가기로 닫음.
 
 ### 데이터 / API
 - 모든 API 입력은 `lib/validate.ts`로 검증. id는 `UUID_RE`로 확인.

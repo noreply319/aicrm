@@ -227,6 +227,9 @@ button.side-link { width: 100%; border: 0; background: transparent; font: inheri
 .badge-highlight { background: var(--highlight-bg); color: var(--highlight-fg); }
 .badge-color { color: var(--badge); background: color-mix(in srgb, var(--badge) 14%, transparent); }
 
+/* 터치: 버튼·링크·입력을 빠르게 두 번 탭해도 화면이 확대되지 않게 (핀치 확대는 허용) */
+a, button, input, select, textarea, label, [role="button"], [role="tab"] { touch-action: manipulation; }
+
 /* Field · Input · Select · Textarea */
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field.full { grid-column: 1 / -1; }
@@ -395,6 +398,7 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 }
 .assistant-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--border); }
 .assistant-title { display: flex; align-items: center; gap: 8px; font-weight: 700; margin-right: auto; }
+.assistant-head .assistant-back { display: none; }
 .assistant-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .assistant-empty { color: var(--text-2); font-size: 13px; }
 .assistant-empty p { margin: 0 0 12px; }
@@ -703,13 +707,24 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 
 /* 640px 이하 (모바일): 사이드바 → 하단 탭 바 */
 @media (max-width: 640px) {
-  /* 모바일: 화면이 좁아 나란히 둘 수 없으므로 Assistant는 하단 탭 위로 떠 있는 시트 */
-  /* 모바일: 하단 탭 "AI" 메뉴 → 탭 바 위 전체 화면 채팅 */
+  /* iOS 사파리는 16px 미만 입력창에 포커스하면 화면을 확대한다 → 모바일 입력 글자는 16px 이상
+     (개별 화면의 작은 글자 지정보다 우선하도록 !important) */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: 16px !important; }
+  /* 모바일: 하단 탭 "AI" 메뉴 → 떠 있는 창이 아닌 별도 화면. 하단 메뉴·상단 바·메인을 숨기고 채팅이 화면 전체를 쓴다
+     (닫기는 채팅 상단 왼쪽 뒤로 가기) */
   .assistant {
-    position: fixed; top: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); left: 0; margin: 0;
-    height: auto; z-index: 40; border-width: 0; border-radius: 0;
+    position: relative; top: auto; width: 100%; height: 100vh; height: 100dvh; margin: 0;
+    border-width: 0; border-radius: 0; padding-top: env(safe-area-inset-top);
   }
-  .assistant.closed { transform: translateY(24px); }
+  .ui-anim .assistant, .ui-anim .assistant.closed { transition: none; }
+  .assistant.closed { display: none; }
+  .assistant-input { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .assistant-head .assistant-hide { display: none; }
+  .assistant-head .assistant-back { display: inline-flex; }
+  .assistant-head { padding-left: 6px; }
+  .app-shell.ai-open { padding-bottom: 0; }
+  .app-shell.ai-open .sidebar, .app-shell.ai-open .topbar, .app-shell.ai-open .workspace-main,
+  .app-shell.ai-open .fab, .app-shell.ai-open .toast { display: none; }
   .side-ai { display: flex; }
   /* AI 채팅이 열려 있으면 AI 탭만 선택 표시 */
   .sidebar.ai-open a.side-link.on { background: transparent; color: var(--sidebar-fg); font-weight: 500; }

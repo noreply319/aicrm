@@ -614,12 +614,6 @@
 
 - 결과: 선택형 질문 → "새로 작성 + 기존 샘플 유지", 공급자 정보는 샘플과 같이 고정(노마진 주식회사). `web/db/templates.sql` 작성(같은 이름이 있으면 건너뜀): `소프트웨어 구축 용역 계약서`(13개 조항 — 용역 범위·검수·하자보수·지식재산권·비밀유지·해지·손해배상·분쟁, 항목 15개, 종료일 자동 계산), `구축 용역 견적서`(건명·납기·결제 조건·유효기간, 품목표 규격 열·부가세 별도, 항목 7개). 로컬 `ai_crm`에 추가(재실행 시 `INSERT 0 0` 확인), 확인 후 운영 Supabase에 추가(운영 템플릿 0 → 2개). 기본 샘플(docSamples.ts)은 변경 안 함, 테스트 생략
 
-## 89. 2026-11-24 — 템플릿 작업 커밋·머지
-
-> 커밋하고 머지 해줘.
-
-- 결과: main에서 직접 작업해 머지할 브랜치 없음. 작업 트리에 다른 세션 변경(`events.ts`·`init.mjs`·`globals.css` 등, CLAUDE.md의 db:init 규칙, 히스토리 87·88)이 섞여 있어 이번 작업분(`templates.sql`, CLAUDE.md 한 줄, 히스토리 86·89)만 골라 main에 커밋. push 안 함
-
 ## 87. 2026-11-24 — 견적서 메일 발송 500 에러 분석
 
 > 견적서 메일 보내기 500에러 나는데 에러 분석해서 수정 방안 작성해줘. (에러 로그: `lead_events_type_check` 위반, `document_sent`)
@@ -632,8 +626,32 @@
 
 - 결과: `npm run db:init`은 계약서 테이블 3개(`document_templates`·`documents`·`document_sends`)가 OS 계정 소유라 "must be owner"로 실패(전체 롤백). 소유자 변경은 권한 검토에서 거부돼, `lead_events_type_check` 제약만 `crm_app`으로 적용 → `document_sent` 포함 확인. 재발 방지: `lib/events.ts`에 `logSchemaMismatchHint`(23514·42703·42P01이면 서버 로그에 `db:init` 안내, `withTransaction`에서 호출), `db/init.mjs`에 권한 부족(42501) 안내, CLAUDE.md에 스키마 변경 후 `db:init` 규칙 추가. build 통과(테스트 생략)
 
+## 89. 2026-11-24 — 템플릿 작업 커밋·머지
+
+> 커밋하고 머지 해줘.
+
+- 결과: main에서 직접 작업해 머지할 브랜치 없음. 작업 트리에 다른 세션 변경(`events.ts`·`init.mjs`·`globals.css` 등, CLAUDE.md의 db:init 규칙, 히스토리 87·88)이 섞여 있어 이번 작업분(`templates.sql`, CLAUDE.md 한 줄, 히스토리 86·89)만 골라 main에 커밋. push 안 함
+
+## 90. 2026-11-24 — 모바일 AI 채팅을 전체 화면 별도 화면으로
+
+> 모바일에서 채팅창 누르면 채팅창은 별도의 창으로 메뉴위에 전화면을 사용하도록 구현해줘. 팝업 으로 구현하지 말아줘.
+
+- 결과: 640px 이하에서 하단 탭 `AI`를 누르면 `.app-shell.ai-open`으로 하단 메뉴·상단 바·메인·FAB를 숨기고 Assistant가 문서 흐름 안에서 `100dvh` 전체 화면을 쓰는 별도 화면이 됨(fixed 시트·슬라이드 애니메이션 제거). 상단 왼쪽 뒤로 가기(`채팅 닫기`)로 닫고, 모바일에선 `Assistant 숨기기` 버튼 숨김. 대화는 계속 유지. build 통과(테스트 생략)
+
 ## 91. 2026-11-24 — 스키마 불일치 재발 방지 커밋
 
 > 위에 커밋하고 머지해줘.
 
 - 결과: main에서 직접 작업해 머지할 브랜치 없음. 작업 트리에 다른 세션 변경(templates.sql·globals.css·AssistantPanel·CrmApp, CLAUDE.md·history.md의 86번 스테이징분)이 섞여 있어 임시 인덱스로 이번 작업분(events.ts·init.mjs·CLAUDE.md 규칙 한 줄·history 87~89)만 커밋, 다른 세션 스테이징은 유지. push 안 함
+
+## 92. 2026-11-24 — 모바일 입력·버튼 탭 시 화면 확대 방지
+
+> 모바일에서 입력 또는 버튼 클릭할때 focus되서 화면이 축소되거나 확되되지 않게 수정해줘.
+
+- 결과: `globals.css` — 640px 이하에서 input·textarea·select 글자를 16px로 고정(iOS 사파리의 16px 미만 입력 포커스 확대 방지), 버튼·링크·입력에 `touch-action: manipulation`(두 번 탭 확대 방지, 핀치 확대는 허용). viewport `maximum-scale` 제한은 접근성 때문에 쓰지 않음. build 통과(테스트 생략)
+
+## 93. 2026-11-24 — 모바일 채팅·확대 방지 커밋·push
+
+> commit 하고 main에 merge하고 push해줘.
+
+- 결과: main에서 직접 작업해 머지할 브랜치 없음. 90·92번 작업(globals.css·AssistantPanel·CrmApp, CLAUDE.md 모바일 설명, history 정리)을 main에 커밋 후 `origin/main`에 push

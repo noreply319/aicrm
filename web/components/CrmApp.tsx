@@ -577,7 +577,8 @@ export default function CrmApp() {
 
   return (
     <SettingsModalContext value={openSettings}>
-      <div className="app-shell">
+      {/* ai-open: 모바일에서 AI 채팅이 메뉴·상단 바·메인 대신 화면 전체를 쓰는 별도 화면이 된다 */}
+      <div className={`app-shell${assistantOpen && view !== "contracts" ? " ai-open" : ""}`}>
         <Sidebar
           view={view}
           me={auth.me}

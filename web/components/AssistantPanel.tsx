@@ -64,6 +64,8 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
     <>
     <aside className={`assistant${open ? "" : " closed"}`} aria-label="AI Assistant" aria-hidden={!open} inert={!open}>
       <div className="assistant-head">
+        {/* 모바일 전체 화면 채팅: 왼쪽 뒤로 가기로 원래 화면 복귀 */}
+        <IconButton className="assistant-back" icon="chevronLeft" label="채팅 닫기" size="sm" onClick={onClose} />
         <div className="assistant-title">
           <Badge tone="brand">AI</Badge> Assistant
         </div>
@@ -72,7 +74,7 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
             새 대화
           </Button>
         )}
-        <IconButton icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />
+        <IconButton className="assistant-hide" icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />
       </div>
 
       <div className="assistant-messages" ref={listRef}>
