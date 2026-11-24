@@ -1,7 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════
    Pipeline CRM 디자인 시스템 "Evergreen"
    - 문서(토큰·컴포넌트 카탈로그): docs/design-system/design-system.html
-   - 색은 아래 토큰만 사용한다. 새 토큰은 :root + 다크 두 곳(prefers-color-scheme, [data-theme="dark"])에 함께 추가.
+   - 색은 아래 토큰만 사용한다. 새 토큰은 :root + 다크([data-theme="dark"])에 함께 추가.
    - 구성: 1 토큰 → 2 기본 → 3 레이아웃(사이드바·상단 바) → 4 UI 컴포넌트(components/ui) → 5 화면별 스타일
    ══════════════════════════════════════════════════════════════════ */
 
@@ -58,31 +58,12 @@
   --radius-pill: 999px;
   --sidebar-w: 232px;
   --topbar-h: 64px;
+  --assistant-w: clamp(300px, 28vw, 380px);
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
   --font-display: var(--font-serif), Georgia, "Apple SD Gothic Neo", serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --brand-evergreen: #0a1712;
-    --primary: #4cb398; --primary-hover: #6cc6ad; --primary-press: #3a9c82;
-    --primary-soft: #173b30; --primary-soft-2: #1f4a3d; --primary-text: #8fdcc4; --on-primary: #0b1f18;
-    --focus-ring: rgba(76, 179, 152, 0.35);
-    --bg: #0d1a15; --surface: #13241e; --surface-2: #1a2f27; --surface-3: #223a31;
-    --border: #2a4038; --border-strong: #3a544a;
-    --text: #e7efeb; --text-2: #a9bdb5; --text-3: #7f948c;
-    --success-bg: #173b30; --success-fg: #7fd8b9;
-    --warning-bg: #3d2a12; --warning-fg: #ffc27a;
-    --danger: #f0675c; --danger-bg: #3d1c1a; --danger-fg: #ff9a90;
-    --info: #6f9ef0; --info-bg: #1a2a45; --info-fg: #9dbdf5;
-    --highlight-bg: #3d3a12; --highlight-fg: #f3e98a;
-    --sidebar-bg: #0a1712; --sidebar-fg: #9fb5ad; --sidebar-fg-strong: #ffffff;
-    --sidebar-hover: rgba(255, 255, 255, 0.06); --sidebar-active-bg: rgba(76, 179, 152, 0.18);
-    --sidebar-indicator: #4cb398; --sidebar-border: rgba(255, 255, 255, 0.07);
-    --overlay: rgba(0, 0, 0, 0.55);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4); --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
-  }
-}
+/* 다크 테마: 상단 바의 테마 버튼으로 켤 때만 (기기 다크 모드를 따르지 않음 → 모바일·데스크톱 같은 밝은 배경) */
 :root[data-theme="dark"] {
   --brand-evergreen: #0a1712;
   --primary: #4cb398; --primary-hover: #6cc6ad; --primary-press: #3a9c82;
@@ -133,7 +114,7 @@ a { color: var(--primary); }
 .app-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 100vh; }
 
 .sidebar {
-  position: sticky; top: 0; height: 100vh; z-index: 30; flex: 0 0 auto; width: var(--sidebar-w); overflow: hidden;
+  position: sticky; top: 0; height: 100vh; z-index: 30; flex: 0 0 auto; width: var(--sidebar-w);
   display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;
   background: var(--sidebar-bg); color: var(--sidebar-fg);
 }
@@ -152,9 +133,12 @@ a { color: var(--primary); }
   color: var(--sidebar-fg); text-decoration: none; font-weight: 500; white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-.side-label, .brand-text, .side-section, .user-btn-text { white-space: nowrap; }
+/* 접히는 동안 글자가 메뉴 밖으로 넘치지 않게 글자만 자른다 (사이드바 자체는 프로필 팝오버를 위해 overflow 허용) */
+.side-label, .brand-text, .side-section, .user-btn-text { white-space: nowrap; overflow: hidden; min-width: 0; }
 button.side-link { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; }
 .side-toggle { margin-bottom: 4px; }
+/* AI 메뉴는 모바일 하단 탭 전용 */
+.side-ai { display: none; }
 .side-link:hover { background: var(--sidebar-hover); color: var(--sidebar-fg-strong); }
 .side-link.on { background: var(--sidebar-active-bg); color: var(--sidebar-fg-strong); font-weight: 600; }
 .side-link.on::before {
@@ -169,7 +153,7 @@ button.side-link { width: 100%; border: 0; background: transparent; font: inheri
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .page-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
-.search { flex: 1; min-width: 180px; max-width: 380px; position: relative; }
+.search { flex: 1 1 auto; min-width: 120px; max-width: 380px; position: relative; }
 .search .control { padding-left: 36px; border-radius: var(--radius-pill); background: var(--surface-2); }
 .search .control:focus { background: var(--surface); }
 .search .icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
@@ -268,6 +252,9 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 }
 .seg-tabs button:hover { color: var(--text); }
 .seg-tabs button.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.seg-tabs.scroll { overflow-x: auto; scrollbar-width: none; }
+.seg-tabs.scroll::-webkit-scrollbar { display: none; }
+.seg-tabs.scroll button { flex: 0 0 auto; padding: 10px 12px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 
 /* Alert */
 .alert {
@@ -347,7 +334,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 /* ───────── 5. 화면별 스타일 ───────── */
 
 /* 지표 (파이프라인 상단) */
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 20px 24px 4px; }
+/* 메인 폭에 맞춰 한 줄 4개 → 좁으면 다음 줄로 */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; padding: 20px 24px 4px; }
 .stat {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
   padding: 14px 18px; border-top: 3px solid var(--primary-soft-2);
@@ -359,6 +347,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 .workspace { flex: 1; display: flex; min-height: 0; }
 .workspace-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .board { flex: 1; display: flex; gap: 14px; padding: 16px 24px 24px; overflow-x: auto; align-items: flex-start; }
+/* 단계 탭은 모바일 전용 */
+.stage-tabs { display: none; }
 .column {
   flex: 0 0 288px; background: var(--surface-2); border-radius: var(--radius-lg); display: flex; flex-direction: column;
   max-height: calc(100vh - 230px); border: 1px solid transparent; transition: border-color 0.15s, background 0.15s;
@@ -396,10 +386,11 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 .card-date.overdue { color: var(--danger-fg); font-weight: 600; }
 
 /* AI Assistant 패널 */
+/* 오른쪽에 붙은 패널: 상단 바 바로 아래부터 화면 끝까지 고정 (스크롤해도 그대로) */
 .assistant {
-  flex: 0 0 380px; display: flex; flex-direction: column; align-self: flex-start;
-  position: sticky; top: calc(var(--topbar-h) + 16px); height: calc(100vh - var(--topbar-h) - 40px); margin: 16px 24px 24px 0;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  flex: 0 0 var(--assistant-w); display: flex; flex-direction: column; align-self: flex-start;
+  position: sticky; top: var(--topbar-h); height: calc(100vh - var(--topbar-h)); margin: 0;
+  background: var(--surface); border: 0 solid var(--border); border-left-width: 1px;
   overflow: hidden;
 }
 .assistant-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--border); }
@@ -424,7 +415,7 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 .assistant-input { display: flex; gap: 8px; align-items: flex-end; padding: 12px; border-top: 1px solid var(--border); }
 .assistant-input .control { flex: 1; resize: none; min-height: 0; font-size: 13.5px; }
 /* 숨김: 오른쪽으로 밀려 나가며 폭이 0이 된다 (내용은 폭을 유지한 채 잘림) */
-.assistant.closed { flex-basis: 0; margin-left: 0; margin-right: 0; border-width: 0; opacity: 0; transform: translateX(40px); visibility: hidden; }
+.assistant.closed { flex-basis: 0; border-left-width: 0; opacity: 0; transform: translateX(40px); visibility: hidden; }
 .assistant-handle {
   position: fixed; right: 0; top: 50%; z-index: 35; display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 12px 6px 12px 8px; border: 1px solid var(--border); border-right: 0; border-radius: var(--radius-lg) 0 0 var(--radius-lg);
@@ -464,13 +455,15 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .sb-collapsed .side-link.on::before { left: -12px; }
   .sb-collapsed .user-pop { left: 0; }
 }
-/* 데스크톱 넓은 화면에서만 Assistant 내용 폭을 고정해 숨길 때 글자가 다시 줄바꿈되지 않게 */
-@media (min-width: 961px) {
-  .assistant > * { min-width: 378px; }
+/* 641px 이상: 메인 화면 | AI Assistant 나란히 (겹치지 않음). 메인은 메뉴·Assistant를 뺀 나머지 폭을 모두 쓰고,
+   Assistant를 숨기거나 메뉴를 접으면 그만큼 넓어진다. 숨길 때 내용 폭은 고정해 글자가 다시 줄바꿈되지 않게 */
+@media (min-width: 641px) {
+  .assistant > * { width: calc(var(--assistant-w) - 1px); flex-shrink: 0; }
+  .topbar { flex-wrap: nowrap; }
 }
 
 /* 미팅 노트 리스트 */
-.meetings { flex: 1; padding: 16px 24px 24px; max-width: 1100px; width: 100%; }
+.meetings { flex: 1; padding: 16px 24px 24px; width: 100%; }
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .toolbar .control { width: auto; }
 .meetings-count { color: var(--text-3); font-size: 12.5px; }
@@ -648,7 +641,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 .event-view p, .suggest-body p { margin: 0; font-size: 13px; }
 
 /* 설정 */
-.settings { flex: 1; padding: 20px 24px 32px; max-width: 760px; width: 100%; display: flex; flex-direction: column; gap: 16px; }
+/* 설정: 프로필 메뉴 → 가운데 모달 (CrmApp) */
+.settings { padding: 4px 22px 8px; display: flex; flex-direction: column; gap: 14px; }
 .account-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .settings-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .settings-field { max-width: 360px; }
@@ -688,22 +682,16 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .side-toggle { display: none; }
 }
 
-/* 960px 이하: Assistant를 화면 위에 띄운다 */
+/* 960px 이하: 로그인 화면은 카드만 */
 @media (max-width: 960px) {
-  .assistant {
-    position: fixed; top: auto; right: 12px; bottom: 12px; left: 12px; margin: 0;
-    height: min(70vh, 560px); box-shadow: var(--shadow-lg); z-index: 40;
-  }
-  .assistant.closed { transform: translateY(24px); border-width: 1px; }
-  .assistant-handle { display: none; }
   .login { grid-template-columns: 1fr; }
   .login-hero { display: none; }
 }
 
 @media (max-width: 720px) {
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 16px 0; }
+  .stats { padding: 16px 16px 0; }
   .board { padding: 16px; }
-  .calendar, .settings { padding: 12px 12px 24px; }
+  .calendar { padding: 12px 12px 24px; }
   .month-day { min-height: 64px; padding: 3px; }
   .event-chip { font-size: 10px; padding: 1px 3px; }
   .event-chip .event-time { display: none; }
@@ -715,12 +703,29 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 
 /* 640px 이하 (모바일): 사이드바 → 하단 탭 바 */
 @media (max-width: 640px) {
+  /* 모바일: 화면이 좁아 나란히 둘 수 없으므로 Assistant는 하단 탭 위로 떠 있는 시트 */
+  /* 모바일: 하단 탭 "AI" 메뉴 → 탭 바 위 전체 화면 채팅 */
+  .assistant {
+    position: fixed; top: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); left: 0; margin: 0;
+    height: auto; z-index: 40; border-width: 0; border-radius: 0;
+  }
+  .assistant.closed { transform: translateY(24px); }
+  .side-ai { display: flex; }
+  /* AI 채팅이 열려 있으면 AI 탭만 선택 표시 */
+  .sidebar.ai-open a.side-link.on { background: transparent; color: var(--sidebar-fg); font-weight: 500; }
+  .sidebar.ai-open a.side-link.on::before { display: none; }
+  .assistant-handle { display: none; }
   .app-shell { display: block; padding-bottom: 64px; }
   .sidebar {
     position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 64px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     flex-direction: row; align-items: center;
   }
-  .brand, .sidebar-foot, .side-section { display: none; }
+  .brand, .side-section, .user-btn-text { display: none; }
+  /* 하단 탭 오른쪽 끝: 프로필 버튼 (설정·로그아웃) */
+  .sidebar-foot { margin: 0; padding: 0 4px; border: 0; flex: 0 0 auto; }
+  .user-btn { padding: 6px; }
+  .user-dot { left: auto; right: 4px; top: 4px; }
+  .user-pop { left: auto; right: 0; bottom: calc(100% + 14px); }
   .side-nav { flex-direction: row; flex: 1; }
   .side-link { flex: 1; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 11px; }
   .side-link.on::before { left: 25%; right: 25%; top: -6px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
@@ -735,12 +740,14 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
     width: 54px; height: 54px; border-radius: 50%; border: none; background: var(--primary); color: var(--on-primary);
     box-shadow: var(--shadow-lg);
   }
-  .assistant { bottom: 76px; }
   .toast { bottom: 84px; }
 
   /* 칸반: 단계 컬럼을 좌우 스와이프 */
-  .board { scroll-snap-type: x mandatory; padding: 12px; gap: 10px; }
-  .column { flex: 0 0 82vw; scroll-snap-align: start; max-height: none; }
+  /* 칸반 → 단계 탭 + 선택한 단계의 리드 세로 목록 */
+  .stage-tabs { display: flex; margin: 12px 0 0; padding: 0 8px; }
+  .board { display: block; padding: 12px 12px 88px; overflow: visible; }
+  .column { width: 100%; max-height: none; }
+  .column.mobile-hidden { display: none; }
 
   .meetings { padding: 12px 12px 88px; }
   .toolbar .control { flex: 1; min-width: 0; }
@@ -755,7 +762,7 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .modal-head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 14px 16px; }
   .modal-tabs { margin: 0 16px; }
   .modal-body { padding: 12px 16px; }
-  .note-form, .note-view, .lead-notes, .event-form, .event-view, .suggest-body { padding: 14px 16px; }
+  .note-form, .note-view, .lead-notes, .event-form, .event-view, .suggest-body, .settings { padding: 14px 16px; }
   .note-form, .note-view, .lead-notes { flex: 1; }
   .modal-foot {
     position: sticky; bottom: 0; margin-top: auto; background: var(--surface);

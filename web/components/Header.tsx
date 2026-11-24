@@ -17,10 +17,8 @@ interface Props {
 
 function toggleTheme() {
   const root = document.documentElement;
-  const isDark = root.dataset.theme
-    ? root.dataset.theme === "dark"
-    : window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const next = isDark ? "light" : "dark";
+  // 기본은 밝은 테마 (기기 다크 모드는 따르지 않는다)
+  const next = root.dataset.theme === "dark" ? "light" : "dark";
   root.dataset.theme = next;
   try {
     localStorage.setItem(THEME_KEY, next);
@@ -57,7 +55,9 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
       <div className="spacer" />
       <div className="header-actions">
         <IconButton icon="moon" label="테마 전환" onClick={toggleTheme} />
+        {/* 모바일은 하단 탭의 AI 메뉴로 연다 */}
         <Button
+          className="hide-mobile"
           active={assistantOpen}
           title="AI Assistant 열기/닫기"
           aria-label="AI Assistant"
@@ -65,7 +65,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
           onClick={onToggleAssistant}
         >
           <Badge tone="brand">AI</Badge>
-          <span className="hide-mobile">Assistant</span>
+          <span>Assistant</span>
         </Button>
         {addLabel && (
           <Button variant="primary" icon="plus" className="hide-mobile" onClick={onAdd}>

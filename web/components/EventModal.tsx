@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { formatDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
+import { useOpenSettings } from "@/lib/settingsModal";
 import type { CalendarEvent, CalendarEventInput, Lead, Me } from "@/lib/types";
 import { Alert, Button, Checkbox, Field, Input, Modal, ModalFooter, ModalHeader, Select, Textarea } from "./ui";
 
@@ -45,6 +45,7 @@ const describeWhen = (e: Pick<CalendarEvent, "start" | "end" | "allDay">) => {
 export default function EventModal({
   mode: initialMode, initial, event, editable, ownerName, evidence, heading, leads, calendarState, onSubmit, onDelete, onClose,
 }: Props) {
+  const openSettings = useOpenSettings();
   const [mode, setMode] = useState(initialMode);
   const [title, setTitle] = useState(initial.title);
   const [allDay, setAllDay] = useState(initial.allDay);
@@ -155,7 +156,7 @@ export default function EventModal({
           {!connected && (
             <Alert tone="warning">
               {calendarState === "expired" ? "캘린더 연동이 만료되었습니다." : "구글 캘린더가 연동되지 않았습니다."}{" "}
-              <Link href="/settings" onClick={onClose}>설정 → Google 연동</Link>에서 연결하면 등록할 수 있습니다.
+              <button type="button" className="link-btn" onClick={() => { onClose(); openSettings(); }}>설정 → Google 연동</button>에서 연결하면 등록할 수 있습니다.
             </Alert>
           )}
           <Field label="제목 *">

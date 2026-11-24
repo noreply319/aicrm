@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { SettingsModalContext } from "@/lib/settingsModal";
 import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
 import { useLeads } from "@/lib/useLeads";
@@ -13,7 +14,7 @@ import type {
 } from "@/lib/types";
 import Header from "./Header";
 import Sidebar, { type View } from "./Sidebar";
-import { Alert, Button } from "./ui";
+import { Alert, Button, Modal, ModalFooter, ModalHeader } from "./ui";
 import StatsBar from "./StatsBar";
 import Board from "./Board";
 import LeadModal, { type LeadModalTab } from "./LeadModal";
@@ -59,7 +60,6 @@ type EventModalState =
 const viewOf = (pathname: string): View =>
   pathname.startsWith("/meetings") ? "meetings"
     : pathname.startsWith("/calendar") ? "calendar"
-      : pathname.startsWith("/settings") ? "settings"
         : "pipeline";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -87,6 +87,7 @@ const scheduleInput = (s: ScheduledMeeting): CalendarEventInput => ({
 
 export default function CrmApp() {
   const pathname = usePathname();
+  const router = useRouter();
   const view = viewOf(pathname);
 
   const { leads, ready, error, clearError, reload, addLead, updateLead, deleteLead, moveLead } = useLeads();
@@ -104,14 +105,14 @@ export default function CrmApp() {
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 처음 상태: 좁은 화면에서는 Assistant가 화면을 덮으므로 닫고, 아니면 마지막으로 고른 상태.
+  // 처음 상태: 모바일(640px 이하)에서는 Assistant가 화면을 덮으므로 닫고, 아니면 마지막으로 고른 상태.
   // 그 뒤 다음 프레임부터 열기/닫기·메뉴 접기 애니메이션을 켠다 (첫 화면에서 움직이지 않게).
   useEffect(() => {
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(ASSISTANT_KEY);
     } catch {}
-    if (window.matchMedia("(max-width: 960px)").matches || saved === "closed") setAssistantOpen(false);
+    if (window.matchMedia("(max-width: 640px)").matches || saved === "closed") setAssistantOpen(false);
     let id = requestAnimationFrame(() => {
       id = requestAnimationFrame(() => document.documentElement.classList.add("ui-anim"));
     });
@@ -239,6 +240,26 @@ export default function CrmApp() {
     [leads, auth.me?.id]
   );
 
+  /** 설정 모달: 프로필 메뉴·안내 링크에서 열거나, /settings 주소(구글 연동 후 돌아옴)로 들어오면 열린다 */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const onSettingsPath = pathname.startsWith("/settings");
+  useEffect(() => {
+    if (onSettingsPath) setSettingsOpen(true);
+  }, [onSettingsPath]);
+
+  const openSettings = useCallback(() => {
+    // 다른 모달 위에 겹치지 않게 닫고 연다
+    setModal({ open: false });
+    setEventModal({ open: false });
+    setSuggestions([]);
+    setSettingsOpen(true);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    if (onSettingsPath) router.replace("/");
+  }, [onSettingsPath, router]);
+
   const onAdd = useCallback(() => {
     if (view === "meetings") openNewNote();
     else if (view === "calendar") openNewEvent();
@@ -246,17 +267,19 @@ export default function CrmApp() {
   }, [view, openNew, openNewNote, openNewEvent]);
 
   // 'N' 키: 파이프라인에서는 새 리드, 미팅 노트에서는 노트 작성
+  // 모달이 늘어나도 의존성 배열 크기가 바뀌지 않게 하나의 값으로 합친다 (HMR 경고 방지)
+  const anyModalOpen = modal.open || noteModal.open || eventModal.open || settingsOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
-      if (e.key === "n" && !modal.open && !noteModal.open && !eventModal.open && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+      if (e.key === "n" && !anyModalOpen && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
         e.preventDefault();
         onAdd();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal.open, noteModal.open, eventModal.open, onAdd]);
+  }, [anyModalOpen, onAdd]);
 
   const visibleLeads = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -415,174 +438,194 @@ export default function CrmApp() {
   const bannerError = error ?? meetings.error;
 
   return (
-    <div className="app-shell">
-      <Sidebar view={view} me={auth.me} onLogout={auth.logout} />
-      <div className="app-main">
-        <Header
+    <SettingsModalContext value={openSettings}>
+      <div className="app-shell">
+        <Sidebar
           view={view}
-          query={query}
-          onQuery={setQuery}
-          onAdd={onAdd}
+          me={auth.me}
+          onLogout={auth.logout}
           assistantOpen={assistantOpen}
           onToggleAssistant={() => changeAssistant(!assistantOpen)}
-        />
-        {auth.me?.calendar.state === "expired" && view !== "settings" && (
-          <Alert tone="warning" banner action={<Button size="sm" href="/api/calendar/connect">다시 연동</Button>}>
-            구글 캘린더 연동이 만료되었습니다. 캘린더 기능을 쓰려면 다시 연동하세요.
-          </Alert>
-        )}
-        {/* 토큰은 캘린더·Gmail 공용이라 캘린더 배너가 있으면 그것만 보여준다 */}
-        {auth.me?.gmail.state === "expired" && auth.me.calendar.state !== "expired" && view !== "settings" && (
-          <Alert tone="warning" banner action={<Button size="sm" href="/api/gmail/connect">다시 연동</Button>}>
-            Gmail 연동이 만료되었습니다. 리드 이메일을 보려면 다시 연동하세요.
-          </Alert>
-        )}
-        {view === "pipeline" && <StatsBar leads={leads} />}
-        {bannerError && (
-          <Alert
-            tone="danger"
-            banner
-            action={
-              <Button
-                size="sm"
-                onClick={() => {
-                  clearError();
-                  meetings.clearError();
-                  reload();
-                  meetings.reload();
-                }}
-              >
-                다시 불러오기
-              </Button>
-            }
-          >
-            {bannerError}
-          </Alert>
-        )}
-        <div className="workspace">
-          <div className="workspace-main">
-            {view === "pipeline" ? (
-              <>
-                {!ready && <div className="loading">불러오는 중…</div>}
-                {ready && (
-                  <Board
-                    leads={visibleLeads}
-                    noteCounts={meetings.countByLead}
-                    nextMeetings={nextMeetings}
-                    onMove={handleMove}
-                    onOpen={(id) => openLead(id)}
-                    onAddInStage={openNew}
-                  />
-                )}
-              </>
-            ) : view === "calendar" ? (
-              <CalendarView
-                me={auth.me}
-                leads={leads}
-                candidates={sched.candidates}
-                query={query}
-                version={sched.version}
-                onNew={(date) => openNewEvent(date)}
-                onOpenEvent={openEvent}
-                onConfirmCandidate={(s) => openSchedule(s)}
-                onDismissCandidate={dismissSchedule}
-                onExpired={auth.reload}
-              />
-            ) : view === "settings" ? (
-              <SettingsView
-                me={auth.me}
-                onSetCalendar={auth.setCalendarId}
-                onDisconnect={auth.disconnectCalendar}
-                onDisconnectGmail={auth.disconnectGmail}
-                onLogout={auth.logout}
-                onNotice={showToast}
-              />
-            ) : (
-              <MeetingList
-                notes={meetings.notes}
-                leads={leads}
-                query={query}
-                ready={meetings.ready && ready}
-                onOpen={(id) => openNote(id)}
-                onNew={() => openNewNote()}
-              />
-            )}
-          </div>
-          {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-          <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
-        </div>
-      </div>
-      {modal.open && (
-        <LeadModal
-          key={modal.leadId ?? "new"}
-          lead={editingLead}
-          defaultStage={modal.stage}
-          notes={leadNotes}
-          initialTab={modal.tab}
-          onSave={handleSave}
-          onDelete={editingLead ? handleDelete : undefined}
-          onNewNote={() => editingLead && openNewNote(editingLead.id, true)}
-          onOpenNote={(id) => openNote(id, editingLead?.id ?? null)}
-          schedules={leadSchedules}
-          meId={auth.me?.id ?? null}
-          onNewSchedule={() => editingLead && openNewEvent(localYmd(), editingLead.id)}
-          onOpenSchedule={(s) => openSchedule(s, editingLead?.id ?? null)}
-          onDismissSchedule={dismissSchedule}
-          onSchedulesTab={() => editingLead && sched.syncLead(editingLead.id)}
-          gmailState={auth.me?.gmail.state ?? "none"}
-          meEmail={auth.me?.email ?? ""}
-          onGmailExpired={auth.reload}
-          onClose={() => setModal({ open: false })}
-        />
-      )}
-      {noteModal.open && (
-        <MeetingNoteModal
-          key={noteModal.noteId ?? "new"}
-          noteId={noteModal.noteId}
-          leadId={noteModal.leadId}
-          lockLead={noteModal.lockLead}
-          leads={leads}
-          getNote={meetings.getNote}
-          onSave={handleSaveNote}
-          onAutoSummarize={handleAutoSummarize}
-          onDelete={handleDeleteNote}
-          onOpenLead={(leadId) => {
-            setNoteModal({ open: false });
-            openLead(leadId, "notes");
+          onNavigate={() => {
+            // 모바일: AI 채팅이 화면을 덮고 있으므로 다른 메뉴로 가면 닫는다
+            if (assistantOpen && window.matchMedia("(max-width: 640px)").matches) changeAssistant(false);
           }}
-          onClose={closeNoteModal}
         />
-      )}
-      {suggestions.length > 0 && !eventModal.open && (
-        <ScheduleSuggestModal
-          candidates={suggestions}
-          reason={suggestReason}
-          company={companyOf}
-          calendarState={auth.me?.calendar.state ?? "none"}
-          onConfirm={(s) => openSchedule(s)}
-          onDismiss={dismissSchedule}
-          onLater={(s) => setSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
-          onClose={() => setSuggestions([])}
-        />
-      )}
-      {eventModal.open && (
-        <EventModal
-          key={eventModal.eventId ?? eventModal.initial.scheduleId ?? "new"}
-          mode={eventModal.mode}
-          initial={eventModal.initial}
-          event={eventModal.event}
-          editable={eventModal.editable}
-          ownerName={eventModal.ownerName}
-          evidence={eventModal.evidence}
-          heading={eventModal.heading}
-          leads={leads}
-          calendarState={auth.me?.calendar.state ?? "none"}
-          onSubmit={submitEvent}
-          onDelete={eventModal.editable && eventModal.eventId ? removeEvent : undefined}
-          onClose={closeEventModal}
-        />
-      )}
-      <Toast message={toast?.msg ?? null} />
-    </div>
+        <div className="app-main">
+          <Header
+            view={view}
+            query={query}
+            onQuery={setQuery}
+            onAdd={onAdd}
+            assistantOpen={assistantOpen}
+            onToggleAssistant={() => changeAssistant(!assistantOpen)}
+          />
+          {/* 왼쪽: 배너·지표·화면 / 오른쪽: AI Assistant (상단 바 아래부터 화면 끝까지 고정) */}
+          <div className="workspace">
+            <div className="workspace-main">
+              {auth.me?.calendar.state === "expired" && !settingsOpen && (
+                <Alert tone="warning" banner action={<Button size="sm" href="/api/calendar/connect">다시 연동</Button>}>
+                  구글 캘린더 연동이 만료되었습니다. 캘린더 기능을 쓰려면 다시 연동하세요.
+                </Alert>
+              )}
+              {/* 토큰은 캘린더·Gmail 공용이라 캘린더 배너가 있으면 그것만 보여준다 */}
+              {auth.me?.gmail.state === "expired" && auth.me.calendar.state !== "expired" && !settingsOpen && (
+                <Alert tone="warning" banner action={<Button size="sm" href="/api/gmail/connect">다시 연동</Button>}>
+                  Gmail 연동이 만료되었습니다. 리드 이메일을 보려면 다시 연동하세요.
+                </Alert>
+              )}
+              {view === "pipeline" && <StatsBar leads={leads} />}
+              {bannerError && (
+                <Alert
+                  tone="danger"
+                  banner
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        clearError();
+                        meetings.clearError();
+                        reload();
+                        meetings.reload();
+                      }}
+                    >
+                      다시 불러오기
+                    </Button>
+                  }
+                >
+                  {bannerError}
+                </Alert>
+              )}
+              {view === "pipeline" ? (
+                <>
+                  {!ready && <div className="loading">불러오는 중…</div>}
+                  {ready && (
+                    <Board
+                      leads={visibleLeads}
+                      noteCounts={meetings.countByLead}
+                      nextMeetings={nextMeetings}
+                      onMove={handleMove}
+                      onOpen={(id) => openLead(id)}
+                      onAddInStage={openNew}
+                    />
+                  )}
+                </>
+              ) : view === "calendar" ? (
+                <CalendarView
+                  me={auth.me}
+                  leads={leads}
+                  candidates={sched.candidates}
+                  query={query}
+                  version={sched.version}
+                  onNew={(date) => openNewEvent(date)}
+                  onOpenEvent={openEvent}
+                  onConfirmCandidate={(s) => openSchedule(s)}
+                  onDismissCandidate={dismissSchedule}
+                  onExpired={auth.reload}
+                />
+              ) : (
+                <MeetingList
+                  notes={meetings.notes}
+                  leads={leads}
+                  query={query}
+                  ready={meetings.ready && ready}
+                  onOpen={(id) => openNote(id)}
+                  onNew={() => openNewNote()}
+                />
+              )}
+            </div>
+            {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
+            <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+          </div>
+        </div>
+        {modal.open && (
+          <LeadModal
+            key={modal.leadId ?? "new"}
+            lead={editingLead}
+            defaultStage={modal.stage}
+            notes={leadNotes}
+            initialTab={modal.tab}
+            onSave={handleSave}
+            onDelete={editingLead ? handleDelete : undefined}
+            onNewNote={() => editingLead && openNewNote(editingLead.id, true)}
+            onOpenNote={(id) => openNote(id, editingLead?.id ?? null)}
+            schedules={leadSchedules}
+            meId={auth.me?.id ?? null}
+            onNewSchedule={() => editingLead && openNewEvent(localYmd(), editingLead.id)}
+            onOpenSchedule={(s) => openSchedule(s, editingLead?.id ?? null)}
+            onDismissSchedule={dismissSchedule}
+            onSchedulesTab={() => editingLead && sched.syncLead(editingLead.id)}
+            gmailState={auth.me?.gmail.state ?? "none"}
+            meEmail={auth.me?.email ?? ""}
+            onGmailExpired={auth.reload}
+            onClose={() => setModal({ open: false })}
+          />
+        )}
+        {noteModal.open && (
+          <MeetingNoteModal
+            key={noteModal.noteId ?? "new"}
+            noteId={noteModal.noteId}
+            leadId={noteModal.leadId}
+            lockLead={noteModal.lockLead}
+            leads={leads}
+            getNote={meetings.getNote}
+            onSave={handleSaveNote}
+            onAutoSummarize={handleAutoSummarize}
+            onDelete={handleDeleteNote}
+            onOpenLead={(leadId) => {
+              setNoteModal({ open: false });
+              openLead(leadId, "notes");
+            }}
+            onClose={closeNoteModal}
+          />
+        )}
+        {suggestions.length > 0 && !eventModal.open && (
+          <ScheduleSuggestModal
+            candidates={suggestions}
+            reason={suggestReason}
+            company={companyOf}
+            calendarState={auth.me?.calendar.state ?? "none"}
+            onConfirm={(s) => openSchedule(s)}
+            onDismiss={dismissSchedule}
+            onLater={(s) => setSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+            onClose={() => setSuggestions([])}
+          />
+        )}
+        {eventModal.open && (
+          <EventModal
+            key={eventModal.eventId ?? eventModal.initial.scheduleId ?? "new"}
+            mode={eventModal.mode}
+            initial={eventModal.initial}
+            event={eventModal.event}
+            editable={eventModal.editable}
+            ownerName={eventModal.ownerName}
+            evidence={eventModal.evidence}
+            heading={eventModal.heading}
+            leads={leads}
+            calendarState={auth.me?.calendar.state ?? "none"}
+            onSubmit={submitEvent}
+            onDelete={eventModal.editable && eventModal.eventId ? removeEvent : undefined}
+            onClose={closeEventModal}
+          />
+        )}
+        {settingsOpen && (
+          <Modal label="설정" size="lg" className="settings-modal" onClose={closeSettings}>
+            <ModalHeader title="설정" onClose={closeSettings} />
+            <SettingsView
+              me={auth.me}
+              onSetCalendar={auth.setCalendarId}
+              onDisconnect={auth.disconnectCalendar}
+              onDisconnectGmail={auth.disconnectGmail}
+              onLogout={auth.logout}
+              onNotice={showToast}
+            />
+            <ModalFooter>
+              <Button onClick={closeSettings}>닫기</Button>
+            </ModalFooter>
+          </Modal>
+        )}
+        <Toast message={toast?.msg ?? null} />
+      </div>
+    </SettingsModalContext>
   );
 }

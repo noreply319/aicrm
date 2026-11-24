@@ -111,7 +111,8 @@ AI CRM/                      # git 저장소 루트
 - 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하 하단 탭). 상단 바(`Header`)는 제목·검색·테마·Assistant·추가 버튼.
 - 메뉴 접기(`html.sb-collapsed`, `crm.sidebar`)·Assistant 숨기기(`.assistant.closed`, `crm.assistant`)는 localStorage에 저장, 첫 페인트 전 적용은 `layout.tsx` 스크립트. 전환 애니메이션은 `html.ui-anim`이 붙은 뒤에만.
 - `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
-- 새 색상 토큰은 라이트(`:root`)와 다크(두 군데: `prefers-color-scheme` 블록, `[data-theme="dark"]`) 모두에 정의.
+- 새 색상 토큰은 라이트(`:root`)와 다크(`[data-theme="dark"]`) 모두에 정의. 다크는 테마 버튼으로만 켜짐(기기 다크 모드 안 따름).
+- 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일만 떠 있는 시트.
 
 ### 데이터 / API
 - 모든 API 입력은 `lib/validate.ts`로 검증. id는 `UUID_RE`로 확인.
@@ -200,7 +201,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 구글 OAuth 앱은 "외부 + 테스트" 상태 → 리프레시 토큰 7일 만료. 만료되면 `users.calendar_expired = true`, 설정에서 다시 연동.
 - 서버: `lib/auth.ts`(세션·허용 이메일), `lib/google.ts`(OAuth·토큰), `lib/calendar.ts`(Calendar REST, fetch), `lib/schedules.ts`(노트 → 다음 미팅 후보 AI 추출), `lib/crypto.ts`.
 - API: `/api/me`, `/api/calendar/{connect,connection,calendars,events,events/[eventId]}`, `/api/schedules`, `/api/meetings/[id]/schedule-candidates`.
-- 화면: 헤더 메뉴 `캘린더`(`/calendar`, CalendarView·EventModal), `설정`(`/settings`, SettingsView). 노트 저장 후 ScheduleSuggestModal, 리드 상세 `다음 미팅` 탭.
+- 화면: 메뉴 `캘린더`(`/calendar`, CalendarView·EventModal), 설정 모달(SettingsView, 프로필 메뉴 또는 `/settings`). 노트 저장 후 ScheduleSuggestModal, 리드 상세 `다음 미팅` 탭.
 - 테이블: `users`, `sessions`, `scheduled_meetings`(candidate → scheduled/dismissed, scheduled → canceled). 이력 타입 `meeting_scheduled/rescheduled/canceled`, `lead_events.user_id`(변경자).
 - 노트 저장 시 날짜·시간이 확정된 다음 미팅은 확인 없이 자동 등록(`extractAndAutoRegister`), 시간 미정은 후보. CRM 일정 제목은 구글에 `[AI CRM]` 접두어(`CRM_TITLE_PREFIX`), DB에는 접두어 없이 저장.
 - 일정 수정·삭제는 CRM에서 등록한 **본인** 일정만. AI Assistant는 `list_calendar_events` 도구(function calling)로 본인 캘린더 조회 — 제목·시간·장소만 OpenAI로 전송.

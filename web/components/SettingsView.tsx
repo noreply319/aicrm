@@ -49,7 +49,7 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
     else if (err) setMessage({ ok: false, text: CALENDAR_ERRORS[err] ?? "캘린더 연동에 실패했습니다." });
     else if (sp.get("gmail") === "connected") setMessage({ ok: true, text: "Gmail이 연동되었습니다." });
     else if (gmailErr) setMessage({ ok: false, text: GMAIL_ERRORS[gmailErr] ?? "Gmail 연동에 실패했습니다." });
-    if (sp.has("calendar") || err || sp.has("gmail") || gmailErr) window.history.replaceState(null, "", "/settings");
+    if (sp.has("calendar") || err || sp.has("gmail") || gmailErr) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   useEffect(() => {
