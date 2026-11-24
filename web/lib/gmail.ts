@@ -37,9 +37,10 @@ async function gfetch(user: TokenUser, path: string, attempt = 0): Promise<unkno
   }
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const reason = JSON.stringify(body).slice(0, 300);
+    // 원인 판별은 전체 응답으로 (reason 코드가 긴 message 뒤에 있어 잘라서 보면 놓친다), 로그만 잘라서 남긴다
+    const reason = JSON.stringify(body) ?? "";
     // 검색어·메일 내용은 로그에 남기지 않는다
-    console.error("[gmail] error", res.status, path.split("?")[0].replace(/\/messages\/.+/, "/messages/:id"), reason);
+    console.error("[gmail] error", res.status, path.split("?")[0].replace(/\/messages\/.+/, "/messages/:id"), reason.slice(0, 300));
     if (res.status === 404) throw new GoogleError("메일을 찾을 수 없습니다", 404, "not_found");
     if (res.status === 403 && reason.includes("insufficient")) {
       throw new GoogleError("Gmail 권한이 부족합니다. 설정에서 다시 연동하세요 (동의 화면에서 Gmail 권한 체크)", 403, "scope");

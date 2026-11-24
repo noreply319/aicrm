@@ -59,17 +59,27 @@ AI CRM/                      # git 저장소 루트
 └── web/                     # Next.js 앱 (Vercel Root Directory)
     ├── app/
     │   ├── layout.tsx       # 폰트, 테마 깜빡임 방지 스크립트
-    │   ├── page.tsx
+    │   ├── (crm)/           # 경로 그룹: layout.tsx가 CrmApp을 렌더 → / 와 /meetings가 상태 공유
+    │   │   ├── page.tsx         # / 파이프라인 (빈 page)
+    │   │   └── meetings/page.tsx # /meetings 미팅 노트 (빈 page)
     │   ├── globals.css      # 모든 스타일
     │   └── api/leads/       # Route Handlers
     │       ├── route.ts             # GET 목록, POST 생성
     │       ├── [id]/route.ts        # PATCH 수정, DELETE 삭제
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast
+    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
+    │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
+    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
     │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
     │   ├── validate.ts      # API 입력 검증
+    │   ├── events.ts        # 서버 전용: lead_events 이력 기록, 트랜잭션 헬퍼
+    │   ├── assistant.ts     # 서버 전용: 리드+이력+미팅 노트 컨텍스트 구성
+    │   ├── openai.ts        # 서버 전용: OpenAI 채팅·전사 호출, 이메일·전화번호 마스킹
+    │   ├── meetings.ts      # 서버 전용: 미팅 노트 컬럼/매핑/이력 diff, AI 요약
+    │   ├── useMeetings.ts   # 클라이언트 미팅 노트 훅 · api.ts: fetch 헬퍼
+    │   ├── audioFile.ts     # 클라이언트: 녹음 파일 → 업로드 가능한 WAV 구간으로 분할
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -103,6 +113,8 @@ AI CRM/                      # git 저장소 루트
 - 응답 형식: 성공 시 데이터 그대로(`Lead`, `Lead[]`), 실패 시 `{ error: "한국어 메시지" }` + 적절한 상태 코드.
 - 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
 - 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
+- 리드를 변경하는 API는 같은 트랜잭션에서 `lead_events`에 이력을 남김 (`lib/events.ts`의 `withTransaction` + `recordEvent`). 새 변경 API도 동일하게.
+- AI Assistant는 조회 전용. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음.
 
 ## 환경 변수 / DB 연결
 
@@ -110,6 +122,7 @@ AI CRM/                      # git 저장소 루트
 |---|---|---|
 | 로컬 | `DATABASE_URL` (`web/.env.local`) | 로컬 PostgreSQL `ai_crm` (사용자 `crm_app`) |
 | Vercel | `POSTGRES_URL` (Vercel 환경 변수, Sensitive) | Supabase pooler (`aws-0-ap-northeast-1.pooler.supabase.com:6543`, 사용자 `crm_app.<ref>`) |
+| 공통 | `OPENAI_API_KEY` (로컬 `.env.local`, Vercel 환경 변수 Sensitive) | AI Assistant·미팅 노트 요약·녹음 전사용 OpenAI 키. 선택: `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_TRANSCRIBE_MODEL`(본문 전사, 기본 `gpt-4o-transcribe-diarize` 화자 구분) — 2027-02-26 지원 종료 예정이라 그 전에 교체 필요 |
 
 - 선택 로직은 `lib/db.ts`의 `connectionConfig()`. Vercel에서는 `POSTGRES_URL` 우선.
 - 원격 DB는 SSL 사용, URL의 `sslmode` 파라미터는 제거 후 `ssl` 옵션으로 지정 (pg가 검증 모드로 해석해 실패하므로).
@@ -159,6 +172,16 @@ AI CRM/                      # git 저장소 루트
 - 노트 저장 시 날짜·시간이 확정된 다음 미팅은 확인 없이 자동 등록(`extractAndAutoRegister`), 시간 미정은 후보. CRM 일정 제목은 구글에 `[AI CRM]` 접두어(`CRM_TITLE_PREFIX`), DB에는 접두어 없이 저장.
 - 일정 수정·삭제는 CRM에서 등록한 **본인** 일정만. AI Assistant는 `list_calendar_events` 도구(function calling)로 본인 캘린더 조회 — 제목·시간·장소만 OpenAI로 전송.
 - 로컬 OAuth 콜백은 `http://localhost:3000/api/auth/callback`만 등록돼 있으므로 개발 서버는 3000 포트로 실행.
+
+## Gmail 연동
+
+- 설정 → Gmail → `/api/gmail/connect`로 `gmail.readonly` 권한 추가 (같은 콜백, purpose `gmail`). Google Cloud Console에서 **Gmail API 사용 설정** 필요, 테스트 사용자만 사용 가능(제한 범위).
+- 리프레시 토큰은 사용자당 하나(`users.google_refresh_token`)를 캘린더·Gmail이 공유. 기능별 사용 여부는 `users.calendar_enabled`·`gmail_enabled`, 만료는 `calendar_expired`(공통). 상태 계산은 `lib/auth.ts`의 `featureState()`.
+- 연동 해제(`disconnectFeature`): 다른 기능이 켜져 있으면 해당 기능만 끄고, 마지막 기능이면 구글에 토큰 폐기 후 삭제 (구글 폐기는 앱 권한 전체를 없애므로).
+- 서버: `lib/gmail.ts`(Gmail REST, fetch). 메일은 DB에 저장하지 않고 매번 조회. 검색 대상은 `leadTarget()`: 리드 이메일이 회사 도메인이면 `@도메인` 전체(같은 회사 다른 사람 포함, 화면에 "회사" 배지), 무료 메일(`FREE_MAIL_DOMAINS`)·내 계정과 같은 도메인이면 담당자 주소만. 검색어 `{from:x to:x cc:x bcc:x}` 후 헤더로 정확히 다시 거른다(`involvesTarget`).
+- API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(목록, `?pageToken=`), `/api/leads/[id]/emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
+- 화면: 리드 상세 `이메일` 탭(`LeadEmails`), 설정 Gmail 카드.
+- AI Assistant: `search_lead_emails` 도구(leadId 지정 시 최근 5건 본문 일부, 미지정 시 진행 중 리드 최근 30일 미리보기). 이메일 주소는 이름만 남기고 본문·제목은 `maskPii` 후 OpenAI로 전송.
 
 ## 참고 문서
 

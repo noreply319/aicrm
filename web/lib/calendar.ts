@@ -48,13 +48,14 @@ async function gfetch(user: CalendarUser, path: string, init: RequestInit = {}, 
   if (res.status === 204) return null;
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const reason = JSON.stringify(body).slice(0, 300);
-    console.error("[calendar] error", res.status, path.split("?")[0], reason);
+    // 원인 판별은 전체 응답으로 (reason 코드가 긴 message 뒤에 있어 잘라서 보면 놓친다), 로그만 잘라서 남긴다
+    const reason = JSON.stringify(body) ?? "";
+    console.error("[calendar] error", res.status, path.split("?")[0], reason.slice(0, 300));
     if (res.status === 404 || res.status === 410) throw new GoogleError("캘린더 일정을 찾을 수 없습니다", 404, "not_found");
     if (res.status === 403 && reason.includes("insufficient")) {
       throw new GoogleError("캘린더 권한이 부족합니다. 설정에서 다시 연동하세요 (동의 화면에서 캘린더 권한 체크)", 403, "scope");
     }
-    if (res.status === 403 && reason.includes("accessNotConfigured")) {
+    if (res.status === 403 && (reason.includes("accessNotConfigured") || reason.includes("SERVICE_DISABLED"))) {
       throw new GoogleError("Google Calendar API가 사용 설정되지 않았습니다 (Google Cloud Console 확인)", 503);
     }
     if (res.status === 429 || reason.includes("rateLimit")) throw new GoogleError("구글 캘린더 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요", 429);
