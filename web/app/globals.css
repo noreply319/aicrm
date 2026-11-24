@@ -727,7 +727,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .user-dot { left: auto; right: 4px; top: 4px; }
   .user-pop { left: auto; right: 0; bottom: calc(100% + 14px); }
   .side-nav { flex-direction: row; flex: 1; }
-  .side-link { flex: 1; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 11px; }
+  /* button.side-link(AI 메뉴)의 font: inherit보다 우선하도록 함께 지정 */
+  .side-link, button.side-link { flex: 1; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 11px; }
   .side-link.on::before { left: 25%; right: 25%; top: -6px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
 
   .topbar { gap: 10px; padding: 10px 12px; }
@@ -1134,4 +1135,12 @@ textarea.control.tpl-source { min-height: 520px; padding: 14px; font-family: ui-
 }
 @media (max-width: 640px) {
   .contact-quick-grid, .contact-readonly { grid-template-columns: 1fr; }
+}
+
+/* 아주 좁은 화면(380px 이하): 하단 탭 메뉴가 많아 글자를 줄이고, 넘치면 말줄임 (640px 규칙 뒤에 있어야 적용됨) */
+@media (max-width: 380px) {
+  .sidebar { padding-left: 4px; padding-right: 4px; }
+  .side-link, button.side-link { min-width: 0; font-size: 10px; letter-spacing: -0.03em; }
+  .side-link .side-label { max-width: 100%; text-overflow: ellipsis; }
+  .sidebar-foot { padding: 0 2px; }
 }
