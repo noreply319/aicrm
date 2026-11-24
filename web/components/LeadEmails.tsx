@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { useOpenSettings } from "@/lib/settingsModal";
 import type { EmailDetail, EmailSummary, LeadEmails as LeadEmailsData, Me, StoredEmail } from "@/lib/types";
 import { Alert, Badge, Button, EmptyState } from "./ui";
 
@@ -32,6 +33,7 @@ const MAX_SUMMARIZE_ROUNDS = 5;
  * 1) 저장된 메일(제목·AI 요약)을 바로 표시 → 2) Gmail에서 새 메일만 가져와 저장 → 3) 새 메일만 AI 요약
  */
 export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onExpired }: Props) {
+  const openSettings = useOpenSettings();
   const [data, setData] = useState<LeadEmailsData | null>(null);
   const [nextPage, setNextPage] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "syncing" | "summarizing">("idle");
@@ -148,7 +150,7 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
           icon="✉️"
           title="Gmail이 연동되지 않았습니다"
           description="설정에서 Gmail을 연동하면 이 리드와 주고받은 메일을 볼 수 있습니다."
-          action={<Button variant="primary" href="/settings">설정으로 이동</Button>}
+          action={<Button variant="primary" icon="settings" onClick={openSettings}>설정 열기</Button>}
         />
       </div>
     );

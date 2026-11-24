@@ -466,3 +466,59 @@
 > 커밋 하고 main에 머지해줘.
 
 - 결과: 코드는 이미 `405e43b`로 main에 커밋된 상태 → 남은 문서(`CLAUDE.md`, `docs/design-system/design-system.html`, `prompts/history.md`)를 main에 추가 커밋. main에서 작업해 별도 merge 없음. 다른 작업의 `docs/companies`·`contacts`·`contracts`, `package-lock.json` 제외. push 안 함
+
+## 67. 2026-11-24 — 왼쪽 메뉴에 계약서 표시
+
+> 계약서 메뉴가 왼쪽 메인 메뉴에 보이지 않는데 해당 이슈 수정해줘.
+
+- 결과: 원인은 계약서 기능이 `feature/contracts`에만 있고 main에는 새 디자인 시스템(왼쪽 사이드바)이 들어와 있던 것. 워크트리에 main(`ce6f390`, `ecd8ec1`)을 병합 → 사이드바 `계약서` 메뉴(문서 아이콘) 추가, 계약서 화면을 디자인 시스템 UI(Button·Badge·Alert·Field·Tabs·Modal)로 전환, 계약서 화면에서 조회형 Assistant·다시 열기 탭 숨김. unit+integration 75·e2e 12 통과, build 통과 (`8b4b0de`). main fast-forward는 원본 checkout에 다른 세션의 미커밋 수정(CrmApp·Sidebar·globals.css 등)이 있어 git이 거부 → 보류
+
+## 71. 2026-11-24 — 'N' 단축키 useEffect 의존성 배열 크기 변경 에러
+
+> 아래 화면에서 에러나는 거 분석해서 수정해줘. (Console Error: The final argument passed to useEffect changed size between renders — CrmApp.tsx:270)
+
+- 결과: 원인은 개발 중 HMR(Fast Refresh) — 설정 모달 추가로 의존성 배열이 4개→5개(`settingsOpen`)로 바뀐 코드가 상태 유지된 채 반영돼 React가 경고. 코드 자체 버그는 아님(새로고침 시 사라짐). 재발 방지로 모달 열림 여부를 `anyModalOpen` 하나로 합쳐 배열을 `[anyModalOpen, onAdd]`로 고정. build 통과. 커밋 안 함
+
+## 68. 2026-11-24 — 계약서 기능 커밋·main 병합 요청
+
+> commit, main merge 진행해줘.
+
+- 결과: 계약서 기능은 `feature/contracts`(`8b4b0de`)에 커밋 완료. main 폴더에 다른 세션의 진행 중 작업(설정 모달·사이드바, 임시 e2e 파일)이 있어 선택형으로 질문 → "그 세션이 끝날 때까지 대기" 선택. main 폴더가 정리되면 병합하도록 대기 중
+
+## 72. 2026-11-24 — 모바일 배경이 어두운 초록 → 데스크톱과 같은 배경
+
+> 모바일에서 메뉴 화면 뿐아니라 배경색이 데스크탑과 다르게 어두운 초록인데 데스크탑과 동일한 배경 색으로 변경해줘.
+
+- 결과: 원인은 `globals.css`의 `@media (prefers-color-scheme: dark)` 블록 — 휴대폰이 기기 다크 모드라 다크 토큰(`--bg: #0d1a15` 어두운 초록)이 자동 적용. 확인 중 다른 세션이 같은 수정(해당 블록 제거, 다크는 테마 버튼 `[data-theme="dark"]`로만, `Header.tsx` 토글 정리, e2e `mobile.spec.ts`에 다크 기기 배경 테스트, CLAUDE.md 반영)을 이미 작업 트리에 적용 → 중복 수정 없이 남은 `prefers-color-scheme` 참조 없음·build 통과만 확인. 커밋 안 함
+
+## 71. 2026-11-24 — 설정 모달 · Assistant 고정 패널 · 모바일 배경 · 메인 폭 확장
+
+> 설정은 아래 로그 아웃 위에 설정 누르면 가운데 모달로 뜨게 수정해줘. 그리고 설정은 사이드 메뉴에서 없애줘.
+>
+> 그리고 AI Assistant는 상단 헤더 부터 앨 화면까지 고정으로 표시되게 해줘. 현재 파이프 라인에서는 상단이 잘리고 있어.
+>
+> 모바일에서 메뉴 화면 뿐아니라 배경색이 데스크탑과 다르게 어두운 초록인데 데스크탑과 동일한 배경 색으로 변경해줘.
+>
+> AI 질문 창과 메인창과 겹치지 않게 하고, 메인 창은 AI 창과 메뉴 남은 공가 다 width 확장되게 구현해줘. 즉 AI 창 또는 메뉴가 숨겨지면 해당 화면까지 메인 창은 확장되어야해.
+
+- 결과: 사이드 메뉴에서 설정 제거 → 프로필 메뉴 "설정"(로그아웃 위)이 가운데 모달로 열림(`useOpenSettings`, 앱 안 "설정 → Google 연동" 안내도 모달). OAuth 복귀 `/settings`는 파이프라인 위 모달, 닫으면 `/`. 모바일은 하단 탭 오른쪽 끝 프로필 버튼. Assistant는 배너·지표를 왼쪽으로 옮겨 상단 바 아래~화면 끝 고정 패널. 기기 다크 모드 자동 적용 제거(테마 버튼으로만 다크) → 모바일도 밝은 배경. 641px 이상은 Assistant를 항상 나란히 배치(300~380px)해 메인과 겹치지 않고, 메인은 남은 폭 전체(숨김·접기 시 확장, 미팅 노트 최대폭 제거, 지표 카드 자동 줄바꿈). 이전 작업에서 생긴 프로필 팝오버 잘림(사이드바 overflow) 수정. e2e 16개(설정·겹침/확장·다크 기기 테스트 추가)·build·unit 통과. 커밋 안 함
+
+
+## 73. 2026-11-24 — 회사 기능 commit / main 병합 요청
+
+> commit하고 main 에 merge해줘.
+
+- 결과: `feature/companies`에 `63b9bc3` 커밋. main checkout에 같은 파일(CrmApp·Header·LeadModal·globals.css 등)을 고치는 디자인 작업이 커밋 전이라 병합 보류 후 확인 요청
+
+## 74. 2026-11-24 — 디자인 커밋 후 회사 기능 병합
+
+> 디자인 커밋 하고 머지 했어.
+
+- 결과: main(디자인 시스템 `ce6f390`, 사이드바 접기 `ecd8ec1`)을 `feature/companies`에 두 번 병합(`1cee40d`, `09eb06d`) — 회사 메뉴를 Sidebar `NAV`로 옮기고(building 아이콘 추가) 회사 화면·콤보박스·모달을 `@/components/ui`(Modal·Field·Button·Badge·Panel·EmptyState·Alert)와 새 토큰으로 변환. build·unit+integration 79·e2e 12 통과(별도 테스트 DB). e2e 첫 테스트에서 개발 서버가 페이지를 계속 새로고침하는 현상이 간헐적으로 나옴(원인 미확인, 재실행 시 통과). main checkout에 다시 같은 파일의 미커밋 변경이 있어 main 병합은 보류
+
+## 72. 2026-11-24 — 모바일 파이프라인: 단계 탭 + 세로 목록
+
+> 모바일에서는 파이프 라인 내용이 세로로 보여지고, 탭을 클릭해서 다른 funnel에 있는 리드 볼 수 있도록 수정해줘.
+
+- 결과: 640px 이하에서 칸반 가로 스와이프 → 단계 탭(가로 스크롤, 단계별 개수 배지, `Tabs`에 `scrollable` 옵션 추가) + 선택한 단계의 리드만 화면 폭 세로 목록. 데스크톱은 기존 칸반 그대로. e2e(모바일 탭 전환, 데스크톱 7개 컬럼) 추가, 전체 e2e 17개·build·unit 통과. 커밋 안 함
+

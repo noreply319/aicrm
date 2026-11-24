@@ -72,3 +72,15 @@ export async function createCompany(request: APIRequestContext, data: Record<str
   const res = await request.post("/api/companies", { data });
   return (await res.json()) as { id: string; name: string };
 }
+
+/**
+ * 개발 서버의 Next.js 개발 도구 버튼(왼쪽 아래 "N")을 숨긴다.
+ * 모바일 하단 탭의 맨 왼쪽 메뉴를 가려 클릭이 막히므로 모바일 테스트에서 사용 (운영 빌드에는 없음).
+ */
+export async function hideDevIndicator(page: Page) {
+  await page.addInitScript(() => {
+    const style = document.createElement("style");
+    style.textContent = "nextjs-portal { display: none !important; }";
+    document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
+  });
+}
