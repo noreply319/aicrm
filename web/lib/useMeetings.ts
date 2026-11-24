@@ -93,6 +93,16 @@ export function useMeetings() {
     setNotes((prev) => prev.filter((n) => n.leadId !== leadId));
   }, []);
 
+  /**
+   * 저장된 노트를 서버에서 AI 요약·저장하고 목록을 갱신한다 (미팅 완료 후 자동 요약).
+   * 실패해도 노트 자체는 그대로이므로 목록을 다시 불러오지 않고 호출한 쪽에 에러만 넘긴다.
+   */
+  const summarizeNote = useCallback(async (id: string) => {
+    const saved = await api<MeetingNote>(`/api/meetings/${id}/summarize`, { method: "POST" });
+    setNotes((prev) => prev.map((n) => (n.id === id ? toSummary(saved) : n)));
+    return saved;
+  }, []);
+
   /** 리드별 노트 개수 (카드 배지·삭제 확인용) */
   const countByLead = useMemo(() => {
     const m: Record<string, number> = {};
@@ -102,6 +112,6 @@ export function useMeetings() {
 
   return {
     notes, ready, error, clearError: () => setError(null), reload,
-    getNote, addNote, updateNote, deleteNote, forgetLead, countByLead,
+    getNote, addNote, updateNote, deleteNote, summarizeNote, forgetLead, countByLead,
   };
 }

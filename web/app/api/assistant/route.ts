@@ -3,6 +3,8 @@ import { AssistantError, askAssistant } from "@/lib/assistant";
 import { parseChatInput } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
+// 캘린더 조회(function calling)로 OpenAI를 여러 번 호출할 수 있다
+export const maxDuration = 60;
 
 /** AI Assistant: { messages: ChatMessage[] } → { reply } */
 export async function POST(req: Request) {

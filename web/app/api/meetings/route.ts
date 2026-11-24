@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requestUserId } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { recordEvent, withTransaction } from "@/lib/events";
 import { NOTE_COLUMNS, NOTE_SUMMARY_COLUMNS, noteSnapshot, toNote, toNoteSummary, type NoteRow, type NoteSummaryRow } from "@/lib/meetings";
@@ -34,10 +35,10 @@ export async function POST(req: Request) {
     if (d.leadId && !lead) return null;
 
     const { rows } = await client.query<NoteRow>(
-      `INSERT INTO meeting_notes (lead_id, title, met_at, body, source, summary, next_actions)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO meeting_notes (lead_id, title, met_at, body, source, summary, next_actions, user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING ${NOTE_COLUMNS}`,
-      [d.leadId, d.title, d.metAt, d.body, d.source, d.summary, d.nextActions]
+      [d.leadId, d.title, d.metAt, d.body, d.source, d.summary, d.nextActions, await requestUserId()]
     );
     const created = toNote(rows[0]);
     if (d.leadId && lead) await recordEvent(client, d.leadId, lead.company, "note_created", noteSnapshot(created));

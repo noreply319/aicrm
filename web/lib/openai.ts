@@ -161,3 +161,71 @@ export async function transcribeAudio(
   }
   return { text: body.text.trim(), utterances };
 }
+
+/** function calling 도구 정의 */
+export interface ToolDef {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * 도구를 쓸 수 있는 채팅: 모델이 도구를 호출하면 runTool 결과를 넣어 다시 묻는다 (최대 maxRounds회).
+ * 마지막 라운드에서는 도구 없이 답하게 한다.
+ */
+export async function chatWithTools(
+  messages: ChatMessageParam[],
+  tools: ToolDef[],
+  runTool: (name: string, args: unknown) => Promise<unknown>,
+  opts: { maxTokens: number; maxRounds?: number; timeoutMs?: number }
+): Promise<string> {
+  const model = process.env.OPENAI_MODEL || DEFAULT_CHAT_MODEL;
+  const effort = process.env.OPENAI_REASONING_EFFORT ?? "none";
+  const history: Record<string, unknown>[] = messages.map((m) => ({ ...m }));
+  const maxRounds = opts.maxRounds ?? 3;
+
+  for (let round = 0; ; round++) {
+    const useTools = round < maxRounds;
+    const body = await send(
+      CHAT_URL,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey()}` },
+        body: JSON.stringify({
+          model,
+          messages: history,
+          max_completion_tokens: opts.maxTokens,
+          tools: tools.map((t) => ({ type: "function", function: t })),
+          tool_choice: useTools ? "auto" : "none",
+          ...(effort && effort !== "off" ? { reasoning_effort: effort } : {}),
+        }),
+      },
+      opts.timeoutMs ?? 30_000
+    );
+
+    const msg: unknown =
+      body && typeof body === "object" && "choices" in body && Array.isArray(body.choices) ? body.choices[0]?.message : null;
+    const m = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : {};
+    const calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
+
+    if (calls.length === 0 || !useTools) {
+      const content = typeof m.content === "string" ? m.content.trim() : "";
+      if (!content) throw new AiError("AI 답변이 비어 있습니다", 502);
+      return content;
+    }
+
+    history.push({ role: "assistant", content: typeof m.content === "string" ? m.content : null, tool_calls: calls });
+    for (const call of calls) {
+      const c = call && typeof call === "object" ? (call as Record<string, unknown>) : {};
+      const fn = c.function && typeof c.function === "object" ? (c.function as Record<string, unknown>) : {};
+      let args: unknown = {};
+      try {
+        args = JSON.parse(typeof fn.arguments === "string" ? fn.arguments : "{}");
+      } catch {}
+      const result = await runTool(typeof fn.name === "string" ? fn.name : "", args).catch((e: unknown) => ({
+        error: e instanceof Error ? e.message : "도구 실행 실패",
+      }));
+      history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
+    }
+  }
+}

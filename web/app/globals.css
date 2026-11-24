@@ -474,3 +474,225 @@ button { font: inherit; cursor: pointer; }
 @media (max-width: 640px) {
   .rec-error { flex-direction: column; align-items: stretch; }
 }
+
+/* ───────── 로그인 · 캘린더 · 설정 ───────── */
+
+/* 로그인 화면 */
+.login { flex: 1; display: grid; place-items: center; padding: 24px; }
+.login-card {
+  width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow-lg); padding: 32px 28px; display: flex; flex-direction: column; gap: 14px;
+  text-align: center;
+}
+.login-brand { justify-content: center; font-size: 20px; }
+.login-card p { margin: 0; }
+.login-card .modal-error { margin: 0; }
+.login-btn { justify-content: center; padding: 12px; font-weight: 600; text-decoration: none; }
+.login-note { font-size: 12px; }
+
+/* 헤더: 프로필 메뉴 */
+.user-menu { position: relative; }
+.user-btn {
+  position: relative; width: 34px; height: 34px; border-radius: 50%; padding: 0; overflow: visible;
+  border: 1px solid var(--border); background: var(--primary-soft); color: var(--primary); font-weight: 700;
+  display: grid; place-items: center;
+}
+.user-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.user-dot {
+  position: absolute; right: -1px; top: -1px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--danger); border: 2px solid var(--surface);
+}
+.user-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 45; min-width: 220px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+  padding: 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.user-pop .muted { font-size: 12px; word-break: break-all; }
+.user-pop-cal { font-size: 12.5px; color: var(--text-2); padding: 6px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.user-pop-item {
+  text-align: left; padding: 8px; border-radius: 8px; border: 0; background: transparent; color: var(--text);
+  text-decoration: none; font-size: 13.5px;
+}
+.user-pop-item:hover { background: var(--surface-2); }
+.warn-banner { background: var(--prio-mid-bg); color: var(--prio-mid-fg); }
+.warn-banner .btn { text-decoration: none; }
+
+/* 리드 카드: 다음 미팅 배지 */
+.meeting-badge {
+  font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 6px;
+  background: var(--prio-low-bg); color: var(--prio-low-fg);
+}
+
+/* 캘린더 화면 */
+.calendar { flex: 1; padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.calendar-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.calendar-toolbar h2 { margin: 0 8px; font-size: 18px; letter-spacing: -0.01em; }
+.calendar-toolbar .icon-btn { width: 36px; justify-content: center; font-size: 18px; line-height: 1; padding: 6px; }
+.calendar-error {
+  padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 500;
+  background: var(--prio-high-bg); color: var(--prio-high-fg);
+}
+.month-grid {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+}
+.month-weekday {
+  padding: 8px; font-size: 12px; font-weight: 600; color: var(--text-3); text-align: center;
+  border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.month-weekday.sun, .month-date.sun { color: var(--danger); }
+.month-weekday.sat, .month-date.sat { color: var(--primary); }
+.month-day {
+  min-height: 104px; padding: 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0;
+}
+.month-day:nth-child(7n) { border-right: 0; }
+.month-day:hover { background: var(--surface-2); }
+.month-day.out { background: var(--bg); }
+.month-day.out .month-date { opacity: 0.45; }
+.month-day.selected { box-shadow: inset 0 0 0 2px var(--primary); }
+.month-date { font-size: 12.5px; font-weight: 600; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; }
+.month-day.today .month-date { background: var(--primary); color: #fff; }
+.event-chip {
+  display: block; width: 100%; text-align: left; border: 0; border-radius: 5px; padding: 2px 6px;
+  font-size: 11.5px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--surface-2); color: var(--text);
+}
+.event-chip.all-day { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.event-chip.crm { background: var(--prio-low-bg); color: var(--prio-low-fg); font-weight: 600; }
+.event-chip:hover { filter: brightness(0.96); }
+.event-time { font-variant-numeric: tabular-nums; margin-right: 4px; opacity: 0.8; font-weight: 500; }
+.event-more { font-size: 11px; color: var(--text-3); padding-left: 6px; }
+
+.day-list {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px;
+}
+.day-list-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.day-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.day-list p { margin: 4px 0; }
+.day-event {
+  width: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left;
+  border: 0; background: transparent; color: var(--text); padding: 8px; border-radius: 8px;
+}
+.day-event:hover { background: var(--surface-2); }
+.day-event-title { font-weight: 600; }
+.crm-pill {
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: var(--prio-low-bg); color: var(--prio-low-fg);
+}
+
+/* 다음 미팅 후보 */
+.candidates {
+  background: var(--surface); border: 1px solid var(--prio-mid-fg); border-radius: var(--radius);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.candidates-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.candidates-head .muted { font-size: 12.5px; }
+.candidate {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-2); flex-wrap: wrap;
+}
+.candidate-main { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.candidate-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.tentative-pill {
+  font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px; background: var(--prio-mid-bg); color: var(--prio-mid-fg);
+}
+.candidate-evidence { color: var(--text-2); font-size: 12.5px; font-style: italic; }
+.candidate-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 리드 상세: 다음 미팅 탭 */
+.schedule-group { display: flex; flex-direction: column; gap: 6px; }
+.schedule-group h4 { margin: 4px 0 0; font-size: 12px; color: var(--text-3); font-weight: 600; }
+.schedule-item {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px;
+}
+.schedule-item:hover { border-color: var(--primary); }
+.schedule-when { font-weight: 600; font-variant-numeric: tabular-nums; }
+.schedule-title { font-weight: 500; }
+
+/* 일정 모달 */
+.event-modal .modal-head, .suggest-modal .modal-head { display: flex; align-items: center; gap: 8px; }
+.event-form, .event-view, .suggest-body { padding: 4px 22px 16px; display: flex; flex-direction: column; gap: 12px; }
+.event-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.evidence { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); }
+.modal-warn {
+  padding: 9px 12px; border-radius: 9px; font-size: 13px; background: var(--prio-mid-bg); color: var(--prio-mid-fg);
+}
+.modal-warn a { color: inherit; font-weight: 600; }
+.event-view-row { font-size: 14px; }
+.event-view-desc {
+  white-space: pre-wrap; font-size: 13px; color: var(--text-2); background: var(--surface-2); padding: 10px 12px; border-radius: 9px;
+}
+.event-view p { margin: 0; font-size: 12.5px; }
+.modal-foot a.btn { text-decoration: none; }
+.suggest-modal { max-width: 640px; }
+.suggest-body p { margin: 0; font-size: 13px; }
+
+/* 설정 화면 */
+.settings { flex: 1; padding: 20px 24px 32px; max-width: 760px; width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.settings h1 { margin: 0; font-size: 20px; }
+.settings .modal-error { margin: 0; }
+.settings-ok {
+  padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 500; background: var(--prio-low-bg); color: var(--prio-low-fg);
+}
+.settings-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px;
+}
+.settings-card h2 { margin: 0; font-size: 15px; }
+.account-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.account-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.placeholder-avatar { display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 18px; }
+.settings-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.status-pill { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.status-pill.connected { background: var(--prio-low-bg); color: var(--prio-low-fg); }
+.status-pill.expired { background: var(--prio-mid-bg); color: var(--prio-mid-fg); }
+.status-pill.none { background: var(--surface-2); color: var(--text-2); }
+.settings-field { max-width: 360px; }
+.settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.settings-actions a.btn { text-decoration: none; }
+.settings-note { margin: 0; font-size: 12px; line-height: 1.6; }
+
+@media (max-width: 720px) {
+  .calendar, .settings { padding: 12px 12px 80px; }
+  .month-day { min-height: 64px; padding: 3px; }
+  .event-chip { font-size: 10px; padding: 1px 3px; }
+  .event-chip .event-time { display: none; }
+  .event-form-grid { grid-template-columns: 1fr; }
+}
+a.btn { text-decoration: none; }
+
+/* 리드 상세 → 이메일 탭 (Gmail) */
+.email-list { display: flex; flex-direction: column; gap: 6px; }
+.email-item { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.email-item.open, .email-item:hover { border-color: var(--primary); }
+.email-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px 12px; text-align: left;
+  border: none; background: none; color: var(--text); font-size: 13px;
+}
+.email-dir {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; margin-top: 1px;
+}
+.email-dir.received { background: var(--primary-soft); color: var(--primary); }
+.email-dir.sent { background: var(--surface-2); color: var(--text-2); }
+.email-dir.domain { background: var(--prio-mid-bg); color: var(--prio-mid-fg); }
+.email-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.email-subject { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-subject.unread { font-weight: 700; }
+.email-meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-date { flex-shrink: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.email-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.email-headers { font-size: 12px; line-height: 1.6; word-break: break-all; }
+.email-text {
+  margin: 0; width: 100%; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 8px;
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+.email-attach { font-size: 12px; }
+.email-summary { font-size: 12.5px; color: var(--text-2); line-height: 1.5; white-space: normal; }
+.email-tag {
+  display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px;
+  background: var(--surface-2); color: var(--text-3);
+}
+.email-status { font-size: 12px; margin-right: 8px; }

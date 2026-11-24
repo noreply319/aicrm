@@ -1,0 +1,15 @@
+import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
+import { deleteUserEmails } from "@/lib/emailStore";
+import { disconnectFeature, unauthorized } from "@/lib/google";
+
+export const dynamic = "force-dynamic";
+
+/** Gmail 연동 해제. 캘린더가 연동돼 있으면 토큰은 그대로 두고 Gmail만 끈다. 저장해 둔 메일 제목·요약도 삭제 */
+export async function DELETE() {
+  const user = await getSessionUser();
+  if (!user) return unauthorized();
+  await disconnectFeature(user, "gmail");
+  await deleteUserEmails(user.id);
+  return new NextResponse(null, { status: 204 });
+}

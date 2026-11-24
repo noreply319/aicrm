@@ -60,7 +60,8 @@ WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);
 -- 미팅 노트 이력 타입 추가 (이미 만들어진 lead_events 테이블의 CHECK 제약 갱신, 재실행 안전)
 ALTER TABLE lead_events DROP CONSTRAINT IF EXISTS lead_events_type_check;
 ALTER TABLE lead_events ADD CONSTRAINT lead_events_type_check
-  CHECK (type IN ('created','updated','moved','deleted','note_created','note_updated','note_deleted'));
+  CHECK (type IN ('created','updated','moved','deleted','note_created','note_updated','note_deleted',
+                  'meeting_scheduled','meeting_rescheduled','meeting_canceled'));
 
 -- 미팅 노트: 리드에 연결(나중에 지정 가능 → NULL 허용), 리드 삭제 시 함께 삭제
 -- 녹음 원본은 저장하지 않고 전사 텍스트만 body에 저장한다
@@ -103,5 +104,133 @@ BEGIN
     GRANT SELECT, INSERT ON lead_events TO crm_app;
     GRANT USAGE ON SEQUENCE lead_events_id_seq TO crm_app;
     GRANT SELECT, INSERT, UPDATE, DELETE ON meeting_notes TO crm_app;
+  END IF;
+END $$;
+
+-- ───────────────────────── 로그인 + 구글 캘린더 ─────────────────────────
+
+-- 사용자: 구글 로그인 계정. 허용 이메일(ALLOWED_EMAILS)만 로그인할 수 있다.
+-- 캘린더 리프레시 토큰은 앱에서 AES-256-GCM으로 암호화한 값만 저장한다 (TOKEN_ENCRYPTION_KEY).
+CREATE TABLE IF NOT EXISTS users (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  google_sub            text NOT NULL UNIQUE,          -- 구글 계정 고유 id
+  email                 text NOT NULL UNIQUE,
+  name                  text NOT NULL DEFAULT '',
+  picture               text NOT NULL DEFAULT '',
+  google_refresh_token  text,                          -- 암호화된 값. NULL = 구글 기능(캘린더·Gmail) 미연동
+  google_scopes         text NOT NULL DEFAULT '',
+  calendar_id           text NOT NULL DEFAULT 'primary',
+  calendar_expired      boolean NOT NULL DEFAULT false, -- 토큰 만료·폐기로 연동이 끊김 (캘린더·Gmail 공통)
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+-- 로그인 세션: 쿠키에는 랜덤 토큰, DB에는 그 SHA-256 해시만 저장한다
+CREATE TABLE IF NOT EXISTS sessions (
+  id          text PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at  timestamptz NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
+
+-- 다음 미팅 일정: 미팅 노트에서 찾은 후보(candidate)와 캘린더에 등록한 일정(scheduled)
+CREATE TABLE IF NOT EXISTS scheduled_meetings (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id          uuid REFERENCES leads(id) ON DELETE CASCADE,
+  note_id          uuid REFERENCES meeting_notes(id) ON DELETE SET NULL,
+  user_id          uuid REFERENCES users(id) ON DELETE SET NULL,   -- 등록자(캘린더 소유자)
+  status           text NOT NULL CHECK (status IN ('candidate','scheduled','canceled','dismissed')),
+  certainty        text NOT NULL DEFAULT 'confirmed' CHECK (certainty IN ('confirmed','tentative')),
+  title            text NOT NULL CHECK (length(trim(title)) > 0),
+  starts_at        timestamptz NOT NULL,
+  ends_at          timestamptz NOT NULL,
+  all_day          boolean NOT NULL DEFAULT false,
+  location         text NOT NULL DEFAULT '',
+  evidence         text NOT NULL DEFAULT '',                       -- 노트 원문 근거
+  calendar_id      text,
+  google_event_id  text,
+  google_html_link text NOT NULL DEFAULT '',
+  invite_sent      boolean NOT NULL DEFAULT false,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+-- 사용자가 쓴 일정 메모 (구글 이벤트 설명에는 메모 + CRM 연결 정보가 들어간다)
+ALTER TABLE scheduled_meetings ADD COLUMN IF NOT EXISTS memo text NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS scheduled_meetings_lead_idx ON scheduled_meetings (lead_id, starts_at);
+CREATE INDEX IF NOT EXISTS scheduled_meetings_note_idx ON scheduled_meetings (note_id);
+CREATE UNIQUE INDEX IF NOT EXISTS scheduled_meetings_event_idx ON scheduled_meetings (google_event_id)
+  WHERE google_event_id IS NOT NULL;
+
+-- 구글 기능별 연동 여부 (리프레시 토큰은 사용자당 하나를 캘린더·Gmail이 같이 쓴다)
+--   calendar_expired = 토큰 만료·폐기 (두 기능 공통)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'calendar_enabled') THEN
+    ALTER TABLE users ADD COLUMN calendar_enabled boolean NOT NULL DEFAULT false;
+    -- 이 컬럼 도입 전에 연동한 사용자는 캘린더 연동 상태를 유지한다
+    UPDATE users SET calendar_enabled = true WHERE google_refresh_token IS NOT NULL;
+  END IF;
+END $$;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gmail_enabled boolean NOT NULL DEFAULT false;
+
+-- 작성자/변경자 기록 (로그인 도입 전 행은 NULL = 알 수 없음)
+ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE lead_events ADD COLUMN IF NOT EXISTS user_id uuid;
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_meetings ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'users' AND policyname = 'users_crm_app') THEN
+      CREATE POLICY users_crm_app ON users FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sessions' AND policyname = 'sessions_crm_app') THEN
+      CREATE POLICY sessions_crm_app ON sessions FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'scheduled_meetings' AND policyname = 'scheduled_meetings_crm_app') THEN
+      CREATE POLICY scheduled_meetings_crm_app ON scheduled_meetings FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON users, sessions, scheduled_meetings TO crm_app;
+  END IF;
+END $$;
+
+-- 리드 이메일 캐시: 사용자 Gmail에서 리드와 주고받은 메일의 제목·요약 (본문은 저장하지 않고 열 때 Gmail에서 읽는다)
+-- 한 번 불러온 메일은 다시 불러오거나 다시 요약하지 않는다. Gmail 연동 해제 시 해당 사용자 행 삭제.
+CREATE TABLE IF NOT EXISTS lead_emails (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,   -- 메일함 소유자
+  lead_id          uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  gmail_id         text NOT NULL,
+  thread_id        text NOT NULL DEFAULT '',
+  subject          text NOT NULL DEFAULT '',
+  from_header      text NOT NULL DEFAULT '',
+  to_header        text NOT NULL DEFAULT '',
+  cc_header        text NOT NULL DEFAULT '',
+  direction        text NOT NULL CHECK (direction IN ('sent','received')),
+  sent_at          timestamptz NOT NULL,
+  snippet          text NOT NULL DEFAULT '',
+  has_attachments  boolean NOT NULL DEFAULT false,
+  summary          text NOT NULL DEFAULT '',
+  summary_status   text NOT NULL DEFAULT 'pending' CHECK (summary_status IN ('pending','done','failed')),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, lead_id, gmail_id)
+);
+CREATE INDEX IF NOT EXISTS lead_emails_lead_idx ON lead_emails (user_id, lead_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS lead_emails_user_idx ON lead_emails (user_id, sent_at DESC);
+
+ALTER TABLE lead_emails ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'lead_emails' AND policyname = 'lead_emails_crm_app') THEN
+      CREATE POLICY lead_emails_crm_app ON lead_emails FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON lead_emails TO crm_app;
   END IF;
 END $$;

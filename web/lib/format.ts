@@ -33,3 +33,6 @@ export const fromLocalInput = (v: string) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 };
+
+/** 구글 일정 설명에서 CRM이 붙인 부분을 떼어 사용자 메모만 남긴다 */
+export const memoFromDescription = (description: string, mark: string) => description.split(mark)[0].trim();

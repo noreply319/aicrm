@@ -8,6 +8,8 @@ import Column from "./Column";
 interface Props {
   leads: Lead[];
   noteCounts: Record<string, number>;
+  /** 리드별 가장 가까운 다음 미팅 시작 시각 (ISO) */
+  nextMeetings: Record<string, string>;
   onMove: (id: string, stage: StageId, beforeId: string | null) => void;
   onOpen: (id: string) => void;
   onAddInStage: (stage: StageId) => void;
@@ -15,7 +17,7 @@ interface Props {
 
 export type DropTarget = { stage: StageId; index: number } | null;
 
-export default function Board({ leads, noteCounts, onMove, onOpen, onAddInStage }: Props) {
+export default function Board({ leads, noteCounts, nextMeetings, onMove, onOpen, onAddInStage }: Props) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [target, setTarget] = useState<DropTarget>(null);
 
@@ -40,6 +42,7 @@ export default function Board({ leads, noteCounts, onMove, onOpen, onAddInStage 
           stage={stage}
           leads={leads.filter((l) => l.stage === stage.id)}
           noteCounts={noteCounts}
+          nextMeetings={nextMeetings}
           draggingId={draggingId}
           dropIndex={target?.stage === stage.id ? target.index : null}
           onDragStart={setDraggingId}

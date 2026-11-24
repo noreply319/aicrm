@@ -2,10 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { STAGES } from "@/lib/constants";
-import type { Lead, LeadInput, MeetingNoteSummary, Priority, StageId } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
+import type { Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
+import { CandidateRow } from "./CalendarView";
+import LeadEmails from "./LeadEmails";
 import NoteListItem from "./NoteListItem";
 
-export type LeadModalTab = "info" | "notes";
+export type LeadModalTab = "info" | "notes" | "schedules" | "emails";
 
 interface Props {
   lead: Lead | null;
@@ -17,6 +20,19 @@ interface Props {
   onDelete?: () => void;
   onNewNote: () => void;
   onOpenNote: (id: string) => void;
+  /** 이 리드의 다음 미팅 (후보 + 등록된 일정) */
+  schedules: ScheduledMeeting[];
+  meId: string | null;
+  onNewSchedule: () => void;
+  /** 후보면 확인 후 등록, 등록된 일정이면 보기/수정 */
+  onOpenSchedule: (s: ScheduledMeeting) => void;
+  onDismissSchedule: (s: ScheduledMeeting) => void;
+  /** 일정 탭을 열 때 구글과 동기화 */
+  onSchedulesTab: () => void;
+  /** 이메일 탭: Gmail 연동 상태, 내 이메일(Gmail 웹 계정 선택용), 연동 만료 시 상태 갱신 */
+  gmailState: Me["gmail"]["state"];
+  meEmail: string;
+  onGmailExpired: () => void;
   onClose: () => void;
 }
 
@@ -26,7 +42,9 @@ const empty = (stage: StageId): LeadInput => ({
 });
 
 export default function LeadModal({
-  lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote, onClose,
+  lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote,
+  schedules, meId, onNewSchedule, onOpenSchedule, onDismissSchedule, onSchedulesTab,
+  gmailState, meEmail, onGmailExpired, onClose,
 }: Props) {
   const [tab, setTab] = useState<LeadModalTab>(lead ? initialTab : "info");
   const [form, setForm] = useState<LeadInput>(() => {
@@ -35,6 +53,13 @@ export default function LeadModal({
     return rest;
   });
   const firstRef = useRef<HTMLInputElement>(null);
+
+  // 일정 탭: 열 때마다 구글에서 바뀐 내용 반영 (콜백이 렌더마다 바뀌어도 탭 전환 때만 실행)
+  const syncRef = useRef(onSchedulesTab);
+  syncRef.current = onSchedulesTab;
+  useEffect(() => {
+    if (tab === "schedules") syncRef.current();
+  }, [tab]);
 
   // 처음 열 때 정보 탭이면 회사명 입력에 포커스
   const focusOnOpen = useRef(tab === "info");
@@ -72,6 +97,12 @@ export default function LeadModal({
             <button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "on" : ""} onClick={() => setTab("notes")}>
               미팅 노트 ({notes.length})
             </button>
+            <button type="button" role="tab" aria-selected={tab === "schedules"} className={tab === "schedules" ? "on" : ""} onClick={() => setTab("schedules")}>
+              다음 미팅 ({schedules.filter((x) => x.status === "scheduled" && x.endsAt >= nowIso()).length})
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "emails"} className={tab === "emails" ? "on" : ""} onClick={() => setTab("emails")}>
+              이메일
+            </button>
           </div>
         )}
         {tab === "notes" && (
@@ -94,6 +125,24 @@ export default function LeadModal({
               </div>
             )}
           </div>
+        )}
+        {tab === "schedules" && (
+          <LeadSchedules
+            schedules={schedules}
+            meId={meId}
+            onNew={onNewSchedule}
+            onOpen={onOpenSchedule}
+            onDismiss={onDismissSchedule}
+          />
+        )}
+        {tab === "emails" && lead && (
+          <LeadEmails
+            leadId={lead.id}
+            leadEmail={lead.email}
+            gmailState={gmailState}
+            meEmail={meEmail}
+            onExpired={onGmailExpired}
+          />
         )}
         <div className="modal-body" hidden={tab !== "info"}>
           <div className="field full">
@@ -154,6 +203,73 @@ export default function LeadModal({
           <button type="submit" className="btn btn-primary">저장</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+const nowIso = () => new Date().toISOString();
+
+/** 리드 상세 → 다음 미팅 탭: 확인 필요 후보, 예정 미팅, 지난 미팅 */
+function LeadSchedules({
+  schedules, meId, onNew, onOpen, onDismiss,
+}: {
+  schedules: ScheduledMeeting[];
+  meId: string | null;
+  onNew: () => void;
+  onOpen: (s: ScheduledMeeting) => void;
+  onDismiss: (s: ScheduledMeeting) => void;
+}) {
+  const now = nowIso();
+  const candidates = schedules.filter((s) => s.status === "candidate");
+  const upcoming = schedules.filter((s) => s.status === "scheduled" && s.endsAt >= now);
+  const past = schedules.filter((s) => s.status === "scheduled" && s.endsAt < now).reverse();
+  const when = (s: ScheduledMeeting) =>
+    s.allDay ? `${formatDateTime(s.startsAt).slice(0, 10)} 종일` : formatDateTime(s.startsAt);
+
+  const row = (s: ScheduledMeeting) => (
+    <button key={s.id} type="button" className="schedule-item" onClick={() => onOpen(s)}>
+      <span className="schedule-when">{when(s)}</span>
+      <span className="schedule-title">{s.title}</span>
+      {s.location && <span className="muted">📍 {s.location}</span>}
+      <span className="spacer" />
+      <span className="muted">{s.userId === meId ? "내 캘린더" : `${s.ownerName || "팀원"}님`}</span>
+    </button>
+  );
+
+  return (
+    <div className="lead-notes">
+      <div className="lead-notes-head">
+        <span className="muted">구글 캘린더에 등록된 미팅과 미팅 노트에서 찾은 후보</span>
+        <span className="spacer" />
+        <button type="button" className="btn btn-primary btn-sm" onClick={onNew}>＋ 일정 추가</button>
+      </div>
+      {candidates.length > 0 && (
+        <div className="schedule-group">
+          <h4>확인 필요</h4>
+          {candidates.map((c) => (
+            <CandidateRow key={c.id} candidate={c} company="" onConfirm={onOpen} onDismiss={onDismiss} />
+          ))}
+        </div>
+      )}
+      {upcoming.length === 0 && candidates.length === 0 ? (
+        <div className="empty-state small">
+          <div className="empty-icon">🗓</div>
+          <b>예정된 미팅이 없습니다</b>
+        </div>
+      ) : (
+        upcoming.length > 0 && (
+          <div className="schedule-group">
+            <h4>예정</h4>
+            {upcoming.map(row)}
+          </div>
+        )
+      )}
+      {past.length > 0 && (
+        <div className="schedule-group">
+          <h4>지난 미팅</h4>
+          {past.slice(0, 5).map(row)}
+        </div>
+      )}
     </div>
   );
 }

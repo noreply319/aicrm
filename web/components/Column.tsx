@@ -9,6 +9,7 @@ interface Props {
   stage: { id: StageId; name: string; color: string };
   leads: Lead[];
   noteCounts: Record<string, number>;
+  nextMeetings: Record<string, string>;
   draggingId: string | null;
   dropIndex: number | null;
   onDragStart: (id: string) => void;
@@ -21,7 +22,7 @@ interface Props {
 }
 
 export default function Column({
-  stage, leads, noteCounts, draggingId, dropIndex,
+  stage, leads, noteCounts, nextMeetings, draggingId, dropIndex,
   onDragStart, onDragEnd, onHover, onLeave, onDrop, onOpen, onAdd,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -79,6 +80,7 @@ export default function Column({
               <LeadCard
                 lead={lead}
                 noteCount={noteCounts[lead.id] ?? 0}
+                nextMeeting={nextMeetings[lead.id] ?? null}
                 dragging={lead.id === draggingId}
                 onDragStart={() => onDragStart(lead.id)}
                 onDragEnd={onDragEnd}

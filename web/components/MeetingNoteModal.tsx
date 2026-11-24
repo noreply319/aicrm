@@ -18,6 +18,8 @@ interface Props {
   getNote: (id: string) => Promise<MeetingNote>;
   /** auto: 녹음 완료 후 자동 저장 */
   onSave: (input: MeetingNoteInput, id: string | null, opts?: { auto?: boolean }) => Promise<MeetingNote>;
+  /** 미팅(녹음) 완료 후 자동 요약: 서버가 요약을 저장하고 저장된 노트를 돌려준다 */
+  onAutoSummarize: (id: string) => Promise<MeetingNote>;
   onDelete: (id: string) => Promise<void>;
   onOpenLead: (leadId: string) => void;
   onClose: () => void;
@@ -32,7 +34,7 @@ const defaultTitle = (company: string | undefined, metAtLocal: string) =>
   company ? `${company} 미팅` : `${metAtLocal.slice(0, 10) || nowIso().slice(0, 10)} 미팅`;
 
 export default function MeetingNoteModal({
-  noteId, leadId, lockLead, leads, getNote, onSave, onDelete, onOpenLead, onClose,
+  noteId, leadId, lockLead, leads, getNote, onSave, onAutoSummarize, onDelete, onOpenLead, onClose,
 }: Props) {
   const [note, setNote] = useState<MeetingNote | null>(null);
   const [loading, setLoading] = useState(noteId !== null);
@@ -59,6 +61,16 @@ export default function MeetingNoteModal({
   // 녹음 전사가 본문에 추가됐는데 아직 자동 저장하지 않았는지
   const autoSavePendingRef = useRef(false);
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
+  // 자동 요약 상태와 마지막 자동 요약 결과 (사용자가 고친 요약은 자동으로 덮어쓰지 않는다)
+  const [autoSummary, setAutoSummary] = useState<"running" | "done" | "failed" | null>(null);
+  const lastAutoSummaryRef = useRef<{ summary: string; nextActions: string } | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const sortedLeads = useMemo(
     () => [...leads].sort((a, b) => a.company.localeCompare(b.company, "ko")),
@@ -173,6 +185,7 @@ export default function MeetingNoteModal({
         if (latest.current.body === v.body && latest.current.formLeadId === v.formLeadId) setDirty(false);
         setAutoSavedAt(formatDateTime(saved.updatedAt).slice(11));
         setError(null);
+        autoSummarize(saved.id, v);
       })
       .catch((e: Error) => {
         autoSavePendingRef.current = true; // 다음 변경 때 다시 시도
@@ -180,6 +193,39 @@ export default function MeetingNoteModal({
       })
       .finally(() => setSaving(false));
   }, [rec, editing, leads, onSave]);
+
+  /**
+   * 미팅 완료(녹음·파일 전사 끝 → 자동 저장) 후 자동 요약.
+   * 요약이 비어 있거나 이전 자동 요약 그대로일 때만 실행 — 사용자가 고친 요약은 덮어쓰지 않는다.
+   */
+  const autoSummarize = (id: string, at: { summary: string; nextActions: string }) => {
+    const last = lastAutoSummaryRef.current;
+    const untouched =
+      (!at.summary && !at.nextActions) ||
+      (last !== null && at.summary === last.summary && at.nextActions === last.nextActions);
+    if (!untouched) return;
+
+    setAutoSummary("running");
+    setSummarizing(true);
+    onAutoSummarize(id)
+      .then((n) => {
+        lastAutoSummaryRef.current = { summary: n.summary, nextActions: n.nextActions };
+        if (!mountedRef.current) return; // 화면을 닫았어도 서버에는 저장됨
+        setNote(n);
+        // 요약하는 동안 사용자가 요약 칸을 고치지 않았을 때만 폼에 반영
+        if (latest.current.summary === at.summary && latest.current.nextActions === at.nextActions) {
+          setSummary(n.summary);
+          setNextActions(n.nextActions);
+        }
+        setAutoSummary("done");
+      })
+      .catch((e: Error) => {
+        if (!mountedRef.current) return;
+        setAutoSummary("failed");
+        setError(`AI 요약 실패: ${e.message} — 'AI 요약 생성'으로 다시 시도할 수 있습니다`);
+      })
+      .finally(() => mountedRef.current && setSummarizing(false));
+  };
 
   /** AI 요약 생성 → 폼에 채움 (보기 모드에서는 바로 저장) */
   const runSummary = async () => {
@@ -405,6 +451,8 @@ export default function MeetingNoteModal({
         {editing && autoSavedAt && (
           <div className="autosave-note" role="status">
             ✓ 녹음이 끝나 {autoSavedAt}에 자동 저장되었습니다.
+            {autoSummary === "running" && " AI가 미팅 내용을 요약하는 중입니다… (창을 닫아도 계속됩니다)"}
+            {autoSummary === "done" && " AI 요약과 다음 액션도 정리되었습니다."}
             {!formLeadId && " 연결 리드를 선택한 뒤 저장하면 리드에 연결됩니다."}
           </div>
         )}

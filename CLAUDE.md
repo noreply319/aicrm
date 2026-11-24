@@ -24,7 +24,7 @@
   - 로컬: 로컬 PostgreSQL `ai_crm` DB
   - 배포: Supabase (`aicrm` 프로젝트, 도쿄 리전)
 - **배포**: Vercel (`aicrm` 프로젝트, Root Directory = `web`, GitHub push 시 자동 배포)
-- **인증**: 없음 (아래 보안 항목 참고)
+- **인증**: 구글 로그인(직접 구현, DB 세션 + httpOnly 쿠키), `ALLOWED_EMAILS` 허용 목록. 아래 "로그인 / 구글 캘린더" 참고
 - **테스트**: Vitest(unit·integration) + Playwright(e2e). 린트는 아직 없음
 - **패키지 매니저**: npm
 - **Node**: nvm으로 설치 (`nvm use node`)
@@ -59,17 +59,27 @@ AI CRM/                      # git 저장소 루트
 └── web/                     # Next.js 앱 (Vercel Root Directory)
     ├── app/
     │   ├── layout.tsx       # 폰트, 테마 깜빡임 방지 스크립트
-    │   ├── page.tsx
+    │   ├── (crm)/           # 경로 그룹: layout.tsx가 CrmApp을 렌더 → / 와 /meetings가 상태 공유
+    │   │   ├── page.tsx         # / 파이프라인 (빈 page)
+    │   │   └── meetings/page.tsx # /meetings 미팅 노트 (빈 page)
     │   ├── globals.css      # 모든 스타일
     │   └── api/leads/       # Route Handlers
     │       ├── route.ts             # GET 목록, POST 생성
     │       ├── [id]/route.ts        # PATCH 수정, DELETE 삭제
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast
+    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
+    │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
+    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
     │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
     │   ├── validate.ts      # API 입력 검증
+    │   ├── events.ts        # 서버 전용: lead_events 이력 기록, 트랜잭션 헬퍼
+    │   ├── assistant.ts     # 서버 전용: 리드+이력+미팅 노트 컨텍스트 구성
+    │   ├── openai.ts        # 서버 전용: OpenAI 채팅·전사 호출, 이메일·전화번호 마스킹
+    │   ├── meetings.ts      # 서버 전용: 미팅 노트 컬럼/매핑/이력 diff, AI 요약
+    │   ├── useMeetings.ts   # 클라이언트 미팅 노트 훅 · api.ts: fetch 헬퍼
+    │   ├── audioFile.ts     # 클라이언트: 녹음 파일 → 업로드 가능한 WAV 구간으로 분할
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -103,6 +113,8 @@ AI CRM/                      # git 저장소 루트
 - 응답 형식: 성공 시 데이터 그대로(`Lead`, `Lead[]`), 실패 시 `{ error: "한국어 메시지" }` + 적절한 상태 코드.
 - 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
 - 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
+- 리드를 변경하는 API는 같은 트랜잭션에서 `lead_events`에 이력을 남김 (`lib/events.ts`의 `withTransaction` + `recordEvent`). 새 변경 API도 동일하게.
+- AI Assistant는 조회 전용. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음.
 
 ## 환경 변수 / DB 연결
 
@@ -110,6 +122,7 @@ AI CRM/                      # git 저장소 루트
 |---|---|---|
 | 로컬 | `DATABASE_URL` (`web/.env.local`) | 로컬 PostgreSQL `ai_crm` (사용자 `crm_app`) |
 | Vercel | `POSTGRES_URL` (Vercel 환경 변수, Sensitive) | Supabase pooler (`aws-0-ap-northeast-1.pooler.supabase.com:6543`, 사용자 `crm_app.<ref>`) |
+| 공통 | `OPENAI_API_KEY` (로컬 `.env.local`, Vercel 환경 변수 Sensitive) | AI Assistant·미팅 노트 요약·녹음 전사용 OpenAI 키. 선택: `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_TRANSCRIBE_MODEL`(본문 전사, 기본 `gpt-4o-transcribe-diarize` 화자 구분) — 2027-02-26 지원 종료 예정이라 그 전에 교체 필요 |
 
 - 선택 로직은 `lib/db.ts`의 `connectionConfig()`. Vercel에서는 `POSTGRES_URL` 우선.
 - 원격 DB는 SSL 사용, URL의 `sslmode` 파라미터는 제거 후 `ssl` 옵션으로 지정 (pg가 검증 모드로 해석해 실패하므로).
@@ -157,7 +170,8 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 ## 보안 / 하지 말아야 할 것
 
 - `.env*` 파일, DB 비밀번호, 토큰을 커밋하거나 코드에 하드코딩하지 않음. 출력에 비밀번호를 노출하지 않음.
-- **인증이 없음**: 배포 URL을 아는 누구나 리드를 수정·삭제 가능. 실제 영업 데이터 투입 전 인증 추가 필요.
+- **인증**: `web/proxy.ts`가 `/login`·`/api/auth/*` 외 모든 페이지·API에서 세션을 확인 (페이지 → /login, API → 401, 다른 사이트의 변경 요청 → 403). 새 API도 자동 보호됨. 데이터는 로그인 사용자 전체(팀) 공유.
+- 구글 리프레시 토큰은 `TOKEN_ENCRYPTION_KEY`로 암호화해 `users`에 저장. 토큰·세션 값은 로그·응답에 남기지 않음.
 - Supabase `leads` 테이블은 RLS 활성화 + `crm_app` 역할 전용 정책만 존재 (anon/authenticated 차단). 새 테이블도 RLS를 켜고 정책을 명시.
 - Supabase(운영 DB)에 쓰기 SQL 실행, 테이블 삭제, 데이터 삭제, 비밀번호 변경 등 되돌리기 어려운 작업은 실행 전 반드시 확인 요청. 조회는 `--read-only` 사용.
 - 새 패키지 추가 전 기존 의존성으로 해결 가능한지 검토하고, 추가 시 이유를 설명. 버전은 정확히 고정(`--save-exact`)하고 `npm audit` 확인.
@@ -171,6 +185,30 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 사용자가 "명령어만 알려줘"처럼 범위를 정하면 그 범위만 답변.
 - 작업 후 변경한 파일과 확인 방법을 간단히 요약.
 - 답변과 코드 주석은 한국어, 변수·함수명은 영어.
+
+## 로그인 / 구글 캘린더
+
+- 문서: `docs/google-calendar/requirements.md`
+- 흐름: `/login` → `/api/auth/google`(openid email profile) → `/api/auth/callback` → 세션 쿠키 7일. 설정 → Google 연동은 `/api/calendar/connect`로 캘린더 권한 추가(같은 콜백, state 쿠키의 purpose로 구분).
+- 구글 OAuth 앱은 "외부 + 테스트" 상태 → 리프레시 토큰 7일 만료. 만료되면 `users.calendar_expired = true`, 설정에서 다시 연동.
+- 서버: `lib/auth.ts`(세션·허용 이메일), `lib/google.ts`(OAuth·토큰), `lib/calendar.ts`(Calendar REST, fetch), `lib/schedules.ts`(노트 → 다음 미팅 후보 AI 추출), `lib/crypto.ts`.
+- API: `/api/me`, `/api/calendar/{connect,connection,calendars,events,events/[eventId]}`, `/api/schedules`, `/api/meetings/[id]/schedule-candidates`.
+- 화면: 헤더 메뉴 `캘린더`(`/calendar`, CalendarView·EventModal), `설정`(`/settings`, SettingsView). 노트 저장 후 ScheduleSuggestModal, 리드 상세 `다음 미팅` 탭.
+- 테이블: `users`, `sessions`, `scheduled_meetings`(candidate → scheduled/dismissed, scheduled → canceled). 이력 타입 `meeting_scheduled/rescheduled/canceled`, `lead_events.user_id`(변경자).
+- 노트 저장 시 날짜·시간이 확정된 다음 미팅은 확인 없이 자동 등록(`extractAndAutoRegister`), 시간 미정은 후보. CRM 일정 제목은 구글에 `[AI CRM]` 접두어(`CRM_TITLE_PREFIX`), DB에는 접두어 없이 저장.
+- 일정 수정·삭제는 CRM에서 등록한 **본인** 일정만. AI Assistant는 `list_calendar_events` 도구(function calling)로 본인 캘린더 조회 — 제목·시간·장소만 OpenAI로 전송.
+- 로컬 OAuth 콜백은 `http://localhost:3000/api/auth/callback`만 등록돼 있으므로 개발 서버는 3000 포트로 실행.
+
+## Gmail 연동
+
+- 설정 → Gmail → `/api/gmail/connect`로 `gmail.readonly` 권한 추가 (같은 콜백, purpose `gmail`). Google Cloud Console에서 **Gmail API 사용 설정** 필요, 테스트 사용자만 사용 가능(제한 범위).
+- 리프레시 토큰은 사용자당 하나(`users.google_refresh_token`)를 캘린더·Gmail이 공유. 기능별 사용 여부는 `users.calendar_enabled`·`gmail_enabled`, 만료는 `calendar_expired`(공통). 상태 계산은 `lib/auth.ts`의 `featureState()`.
+- 연동 해제(`disconnectFeature`): 다른 기능이 켜져 있으면 해당 기능만 끄고, 마지막 기능이면 구글에 토큰 폐기 후 삭제 (구글 폐기는 앱 권한 전체를 없애므로).
+- 서버: `lib/gmail.ts`(Gmail REST, fetch). 검색 대상은 `leadTarget()`: 리드 이메일이 회사 도메인이면 `@도메인` 전체(같은 회사 다른 사람 포함, 화면에 "회사" 배지), 무료 메일(`FREE_MAIL_DOMAINS`)·내 계정과 같은 도메인이면 담당자 주소만. 검색어 `{from:x to:x cc:x bcc:x}` 후 헤더로 정확히 다시 거른다(`involvesTarget`).
+- 메일 캐시 `lead_emails`(`lib/emailStore.ts`): 사용자·리드별로 제목·헤더·미리보기·AI 요약 저장, **본문은 저장 안 함**(요약할 때·열 때만 Gmail에서 읽음). 동기화는 Gmail id 목록만 받아 처음 보는 메일만 저장 → `summary_status = pending` → 10건씩 묶어 OpenAI 요약(`done`/`failed`). 이미 저장·요약한 메일은 다시 불러오거나 요약하지 않음. Gmail 연동 해제 시 해당 사용자 행 삭제.
+- API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(GET 저장된 목록, Gmail 호출 없음), `.../emails/sync`(POST 새 메일 저장, `{pageToken}`이면 이전 페이지), `.../emails/summarize`(POST pending 요약, 최대 20건, `{retryFailed}`), `.../emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
+- 화면: 리드 상세 `이메일` 탭(`LeadEmails`: 저장 목록 즉시 표시 → sync → summarize, 목록에 AI 요약), 설정 Gmail 카드.
+- AI Assistant: 컨텍스트 `emails`에 **질문과 관련된 저장 메일만**(`findRelevantEmails`: 질문에 나온 회사·담당자의 메일 + 제목·요약 키워드 일치, 최대 30건, 제목·요약만). `search_lead_emails` 도구는 저장된 요약 검색(leadId면 새 메일 동기화·요약 후). 이메일 주소는 이름만 남기고 제목·요약은 `maskPii` 후 전송.
 
 ## 참고 문서
 
