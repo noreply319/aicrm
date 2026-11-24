@@ -541,3 +541,9 @@
 
 - 결과: 모바일(640px 이하) 하단 탭 맨 왼쪽에 "AI"(✨) 메뉴 → 누르면 탭 바 위 전체 화면 AI Assistant 채팅(다시 누르거나 다른 메뉴를 누르면 닫힘, 열려 있으면 AI 탭만 선택 표시). 모바일 상단 바의 AI 버튼은 숨김, 데스크톱은 그대로. e2e 2개 추가(모바일 AI 탭, 데스크톱엔 AI 메뉴 없음) 통과. 작업 중 다른 세션이 feature/contracts를 main에 병합 중(MERGE_HEAD)이었고 그 과정에서 이 변경이 함께 스테이징됨 — git 상태는 건드리지 않음. 커밋 안 함
 
+
+## 77. 2026-11-24 — 기능 브랜치 main 병합
+
+> 지금 병합해줘
+
+- 결과: `feature/contracts`(`2d18c0d`) → `feature/companies`(`77373d5`) 순서로 main에 병합. `feature/contacts`는 커밋된 고유 변경이 없어(연락처 작업은 워크트리에 미커밋) 병합할 것 없음. 충돌은 main(설정 모달·모바일 AI 탭) 기준에 계약서·회사 변경을 다시 얹어 해결, 계약서 화면에선 조회형 Assistant(상단 버튼·모바일 AI 탭·패널) 숨김, 테스트 DB TRUNCATE에 문서·회사 테이블 모두 포함. e2e에서 Next.js 개발 표시가 모바일 AI 탭을 가려 `E2E_HIDE_DEV_INDICATOR`로 숨김. 새 패키지(pdf-lib) `npm ci`, audit 0. build·unit+integration 104·e2e 26 통과(테스트 건너뛰기 지시 전). 다른 세션의 미커밋 문서·이력·e2e 수정 일부가 병합 커밋에 함께 들어감. push 안 함, 운영 DB 스키마 미적용
