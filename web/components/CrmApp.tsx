@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
+import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
 import { useLeads } from "@/lib/useLeads";
 import { useMe } from "@/lib/useMe";
@@ -106,9 +106,25 @@ export default function CrmApp() {
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 좁은 화면에서는 Assistant가 화면을 덮으므로 처음엔 닫아 둔다
+  // 처음 상태: 좁은 화면에서는 Assistant가 화면을 덮으므로 닫고, 아니면 마지막으로 고른 상태.
+  // 그 뒤 다음 프레임부터 열기/닫기·메뉴 접기 애니메이션을 켠다 (첫 화면에서 움직이지 않게).
   useEffect(() => {
-    if (window.matchMedia("(max-width: 960px)").matches) setAssistantOpen(false);
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(ASSISTANT_KEY);
+    } catch {}
+    if (window.matchMedia("(max-width: 960px)").matches || saved === "closed") setAssistantOpen(false);
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => document.documentElement.classList.add("ui-anim"));
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const changeAssistant = useCallback((open: boolean) => {
+    setAssistantOpen(open);
+    try {
+      localStorage.setItem(ASSISTANT_KEY, open ? "open" : "closed");
+    } catch {}
   }, []);
 
   const showToast = useCallback((msg: string) => {
@@ -410,7 +426,7 @@ export default function CrmApp() {
           onQuery={setQuery}
           onAdd={onAdd}
           assistantOpen={assistantOpen}
-          onToggleAssistant={() => setAssistantOpen((v) => !v)}
+          onToggleAssistant={() => changeAssistant(!assistantOpen)}
         />
         {auth.me?.calendar.state === "expired" && view !== "settings" && (
           <Alert tone="warning" banner action={<Button size="sm" href="/api/calendar/connect">다시 연동</Button>}>
@@ -497,8 +513,10 @@ export default function CrmApp() {
             )}
           </div>
           {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-          {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant를 숨긴다 */}
-          <AssistantPanel open={assistantOpen && view !== "contracts"} onClose={() => setAssistantOpen(false)} />
+          {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant(다시 열기 탭 포함)를 숨긴다 */}
+          <div className="assistant-slot" hidden={view === "contracts"}>
+            <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+          </div>
         </div>
       </div>
       {modal.open && (

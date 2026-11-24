@@ -110,6 +110,7 @@ AI CRM/                      # git 저장소 루트
 - 버튼·배지·입력·탭·알림·모달·빈 상태·아바타는 `@/components/ui`만 사용. `<button className="btn …">`, 새 `.xxx-pill` 클래스 등 직접 마크업 금지. 모달의 Esc·바깥 클릭은 `Modal`이 처리.
 - 우선순위 색은 `PRIORITY_TONE`, 연동 상태는 `STATE_TONE`(Sidebar.tsx) → Badge tone. e2e가 쓰는 클래스(`.card`, `.note-badge`, `.unassigned-pill`, `.autosave-note` 등)는 className으로 유지.
 - 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하 하단 탭). 상단 바(`Header`)는 제목·검색·테마·Assistant·추가 버튼.
+- 메뉴 접기(`html.sb-collapsed`, `crm.sidebar`)·Assistant 숨기기(`.assistant.closed`, `crm.assistant`)는 localStorage에 저장, 첫 페인트 전 적용은 `layout.tsx` 스크립트. 전환 애니메이션은 `html.ui-anim`이 붙은 뒤에만.
 - `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
 - 새 색상 토큰은 라이트(`:root`)와 다크(두 군데: `prefers-color-scheme` 블록, `[data-theme="dark"]`) 모두에 정의.
 

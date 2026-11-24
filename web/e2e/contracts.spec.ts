@@ -38,7 +38,7 @@ test("계약서: 템플릿 버튼 → 리드 선택(자동 채움) → 하나씩
   await expect(page.getByRole("link", { name: "계약서" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
   // 이 화면에서는 조회형 Assistant를 숨긴다
-  await expect(page.getByRole("button", { name: /Assistant/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Assistant/ })).toHaveCount(0); // 헤더 버튼·다시 열기 탭 모두
   await shot(page, "1-start");
 
   await page.getByRole("button", { name: /SaaS 서비스 이용 계약서/ }).click();
