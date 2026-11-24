@@ -453,3 +453,16 @@
 > commit하고 main에 merge해줘.
 
 - 결과: 작업이 이미 `main` 브랜치에서 진행돼 별도 merge 없이 main에 직접 커밋. 다른 작업의 `docs/companies`, `docs/contacts`, `docs/contracts`, `package-lock.json`은 제외. push는 안 함
+
+## 69. 2026-11-24 — 왼쪽 메뉴 접기·AI Assistant 숨기기 애니메이션
+
+> 왼쪽 메뉴에 숨기기 보여주기 아이콘 넣어주고, 숨기고 보여주기 할때 애니메이션으로 자연스럽게 구현해줘. AI Assistant도 오른쪽에 숨기고 보여질수 있게 해줘.
+
+- 결과: 사이드바 아래(프로필 위)에 접기/펼치기 버튼 → 232px ↔ 72px 아이콘 레일(폭·라벨 페이드 0.28s, 아이콘 위치 고정). Assistant는 패널 머리 버튼으로 오른쪽으로 밀어 숨김(폭·이동·투명도 0.3s), 숨긴 동안 오른쪽 가장자리 "AI" 탭으로 다시 열기, 모바일은 아래로 내려가는 시트. 두 상태 모두 localStorage 저장·첫 페인트 전 적용(깜빡임 없음), 첫 화면 이후에만 애니메이션, prefers-reduced-motion이면 끔. e2e `layout.spec.ts` 2개 추가, build·unit·e2e 8개 통과(임시 복사본 3200 포트·별도 테스트 DB). 커밋 안 함
+
+
+## 70. 2026-11-24 — 메뉴 접기·Assistant 숨기기 commit / main 반영
+
+> 커밋 하고 main에 머지해줘.
+
+- 결과: 코드는 이미 `405e43b`로 main에 커밋된 상태 → 남은 문서(`CLAUDE.md`, `docs/design-system/design-system.html`, `prompts/history.md`)를 main에 추가 커밋. main에서 작업해 별도 merge 없음. 다른 작업의 `docs/companies`·`contacts`·`contracts`, `package-lock.json` 제외. push 안 함
