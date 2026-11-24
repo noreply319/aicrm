@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { SettingsModalContext } from "@/lib/settingsModal";
 import { statsByCompany } from "@/lib/company";
 import { statsByContact } from "@/lib/contact";
-import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
+import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, MOBILE_QUERY, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
 import { useCompanies } from "@/lib/useCompanies";
 import { useContacts } from "@/lib/useContacts";
@@ -135,6 +135,9 @@ export default function CrmApp() {
   const [suggestReason, setSuggestReason] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(true);
+  /** 모바일 전체 화면 메뉴 (햄버거 버튼) */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [noteModal, setNoteModal] = useState<NoteModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
@@ -147,7 +150,7 @@ export default function CrmApp() {
     try {
       saved = localStorage.getItem(ASSISTANT_KEY);
     } catch {}
-    if (window.matchMedia("(max-width: 640px)").matches || saved === "closed") setAssistantOpen(false);
+    if (window.matchMedia(MOBILE_QUERY).matches || saved === "closed") setAssistantOpen(false);
     let id = requestAnimationFrame(() => {
       id = requestAnimationFrame(() => document.documentElement.classList.add("ui-anim"));
     });
@@ -586,11 +589,15 @@ export default function CrmApp() {
           assistantOpen={assistantOpen}
           onToggleAssistant={() => changeAssistant(!assistantOpen)}
           onNavigate={() => {
-            // 모바일: AI 채팅이 화면을 덮고 있으므로 다른 메뉴로 가면 닫는다
-            if (assistantOpen && window.matchMedia("(max-width: 640px)").matches) changeAssistant(false);
+            // 모바일: 메뉴를 고르면 전체 화면 메뉴를 닫고, AI 채팅이 열려 있었다면 함께 닫는다
+            setMenuOpen(false);
+            if (assistantOpen && window.matchMedia(MOBILE_QUERY).matches) changeAssistant(false);
           }}
+          menuOpen={menuOpen}
+          onCloseMenu={closeMenu}
         />
-        <div className="app-main">
+        {/* 모바일 전체 화면 메뉴가 열려 있는 동안 뒤 화면은 포커스·클릭 불가 */}
+        <div className="app-main" inert={menuOpen}>
           <Header
             view={view}
             query={query}
@@ -598,6 +605,8 @@ export default function CrmApp() {
             onAdd={onAdd}
             assistantOpen={assistantOpen}
             onToggleAssistant={() => changeAssistant(!assistantOpen)}
+            menuOpen={menuOpen}
+            onOpenMenu={() => setMenuOpen(true)}
           />
           {/* 왼쪽: 배너·지표·화면 / 오른쪽: AI Assistant (상단 바 아래부터 화면 끝까지 고정) */}
           <div className="workspace">

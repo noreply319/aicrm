@@ -103,4 +103,6 @@ test("데스크톱에는 사이드바 AI 메뉴가 없다 (상단 바 버튼·�
   await page.goto("/");
   await expect(page.getByRole("navigation", { name: "메뉴" }).getByRole("button", { name: "AI" })).toBeHidden();
   await expect(page.getByRole("button", { name: "AI Assistant" })).toBeVisible();
+  // 햄버거 메뉴 버튼은 모바일 전용
+  await expect(page.getByRole("button", { name: "메뉴 열기" })).toBeHidden();
 });

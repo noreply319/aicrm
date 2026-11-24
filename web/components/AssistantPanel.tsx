@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MOBILE_QUERY } from "@/lib/constants";
 import type { ChatMessage } from "@/lib/types";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { Alert, Badge, Button, Icon, IconButton, Textarea } from "./ui";
 
 interface Props {
@@ -23,6 +25,8 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
+  const mobile = useMediaQuery(MOBILE_QUERY);
 
   // 새 메시지가 오면 맨 아래로 스크롤
   useEffect(() => {
@@ -109,7 +113,7 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
       >
         <Textarea
           value={input}
-          placeholder="리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"
+          placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
           rows={2}
           maxLength={2000}
           onChange={(e) => setInput(e.target.value)}

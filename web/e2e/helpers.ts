@@ -91,7 +91,7 @@ export async function createCompany(request: APIRequestContext, data: Record<str
 
 /**
  * 개발 서버의 Next.js 개발 도구 버튼(왼쪽 아래 "N")을 숨긴다.
- * 모바일 하단 탭의 맨 왼쪽 메뉴를 가려 클릭이 막히므로 모바일 테스트에서 사용 (운영 빌드에는 없음).
+ * 모바일 화면 왼쪽 아래 버튼·메뉴를 가려 클릭이 막힐 수 있어 모바일 테스트에서 사용 (운영 빌드에는 없음).
  */
 export async function hideDevIndicator(page: Page) {
   await page.addInitScript(() => {

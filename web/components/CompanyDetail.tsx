@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { emptyStats, formatBusinessNumber, type CompanyStats } from "@/lib/company";
 import { STAGES } from "@/lib/constants";
-import { formatDateTime, formatWon } from "@/lib/format";
+import { formatDateTime, formatShortWon, formatWon } from "@/lib/format";
 import { positionOf } from "@/lib/contact";
 import { CONTACT_ROLES } from "@/lib/constants";
 import type { Company, Contact, Lead, TeamMember } from "@/lib/types";
@@ -90,8 +90,8 @@ export default function CompanyDetail({
 
       <div className="company-kpis">
         <div className="stat"><div className="label">진행 리드</div><div className="value">{s.open}건</div></div>
-        <div className="stat"><div className="label">파이프라인</div><div className="value">{formatWon(s.pipelineValue)}</div></div>
-        <div className="stat"><div className="label">수주</div><div className="value">{formatWon(s.wonValue)}</div><div className="muted">{s.won}건</div></div>
+        <div className="stat"><div className="label">파이프라인</div><KpiWon value={s.pipelineValue} /></div>
+        <div className="stat"><div className="label">수주</div><KpiWon value={s.wonValue} /><div className="muted">{s.won}건</div></div>
         <div className="stat"><div className="label">실주</div><div className="value">{s.lost}건</div></div>
       </div>
 
@@ -157,5 +157,15 @@ export default function CompanyDetail({
         </Panel>
       </div>
     </main>
+  );
+}
+
+/** 지표 금액: 평소엔 전체 금액, 좁은 모바일(globals.css 400px 이하)에서는 칸에 맞게 억·만 단위로 줄여 표시 */
+function KpiWon({ value }: { value: number }) {
+  return (
+    <div className="value" title={formatWon(value)}>
+      <span className="won-full">{formatWon(value)}</span>
+      <span className="won-short">{formatShortWon(value)}</span>
+    </div>
   );
 }

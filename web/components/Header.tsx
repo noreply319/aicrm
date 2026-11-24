@@ -13,6 +13,9 @@ interface Props {
   onAdd: () => void;
   assistantOpen: boolean;
   onToggleAssistant: () => void;
+  /** 모바일: 왼쪽 햄버거 버튼 → 전체 화면 메뉴 */
+  menuOpen: boolean;
+  onOpenMenu: () => void;
 }
 
 function toggleTheme() {
@@ -35,12 +38,21 @@ const SEARCH_PLACEHOLDER: Partial<Record<View, string>> = {
 };
 
 /** 상단 바: 화면 제목 · 검색 · 테마 · AI Assistant · 추가 버튼 (메뉴는 왼쪽 Sidebar) */
-export default function Header({ view, query, onQuery, onAdd, assistantOpen, onToggleAssistant }: Props) {
+export default function Header({ view, query, onQuery, onAdd, assistantOpen, onToggleAssistant, menuOpen, onOpenMenu }: Props) {
   const addLabel = ADD_LABEL[view];
   const searchPlaceholder = SEARCH_PLACEHOLDER[view];
   const title = NAV.find((n) => n.view === view)?.label;
   return (
     <header className="topbar">
+      {/* 모바일 전용: 메뉴 열기 */}
+      <IconButton
+        className="menu-btn"
+        icon="menu"
+        label="메뉴 열기"
+        aria-expanded={menuOpen}
+        aria-controls="app-menu"
+        onClick={onOpenMenu}
+      />
       <h1 className="page-title">{title}</h1>
       {searchPlaceholder && (
         <div className="search">
@@ -57,9 +69,9 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
       <div className="spacer" />
       <div className="header-actions">
         <IconButton icon="moon" label="테마 전환" onClick={toggleTheme} />
-        {/* 모바일은 하단 탭의 AI 메뉴로 연다 */}
+        {/* 모바일은 "AI" 배지만 보이는 작은 버튼 (누르면 채팅 전체 화면) */}
         {view !== "contracts" && <Button
-          className="hide-mobile"
+          className="header-ai"
           active={assistantOpen}
           title="AI Assistant 열기/닫기"
           aria-label="AI Assistant"
@@ -67,7 +79,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
           onClick={onToggleAssistant}
         >
           <Badge tone="brand">AI</Badge>
-          <span>Assistant</span>
+          <span className="hide-mobile">Assistant</span>
         </Button>}
         {addLabel && (
           <Button variant="primary" icon="plus" className="hide-mobile" onClick={onAdd}>

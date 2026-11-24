@@ -28,7 +28,8 @@ export default function Alert({ tone = "info", action, plain, banner, role, clas
     >
       <span className="alert-text">
         {icon && <span className="alert-icon" aria-hidden>{icon}</span>}
-        {children}
+        {/* 글자·링크가 섞여도 한 덩어리로 줄바꿈되도록 감싼다 (flex 항목으로 쪼개지지 않게) */}
+        <span className="alert-body">{children}</span>
       </span>
       {action && <span className="alert-action">{action}</span>}
     </div>
