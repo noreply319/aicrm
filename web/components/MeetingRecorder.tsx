@@ -4,11 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { extractClip, splitAudioFile } from "@/lib/audioFile";
 import { AUDIO_MAX_BYTES, RECORD_MAX_SEC, RECORD_SEGMENT_SEC, RECORD_WARN_SEC } from "@/lib/constants";
-import { LiveTranscriber, type LiveLine, type LiveState } from "@/lib/liveTranscriber";
 
 /**
  * 미팅 녹음
- *  - 실시간 자막: Realtime 전사(gpt-4o-transcribe)로 말하는 동안 미리보기 (한 문단으로 이어서 표시)
  *  - 본문: 5분 구간마다 화자 구분 전사(gpt-4o-transcribe-diarize)한 텍스트를 "화자 1: …" 형식으로 이어 붙임
  *    구간마다 따로 전사해도 같은 사람이 같은 이름을 갖도록, 처음 나온 화자의 2~8초 음성을 참조로 다음 구간에 보낸다
  *  - 화면 잠금·앱 전환으로 마이크가 끊기면 돌아왔을 때 자동으로 이어서 녹음
@@ -26,8 +24,6 @@ interface Segment {
   prefix?: string;
   blob?: Blob;
   error?: string;
-  /** 이 구간 동안 확정된 실시간 자막 (구간 전사 실패 시 대체용) */
-  liveText?: string;
 }
 
 type Phase = "idle" | "recording" | "paused" | "interrupted" | "stopping";
@@ -90,14 +86,6 @@ const micError = (e: unknown) => {
       : "마이크를 사용할 수 없습니다. (HTTPS 또는 localhost에서만 녹음할 수 있습니다)";
 };
 
-const LIVE_LABEL: Record<LiveState, string> = {
-  connecting: "연결 중…",
-  live: "실시간",
-  reconnecting: "다시 연결 중…",
-  unavailable: "사용 불가",
-  stopped: "종료",
-};
-
 export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRenameSpeaker }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -107,11 +95,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
   const [notices, setNotices] = useState<string[]>([]);
   const [warned, setWarned] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
-  const [liveState, setLiveState] = useState<LiveState | null>(null);
-  const [liveMsg, setLiveMsg] = useState<string | null>(null);
-  const [liveLines, setLiveLines] = useState<LiveLine[]>([]);
-  // iOS 등에서 잠금 후 돌아오면 오디오 처리가 멈춰 있어 사용자가 한 번 눌러야 다시 켜진다
-  const [liveSuspended, setLiveSuspended] = useState(false);
 
   const phaseRef = useRef<Phase>("idle");
   const elapsedRef = useRef(0);
@@ -124,11 +107,9 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
   const mimeRef = useRef("");
   const tickRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const wakeRef = useRef<WakeLockSentinel | null>(null);
-  const liveRef = useRef<LiveTranscriber | null>(null);
   const hiddenRef = useRef<{ at: number; bytes: number; elapsed: number } | null>(null);
   const queueBusyRef = useRef(false);
   const mountedRef = useRef(true);
-  const liveBoxRef = useRef<HTMLDivElement>(null);
   // 확인된 화자 (참조 음성이 있는 화자만 다음 구간에 보낸다)
   const speakersRef = useRef<{ name: string; ref: Blob | null }[]>([]);
   const speakerSeqRef = useRef(0);
@@ -217,11 +198,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       failed: segments.filter((s) => s.status === "error").length,
     });
   }, [phase, segments, fileBusy]);
-
-  // 자막이 늘면 맨 아래로
-  useEffect(() => {
-    liveBoxRef.current?.scrollTo({ top: liveBoxRef.current.scrollHeight });
-  }, [liveLines]);
 
   /** 대기 중인 구간을 순서대로 하나씩 전사 */
   const processQueue = useCallback(async () => {
@@ -342,7 +318,7 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
     // interrupt는 ref만 사용하는 함수 선언이라 의존성에 넣지 않는다
   }, [processQueue, updateSeg]);
 
-  /** 마이크를 열고 녹음·실시간 자막에 연결한다 */
+  /** 마이크를 연다 */
   const openMic = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
@@ -356,37 +332,10 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
     return stream;
   };
 
-  const startLive = async (stream: MediaStream) => {
-    if (!liveRef.current) {
-      liveRef.current = new LiveTranscriber({
-        onLines: (lines) => mountedRef.current && setLiveLines(lines.slice(-50)),
-        onFinal: (text) => {
-          // 현재 녹음 중인 구간에 실시간 자막을 모아 둔다 (구간 전사 실패 시 대체용)
-          const cur = [...segsRef.current].reverse().find((s) => s.status === "recording");
-          if (cur) updateSeg(cur.index, { liveText: `${cur.liveText ? cur.liveText + " " : ""}${text}` });
-        },
-        onState: (s, msg) => {
-          if (!mountedRef.current) return;
-          setLiveState(s);
-          setLiveMsg(msg ?? null);
-        },
-      });
-      await liveRef.current.start(stream).catch(() => {
-        setLiveState("unavailable");
-        setLiveMsg("이 브라우저에서는 실시간 자막을 사용할 수 없습니다. 녹음과 구간 전사는 계속됩니다.");
-      });
-    } else {
-      await liveRef.current.attach(stream).catch(() => {});
-      liveRef.current.resume();
-    }
-  };
-
   const stop = useCallback(() => {
     const p = phaseRef.current;
     if (p === "idle" || p === "stopping") return;
     setPhaseBoth("stopping");
-    liveRef.current?.stop();
-    liveRef.current = null;
     const rec = recRef.current;
     if (rec && rec.state !== "inactive") rec.stop();
     else {
@@ -420,7 +369,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
   function interrupt() {
     if (phaseRef.current !== "recording" && phaseRef.current !== "paused") return;
     setPhaseBoth("interrupted");
-    liveRef.current?.pause();
     const rec = recRef.current;
     if (rec && rec.state !== "inactive") rec.stop();
     recRef.current = null;
@@ -437,12 +385,10 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       ]);
     }
     try {
-      const stream = await openMic();
+      await openMic();
       setPhaseBoth("recording");
       lastTickRef.current = Date.now();
       startSegment();
-      await startLive(stream);
-      if (liveRef.current && !(await liveRef.current.resumeAudio())) setLiveSuspended(true);
       requestWakeLock();
       setError(null);
     } catch {
@@ -456,9 +402,8 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       setError("이 브라우저는 녹음을 지원하지 않습니다. 직접 입력/붙여넣기 또는 파일 업로드를 사용하세요.");
       return;
     }
-    let stream: MediaStream;
     try {
-      stream = await openMic();
+      await openMic();
     } catch (e) {
       setError(micError(e));
       return;
@@ -470,7 +415,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
     setElapsed(0);
     setWarned(false);
     setNotices([]);
-    setLiveLines([]);
     setMode("mic");
     speakersRef.current = [];
     speakerSeqRef.current = 0;
@@ -481,18 +425,15 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
     startSegment();
     tickRef.current = setInterval(tick, 1000);
     requestWakeLock();
-    startLive(stream);
   };
 
   const pause = () => {
     if (recRef.current?.state === "recording") recRef.current.pause();
-    liveRef.current?.pause();
     setPhaseBoth("paused");
   };
 
   const resume = () => {
     if (recRef.current?.state === "paused") recRef.current.resume();
-    liveRef.current?.resume();
     lastTickRef.current = Date.now();
     setPhaseBoth("recording");
   };
@@ -500,13 +441,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
   const retry = (index: number) => {
     updateSeg(index, { status: "queued", error: undefined });
     processQueue();
-  };
-
-  /** 구간 전사 실패 시 그 구간의 실시간 자막을 본문에 대신 넣는다 */
-  const applyLiveText = (s: Segment) => {
-    if (!s.liveText) return;
-    onTranscriptRef.current(`${labelOf(s)} · 실시간 자막`, s.liveText);
-    updateSeg(s.index, { status: "done", blob: undefined, error: undefined });
   };
 
   /** 휴대폰 녹음 앱 등으로 녹음한 파일 업로드 → 구간으로 나눠 전사 */
@@ -562,8 +496,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
         }
         if (p === "recording") interrupt();
         recover(hidden ? away / 1000 : undefined);
-      } else if (p === "recording" && liveRef.current && !liveRef.current.audioRunning) {
-        liveRef.current.resumeAudio().then((ok) => setLiveSuspended(!ok));
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -582,8 +514,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
         rec.onstop = null;
         rec.stop();
       }
-      liveRef.current?.stop();
-      liveRef.current = null;
       cleanup();
     };
   }, []);
@@ -593,9 +523,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
   const failed = segments.filter((s) => s.status === "error");
   const totalSlots =
     mode === "file" ? segments.length : Math.max(segments.length, Math.ceil(RECORD_MAX_SEC / RECORD_SEGMENT_SEC));
-  // 쉼마다 확정되는 조각을 줄바꿈 없이 한 문단으로 잇는다
-  const finalText = liveLines.filter((l) => l.final).map((l) => l.text).join(" ");
-  const partialText = liveLines.filter((l) => !l.final && l.text).map((l) => l.text).join(" ");
 
   return (
     <div className="recorder">
@@ -651,37 +578,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
       {notices.map((n, i) => (
         <div key={i} className="rec-gap">⏸ {n}</div>
       ))}
-
-      {/* 실시간 자막 (미리보기) */}
-      {(active || liveLines.length > 0) && liveState && (
-        <div className="live-box">
-          <div className="live-head">
-            <span className={`live-dot live-${liveState}`} aria-hidden />
-            <b>실시간 자막</b>
-            <span className="muted">{LIVE_LABEL[liveState]} · 미리보기 — 본문에는 5분마다 정확한 전사가 들어갑니다</span>
-            {phase === "recording" && liveSuspended && (
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => liveRef.current?.resumeAudio().then((ok) => setLiveSuspended(!ok))}
-              >
-                자막 다시 켜기
-              </button>
-            )}
-          </div>
-          <div className="live-lines" ref={liveBoxRef} aria-live="polite">
-            {!finalText && !partialText ? (
-              <span className="muted">{phase === "recording" ? "말하면 잠시 후 여기에 표시됩니다…" : ""}</span>
-            ) : (
-              <p>
-                {finalText}
-                {partialText && <span className="partial">{finalText ? " " : ""}{partialText}</span>}
-              </p>
-            )}
-          </div>
-          {liveMsg && <div className="muted">{liveMsg}</div>}
-        </div>
-      )}
 
       {/* 잠금 화면에서도 녹음해야 할 때: 휴대폰 녹음 앱 파일 업로드 */}
       {!active && (
@@ -759,11 +655,6 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
             {s.index + 1}구간({labelOf(s)}) 전사 실패: {s.error}
           </span>
           <span className="rec-error-actions">
-            {s.liveText && (
-              <button type="button" className="btn btn-sm" onClick={() => applyLiveText(s)}>
-                실시간 자막으로 대체
-              </button>
-            )}
             <button type="button" className="btn btn-sm" onClick={() => retry(s.index)} disabled={!s.blob}>
               ↻ 다시 시도
             </button>
