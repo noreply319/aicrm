@@ -1,5 +1,5 @@
 import "server-only";
-import { PRIORITY_LABEL, STAGES } from "./constants";
+import { CONTACT_ROLE_LABEL, PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
 import { featureState, getSessionUser, type ConnectionState, type SessionUser } from "./auth";
@@ -7,7 +7,7 @@ import { findRelevantEmails, searchStoredEmails, summarizePending, syncLeadEmail
 import { leadTarget } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
 import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, ContactRole } from "./types";
 import { parseDateRange, UUID_RE } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
@@ -18,6 +18,9 @@ const MAX_EVENTS = 500;
 const MAX_NOTES = 100;
 const MAX_COMPANIES = 500;
 const COMPANY_NOTE_CHARS = 1000;
+// 컨텍스트에 넣을 연락처 상한, 메모 길이
+const MAX_CONTACTS = 1000;
+const CONTACT_NOTE_CHARS = 500;
 const NOTE_BODY_CHARS = 4000;
 const NOTE_BODY_TOTAL_CHARS = 40000;
 const TIME_ZONE = "Asia/Seoul";
@@ -73,6 +76,18 @@ interface NoteContextRow {
   body: string;
 }
 
+interface ContactContextRow {
+  id: string;
+  name: string;
+  company: string | null;
+  department: string;
+  title: string;
+  role: string | null;
+  tags: string[];
+  notes: string;
+  owner: string | null;
+}
+
 interface CompanyContextRow {
   id: string;
   name: string;
@@ -90,7 +105,7 @@ interface CompanyContextRow {
  * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
  */
 async function buildContext(question: string, emails: EmailContext[] = []): Promise<string> {
-  const [leadsRes, eventsRes, notesRes, schedulesRes, companiesRes] = await Promise.all([
+  const [leadsRes, eventsRes, notesRes, schedulesRes, companiesRes, contactsRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
     pool.query<LeadEvent & { by: string | null }>(
       `SELECT e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
@@ -121,6 +136,13 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
        ORDER BY c.name LIMIT $1`,
       [MAX_COMPANIES]
     ),
+    // 연락처: 이메일·전화·LinkedIn은 보내지 않는다 (개인정보 최소화)
+    pool.query<ContactContextRow>(
+      `SELECT ct.id, ct.name, co.name AS company, ct.department, ct.title, ct.role, ct.tags, ct.notes, u.name AS "owner"
+       FROM contacts ct LEFT JOIN companies co ON co.id = ct.company_id LEFT JOIN users u ON u.id = ct.owner_id
+       ORDER BY ct.name LIMIT $1`,
+      [MAX_CONTACTS]
+    ),
   ]);
 
   // 이메일·전화번호는 외부 API로 보내지 않는다 (개인정보 최소화)
@@ -128,6 +150,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     id: l.id,
     companyId: l.companyId,
     company: l.company,
+    contactId: l.contactId,
     contact: l.contact,
     title: l.title,
     value: l.value,
@@ -195,8 +218,21 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     ...(c.notes && q.includes(c.name.toLowerCase()) ? { notes: maskPii(c.notes.slice(0, COMPANY_NOTE_CHARS)) } : {}),
   }));
 
+  // 연락처 메모는 질문에 이름이 나온 사람만
+  const contacts = contactsRes.rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    company: c.company ?? undefined,
+    department: c.department || undefined,
+    title: c.title || undefined,
+    role: c.role ? CONTACT_ROLE_LABEL[c.role as ContactRole] : undefined,
+    tags: c.tags.length ? c.tags : undefined,
+    owner: c.owner ?? undefined,
+    ...(c.notes && q.includes(c.name.toLowerCase()) ? { notes: maskPii(c.notes.slice(0, CONTACT_NOTE_CHARS)) } : {}),
+  }));
+
   // 질문과 관련된 저장 메일(제목·AI 요약)만. 본문은 넣지 않는다
-  return JSON.stringify({ companies, leads, events, meetingNotes, scheduledMeetings, emails });
+  return JSON.stringify({ companies, contacts, leads, events, meetingNotes, scheduledMeetings, emails });
 }
 
 type CalendarState = ConnectionState;
@@ -239,6 +275,8 @@ function systemPrompt(context: string, state: CalendarState = "none", userName =
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
 - companies는 회사 목록입니다(업종·규모(직원 수)·등급 A/B/C·태그·담당 영업 owner). leads.companyId로 연결됩니다.
   회사 단위 질문(이 회사 리드 전체, 회사별 파이프라인 등)은 companyId로 묶어 답하세요. notes는 질문에 회사명이 나온 회사만 포함됩니다.
+- contacts는 연락처(영업 상대방) 목록입니다(회사·부서·직함·역할 의사결정자/영향력자/실무자·태그·담당 영업 owner). leads.contactId로 담당 리드와 연결됩니다.
+  사람 단위 질문(이 사람이 담당자인 리드, 회사의 의사결정자 등)은 contactId·company로 답하세요. 연락처의 이메일·전화번호는 제공되지 않습니다.
 - events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
   note_created/note_updated/note_deleted(미팅 노트 작성/수정/삭제).
 - meetingNotes는 리드별 미팅 노트입니다(최근 ${MAX_NOTES}건, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.

@@ -4,7 +4,7 @@ import { diffNote, noteSnapshot } from "@/lib/meetings";
 import type { Lead, MeetingNote } from "@/lib/types";
 
 const lead: Lead = {
-  id: "l1", companyId: null, company: "A사", contact: "김", title: "팀장", email: "a@a.com", phone: "010",
+  id: "l1", companyId: null, company: "A사", contactId: null, contact: "김", title: "팀장", email: "a@a.com", phone: "010",
   value: 100, closeDate: "2026-12-01", stage: "new", priority: "mid", notes: "", createdAt: 0,
 };
 

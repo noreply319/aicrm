@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { statsByCompany } from "@/lib/company";
+import { statsByContact } from "@/lib/contact";
 import { CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
 import { useCompanies } from "@/lib/useCompanies";
+import { useContacts } from "@/lib/useContacts";
 import { useLeads } from "@/lib/useLeads";
 import { useMe } from "@/lib/useMe";
 import { useMeetings } from "@/lib/useMeetings";
 import { useSchedules } from "@/lib/useSchedules";
 import type {
-  CalendarEvent, CalendarEventInput, Company, CompanyInput, LeadInput, MeetingNoteInput, ScheduledMeeting, StageId,
+  CalendarEvent, CalendarEventInput, Company, CompanyInput, Contact, ContactInput, LeadInput, MeetingNoteInput, ScheduledMeeting, StageId,
 } from "@/lib/types";
 import Header from "./Header";
 import Sidebar, { type View } from "./Sidebar";
@@ -30,13 +32,20 @@ import SettingsView from "./SettingsView";
 import CompanyList from "./CompanyList";
 import CompanyDetail from "./CompanyDetail";
 import CompanyModal from "./CompanyModal";
+import ContactList from "./ContactList";
+import ContactDetail from "./ContactDetail";
+import ContactModal from "./ContactModal";
+import type { QuickContact } from "./ContactCombobox";
 
 type ModalState =
   | { open: false }
-  | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab; companyId?: string | null };
+  | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab; companyId?: string | null; contactId?: string | null };
 
 /** 회사 등록·수정 모달: companyId null이면 새 회사 */
 type CompanyModalState = { open: false } | { open: true; companyId: string | null };
+
+/** 연락처 등록·수정 모달: contactId null이면 새 연락처 (companyId: 새 연락처의 소속 회사) */
+type ContactModalState = { open: false } | { open: true; contactId: string | null; companyId?: string | null };
 
 type NoteModalState =
   | { open: false }
@@ -68,6 +77,7 @@ type EventModalState =
 
 const viewOf = (pathname: string): View =>
   pathname.startsWith("/companies") ? "companies"
+  : pathname.startsWith("/contacts") ? "contacts"
   : pathname.startsWith("/meetings") ? "meetings"
     : pathname.startsWith("/calendar") ? "calendar"
       : pathname.startsWith("/settings") ? "settings"
@@ -102,12 +112,18 @@ export default function CrmApp() {
   const view = viewOf(pathname);
   /** /companies/[id] 의 회사 id */
   const detailCompanyId = view === "companies" ? decodeURIComponent(pathname.split("/")[2] ?? "") || null : null;
+  /** /contacts/[id] 의 연락처 id */
+  const detailContactId = view === "contacts" ? decodeURIComponent(pathname.split("/")[2] ?? "") || null : null;
 
   const { leads, ready, error, clearError, reload, addLead, updateLead, deleteLead, moveLead } = useLeads();
   const companiesApi = useCompanies();
   const { companies } = companiesApi;
   const companyStats = useMemo(() => statsByCompany(leads), [leads]);
   const [companyModal, setCompanyModal] = useState<CompanyModalState>({ open: false });
+  const contactsApi = useContacts();
+  const { contacts } = contactsApi;
+  const contactStats = useMemo(() => statsByContact(leads), [leads]);
+  const [contactModal, setContactModal] = useState<ContactModalState>({ open: false });
   const meetings = useMeetings();
   const auth = useMe();
   const sched = useSchedules();
@@ -247,8 +263,15 @@ export default function CrmApp() {
     router.push(`/companies/${id}`);
   }, [router]);
 
+  const openContact = useCallback((id: string) => {
+    setModal({ open: false });
+    setContactModal({ open: false });
+    router.push(`/contacts/${id}`);
+  }, [router]);
+
   const onAdd = useCallback(() => {
     if (view === "companies") setCompanyModal({ open: true, companyId: null });
+    else if (view === "contacts") setContactModal({ open: true, contactId: null });
     else if (view === "meetings") openNewNote();
     else if (view === "calendar") openNewEvent();
     else if (view === "pipeline") openNew();
@@ -258,14 +281,14 @@ export default function CrmApp() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toUpperCase();
-      if (e.key === "n" && !modal.open && !noteModal.open && !eventModal.open && !companyModal.open && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+      if (e.key === "n" && !modal.open && !noteModal.open && !eventModal.open && !companyModal.open && !contactModal.open && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
         e.preventDefault();
         onAdd();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal.open, noteModal.open, eventModal.open, companyModal.open, onAdd]);
+  }, [modal.open, noteModal.open, eventModal.open, companyModal.open, contactModal.open, onAdd]);
 
   const visibleLeads = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -320,9 +343,50 @@ export default function CrmApp() {
   const removeCompany = async () => {
     if (!editingCompany) return;
     await companiesApi.deleteCompany(editingCompany.id);
+    contactsApi.forgetCompany(editingCompany.id);
     setCompanyModal({ open: false });
     showToast("회사를 삭제했습니다");
     router.push("/companies");
+  };
+
+  /** 리드 모달에서 담당자를 바로 생성 (회사는 리드의 회사) */
+  const createContactFromLead = async (input: QuickContact, companyId: string | null): Promise<Contact> => {
+    const contact = await contactsApi.addContact({ ...input, companyId });
+    showToast(`연락처 '${contact.name}'을(를) 만들었어요`);
+    return contact;
+  };
+
+  const editingContact = contactModal.open && contactModal.contactId
+    ? contacts.find((c) => c.id === contactModal.contactId) ?? null
+    : null;
+
+  const saveContact = async (input: ContactInput) => {
+    if (!contactModal.open) return;
+    if (editingContact) {
+      const copyChanged = (["name", "title", "email", "mobile", "officePhone"] as const).some((k) => editingContact[k] !== input[k]);
+      await contactsApi.updateContact(editingContact.id, input);
+      // 담당자 사본이 바뀌면 서버가 연결 리드도 바꾼다 → 리드 다시 불러오기
+      if (copyChanged && contactStats[editingContact.id]) reload();
+      showToast("연락처를 수정했습니다");
+      setContactModal({ open: false });
+    } else {
+      const contact = await contactsApi.addContact(input);
+      showToast("연락처를 등록했습니다");
+      setContactModal({ open: false });
+      // 연락처 메뉴에서 등록했으면 상세로 이동 (회사 상세에서 추가했으면 그 화면에 머문다)
+      if (view === "contacts") router.push(`/contacts/${contact.id}`);
+    }
+  };
+
+  const removeContact = async () => {
+    if (!editingContact) return;
+    const id = editingContact.id;
+    await contactsApi.deleteContact(id);
+    setContactModal({ open: false });
+    showToast("연락처를 삭제했습니다");
+    // 연결 리드는 서버에서 연결만 해제됨 → 리드 다시 불러오기
+    if (contactStats[id]) reload();
+    if (detailContactId === id) router.push("/contacts");
   };
 
   const handleSave = async (input: LeadInput) => {
@@ -457,7 +521,13 @@ export default function CrmApp() {
     [editingLead, sched.schedules]
   );
 
-  const bannerError = error ?? meetings.error ?? companiesApi.error;
+  const bannerError = error ?? meetings.error ?? companiesApi.error ?? contactsApi.error;
+  const detailContact = detailContactId ? contacts.find((c) => c.id === detailContactId) ?? null : null;
+  const contactTags = useMemo(() => [...new Set(contacts.flatMap((c) => c.tags))].sort((a, b) => a.localeCompare(b, "ko")), [contacts]);
+  const contactOpenLeads = useMemo(
+    () => Object.fromEntries(Object.entries(contactStats).map(([k, v]) => [k, v.open])),
+    [contactStats]
+  );
   const detailCompany = detailCompanyId ? companies.find((c) => c.id === detailCompanyId) ?? null : null;
   const companyIndustries = useMemo(
     () => [...new Set(companies.map((c) => c.industry).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko")),
@@ -500,9 +570,11 @@ export default function CrmApp() {
                   clearError();
                   meetings.clearError();
                   companiesApi.clearError();
+                  contactsApi.clearError();
                   reload();
                   meetings.reload();
                   companiesApi.reload();
+                  contactsApi.reload();
                 }}
               >
                 다시 불러오기
@@ -539,6 +611,10 @@ export default function CrmApp() {
                   onEdit={() => detailCompany && setCompanyModal({ open: true, companyId: detailCompany.id })}
                   onOpenLead={(id) => openLead(id)}
                   onAddLead={() => detailCompany && setModal({ open: true, leadId: null, stage: "new", tab: "info", companyId: detailCompany.id })}
+                  contacts={detailCompany ? contacts.filter((c) => c.companyId === detailCompany.id) : []}
+                  contactOpenLeads={contactOpenLeads}
+                  onOpenContact={openContact}
+                  onAddContact={() => detailCompany && setContactModal({ open: true, contactId: null, companyId: detailCompany.id })}
                 />
               ) : (
                 <CompanyList
@@ -550,6 +626,32 @@ export default function CrmApp() {
                   ready={companiesApi.ready && ready}
                   onOpen={openCompany}
                   onNew={() => setCompanyModal({ open: true, companyId: null })}
+                />
+              )
+            ) : view === "contacts" ? (
+              detailContactId ? (
+                <ContactDetail
+                  contact={detailContact}
+                  company={detailContact?.companyId ? companies.find((c) => c.id === detailContact.companyId) ?? null : null}
+                  ready={contactsApi.ready && ready}
+                  stats={detailContact ? contactStats[detailContact.id] : undefined}
+                  leads={detailContact ? leads.filter((l) => l.contactId === detailContact.id) : []}
+                  team={companiesApi.team}
+                  onEdit={() => detailContact && setContactModal({ open: true, contactId: detailContact.id })}
+                  onOpenLead={(id) => openLead(id)}
+                  onAddLead={() => detailContact && setModal({ open: true, leadId: null, stage: "new", tab: "info", contactId: detailContact.id })}
+                />
+              ) : (
+                <ContactList
+                  contacts={contacts}
+                  companies={companies}
+                  stats={contactStats}
+                  team={companiesApi.team}
+                  meId={auth.me?.id ?? null}
+                  query={query}
+                  ready={contactsApi.ready && ready}
+                  onOpen={openContact}
+                  onNew={() => setContactModal({ open: true, contactId: null })}
                 />
               )
             ) : view === "calendar" ? (
@@ -614,7 +716,31 @@ export default function CrmApp() {
           defaultCompanyId={modal.companyId ?? null}
           onCreateCompany={createCompanyFromLead}
           onOpenCompany={openCompany}
+          contacts={contacts}
+          defaultContactId={modal.contactId ?? null}
+          onCreateContact={createContactFromLead}
+          onOpenContact={openContact}
+          onEditContact={(id) => setContactModal({ open: true, contactId: id })}
           onClose={() => setModal({ open: false })}
+        />
+      )}
+      {/* 리드 모달 위에서도 열 수 있도록 리드 모달 다음에 렌더 */}
+      {contactModal.open && (
+        <ContactModal
+          key={contactModal.contactId ?? "new"}
+          contact={editingContact}
+          contacts={contacts}
+          companies={companies}
+          companyStats={companyStats}
+          team={companiesApi.team}
+          allTags={contactTags}
+          leadCount={editingContact ? contactStats[editingContact.id]?.total ?? 0 : 0}
+          defaultCompanyId={contactModal.companyId ?? null}
+          onSave={saveContact}
+          onDelete={editingContact ? removeContact : undefined}
+          onCreateCompany={createCompanyFromLead}
+          onOpenContact={openContact}
+          onClose={() => setContactModal({ open: false })}
         />
       )}
       {companyModal.open && (
@@ -625,6 +751,7 @@ export default function CrmApp() {
           industries={companyIndustries}
           allTags={companyTags}
           leadCount={editingCompany ? companyStats[editingCompany.id]?.total ?? 0 : 0}
+          contactCount={editingCompany ? contacts.filter((c) => c.companyId === editingCompany.id).length : 0}
           onSave={saveCompany}
           onDelete={editingCompany ? removeCompany : undefined}
           onOpenCompany={openCompany}

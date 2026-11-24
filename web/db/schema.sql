@@ -306,3 +306,118 @@ BEGIN
 END $$;
 
 SELECT crm_link_lead_companies();
+
+-- ───────── 연락처 (docs/contacts/requirements.md) ─────────
+-- 이름 비교 키: 소문자 + 공백 제거 (마이그레이션에서 "같은 회사 + 같은 이름" 판단)
+-- lib/contact.ts의 personKey()와 같은 규칙이어야 한다.
+CREATE OR REPLACE FUNCTION crm_person_key(name text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT regexp_replace(lower(coalesce(name, '')), '\s', '', 'g')
+$$;
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 50),
+  company_id    uuid REFERENCES companies(id) ON DELETE SET NULL,   -- 회사 없는 연락처 허용
+  department    text NOT NULL DEFAULT '',
+  title         text NOT NULL DEFAULT '',
+  email         text NOT NULL DEFAULT '',                           -- 소문자, 빈 값이 아니면 중복 불가
+  mobile        text NOT NULL DEFAULT '',
+  office_phone  text NOT NULL DEFAULT '',
+  linkedin_url  text NOT NULL DEFAULT '',
+  role          text CHECK (role IN ('decision_maker','practitioner','influencer')),
+  owner_id      uuid REFERENCES users(id) ON DELETE SET NULL,        -- 담당 영업
+  tags          text[] NOT NULL DEFAULT '{}',
+  notes         text NOT NULL DEFAULT '' CHECK (length(notes) <= 5000),
+  created_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS contacts_company_idx ON contacts (company_id);
+CREATE UNIQUE INDEX IF NOT EXISTS contacts_email_idx ON contacts (email) WHERE email <> '';
+
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'contacts' AND policyname = 'contacts_crm_app') THEN
+      CREATE POLICY contacts_crm_app ON contacts FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON contacts TO crm_app;
+  END IF;
+END $$;
+
+-- 리드 → 담당 연락처 (0~1명). leads.contact·title·email·phone은 담당자 사본으로 유지한다.
+-- 연락처를 삭제하면 연결만 끊기고 사본은 남는다.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS contact_id uuid REFERENCES contacts(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS leads_contact_idx ON leads (contact_id);
+
+-- 담당자 텍스트만 있는 리드 → 연락처를 만들고 연결한다.
+--  1) 이메일이 있으면 이메일(소문자)이 같은 사람 = 같은 연락처. 값은 가장 최근에 수정한 리드 기준
+--  2) 이메일이 없으면 같은 회사 + 같은 이름(crm_person_key)이면 같은 연락처
+--  전화번호는 01로 시작하면 휴대폰, 아니면 유선 전화. 리드의 사본 값은 바꾸지 않는다.
+CREATE OR REPLACE FUNCTION crm_link_lead_contacts() RETURNS integer
+LANGUAGE plpgsql AS $$
+DECLARE
+  linked integer;
+  linked2 integer;
+BEGIN
+  INSERT INTO contacts (name, company_id, title, email, mobile, office_phone)
+  SELECT DISTINCT ON (lower(trim(l.email)))
+         left(trim(l.contact), 50), l.company_id, left(trim(l.title), 50), lower(trim(l.email)),
+         CASE WHEN regexp_replace(l.phone, '\D', '', 'g') LIKE '01%' THEN left(trim(l.phone), 30) ELSE '' END,
+         CASE WHEN regexp_replace(l.phone, '\D', '', 'g') LIKE '01%' THEN '' ELSE left(trim(l.phone), 30) END
+  FROM leads l
+  WHERE l.contact_id IS NULL AND trim(l.contact) <> '' AND trim(l.email) <> ''
+  ORDER BY lower(trim(l.email)), l.updated_at DESC
+  ON CONFLICT (email) WHERE email <> '' DO NOTHING;
+
+  UPDATE leads l SET contact_id = c.id
+  FROM contacts c
+  WHERE l.contact_id IS NULL AND trim(l.contact) <> '' AND trim(l.email) <> '' AND c.email = lower(trim(l.email));
+  GET DIAGNOSTICS linked = ROW_COUNT;
+
+  INSERT INTO contacts (name, company_id, title, mobile, office_phone)
+  SELECT DISTINCT ON (l.company_id, crm_person_key(l.contact))
+         left(trim(l.contact), 50), l.company_id, left(trim(l.title), 50),
+         CASE WHEN regexp_replace(l.phone, '\D', '', 'g') LIKE '01%' THEN left(trim(l.phone), 30) ELSE '' END,
+         CASE WHEN regexp_replace(l.phone, '\D', '', 'g') LIKE '01%' THEN '' ELSE left(trim(l.phone), 30) END
+  FROM leads l
+  WHERE l.contact_id IS NULL AND trim(l.contact) <> '' AND trim(l.email) = ''
+    AND NOT EXISTS (
+      SELECT 1 FROM contacts c
+      WHERE c.company_id IS NOT DISTINCT FROM l.company_id AND crm_person_key(c.name) = crm_person_key(l.contact))
+  ORDER BY l.company_id, crm_person_key(l.contact), l.updated_at DESC;
+
+  UPDATE leads l SET contact_id = (
+    SELECT c.id FROM contacts c
+    WHERE c.company_id IS NOT DISTINCT FROM l.company_id AND crm_person_key(c.name) = crm_person_key(l.contact)
+    ORDER BY c.created_at, c.id LIMIT 1)
+  WHERE l.contact_id IS NULL AND trim(l.contact) <> '' AND trim(l.email) = '';
+  GET DIAGNOSTICS linked2 = ROW_COUNT;
+  RETURN linked + linked2;
+END $$;
+
+-- 한 번만 실행하는 마이그레이션 기록 (연락처를 삭제해 연결이 끊긴 리드로 다시 만들지 않도록)
+CREATE TABLE IF NOT EXISTS crm_migrations (
+  name    text PRIMARY KEY,
+  run_at  timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE crm_migrations ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'crm_migrations' AND policyname = 'crm_migrations_crm_app') THEN
+      CREATE POLICY crm_migrations_crm_app ON crm_migrations FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT ON crm_migrations TO crm_app;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM crm_migrations WHERE name = 'contacts_from_leads') THEN
+    PERFORM crm_link_lead_contacts();
+    INSERT INTO crm_migrations (name) VALUES ('contacts_from_leads');
+  END IF;
+END $$;

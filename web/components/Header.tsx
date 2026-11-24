@@ -27,10 +27,11 @@ function toggleTheme() {
   } catch {}
 }
 
-const ADD_LABEL: Partial<Record<View, string>> = { pipeline: "새 리드", companies: "회사 등록", meetings: "노트 작성", calendar: "일정 추가" };
+const ADD_LABEL: Partial<Record<View, string>> = { pipeline: "새 리드", companies: "회사 등록", contacts: "연락처 등록", meetings: "노트 작성", calendar: "일정 추가" };
 const SEARCH_PLACEHOLDER: Partial<Record<View, string>> = {
   pipeline: "회사, 담당자, 메모 검색…",
   companies: "회사명, 업종, 도메인, 태그 검색…",
+  contacts: "이름, 회사, 이메일, 부서, 태그 검색…",
   meetings: "제목, 본문, 회사명 검색…",
   calendar: "일정 제목, 장소, 회사명 검색…",
 };

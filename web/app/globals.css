@@ -836,3 +836,39 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .company-lead { flex-wrap: wrap; }
   .company-lead .ellipsis { flex-basis: 100%; order: 5; }
 }
+
+/* ───────── 연락처 (목록·상세는 회사 화면 클래스 재사용) ───────── */
+.combo-group {
+  padding: 5px 12px; font-size: 11px; font-weight: 600; color: var(--text-3);
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.contact-readonly { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
+.contact-readonly div { display: flex; gap: 8px; min-width: 0; }
+.contact-readonly dt { color: var(--text-3); font-size: 12px; flex: none; }
+.contact-readonly dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.contact-actions .muted { font-size: 12px; }
+.contact-quick {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  border: 1px dashed var(--border-strong, var(--border)); border-radius: var(--radius, 8px); background: var(--surface-2);
+}
+.contact-quick-head { display: flex; gap: 6px; align-items: baseline; font-size: 13px; }
+.contact-quick-head .muted { font-size: 12px; }
+.contact-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.contact-quick-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.company-side { display: flex; flex-direction: column; gap: 14px; }
+.contact-title-text { display: flex; flex-direction: column; gap: 2px; }
+.contact-lead-summary { font-size: 12.5px; margin-top: 4px; }
+/* Assistant 패널이 열려 좁아져도 이름·회사·직함이 글자 단위로 줄바꿈되지 않게: 줄바꿈 없이 가로 스크롤 */
+.contact-table-wrap { overflow-x: auto; border-radius: var(--radius); }
+.contact-table td:nth-child(-n+5), .contact-table th { white-space: nowrap; }
+.contact-table .nowrap { white-space: nowrap; }
+.contact-table a, .company-card a { color: var(--primary-text); text-decoration: none; }
+.contact-table a:hover { text-decoration: underline; }
+.contact-quick-link {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 1px solid var(--border); border-radius: 50%; background: var(--surface);
+}
+@media (max-width: 640px) {
+  .contact-quick-grid, .contact-readonly { grid-template-columns: 1fr; }
+}

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PRIORITY_LABEL, STAGES } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import type { CompanyStats } from "@/lib/company";
-import type { Company, Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
+import { leadCopyOf } from "@/lib/contact";
+import type { Company, Contact, Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
 import { CandidateRow } from "./CalendarView";
 import CompanyCombobox from "./CompanyCombobox";
+import ContactCombobox, { type QuickContact } from "./ContactCombobox";
 import LeadEmails from "./LeadEmails";
 import NoteListItem from "./NoteListItem";
 import { Button, EmptyState, Field, Input, Modal, ModalFooter, ModalHeader, Select, Tabs, Textarea } from "./ui";
@@ -43,30 +45,71 @@ interface Props {
   defaultCompanyId?: string | null;
   onCreateCompany: (name: string) => Promise<Company>;
   onOpenCompany: (id: string) => void;
+  /** 담당자 선택: 연락처 목록, 바로 생성(회사는 리드의 회사), 상세 이동, 위에 연락처 수정 모달 열기 */
+  contacts: Contact[];
+  /** 새 리드를 이 연락처가 담당자로 선택된 상태로 연다 (연락처 상세 → 이 사람으로 리드 추가) */
+  defaultContactId?: string | null;
+  onCreateContact: (input: QuickContact, companyId: string | null) => Promise<Contact>;
+  onOpenContact: (id: string) => void;
+  onEditContact: (id: string) => void;
   onClose: () => void;
 }
 
 const empty = (stage: StageId): LeadInput => ({
-  companyId: null, company: "", contact: "", title: "", email: "", phone: "",
+  companyId: null, company: "", contactId: null, contact: "", title: "", email: "", phone: "",
   value: 0, closeDate: "", stage, priority: "mid", notes: "",
 });
 
 export default function LeadModal({
   lead, defaultStage, notes, initialTab, onSave, onDelete, onNewNote, onOpenNote,
   schedules, meId, onNewSchedule, onOpenSchedule, onDismissSchedule, onSchedulesTab,
-  gmailState, meEmail, onGmailExpired, companies, companyStats, defaultCompanyId, onCreateCompany, onOpenCompany, onClose,
+  gmailState, meEmail, onGmailExpired, companies, companyStats, defaultCompanyId, onCreateCompany, onOpenCompany,
+  contacts, defaultContactId, onCreateContact, onOpenContact, onEditContact, onClose,
 }: Props) {
   const [tab, setTab] = useState<LeadModalTab>(lead ? initialTab : "info");
   const [form, setForm] = useState<LeadInput>(() => {
     if (!lead) {
-      const preset = defaultCompanyId ? companies.find((c) => c.id === defaultCompanyId) : undefined;
-      return { ...empty(defaultStage), companyId: preset?.id ?? null, company: preset?.name ?? "" };
+      const person = defaultContactId ? contacts.find((c) => c.id === defaultContactId) : undefined;
+      // 연락처에서 시작하면 그 사람의 회사도 함께 선택
+      const preset = companies.find((c) => c.id === (defaultCompanyId ?? person?.companyId));
+      return {
+        ...empty(defaultStage),
+        companyId: preset?.id ?? null,
+        company: preset?.name ?? "",
+        ...(person ? { contactId: person.id, ...leadCopyOf(person) } : {}),
+      };
     }
     const { id: _id, createdAt: _c, ...rest } = lead;
     return rest;
   });
   const firstRef = useRef<HTMLInputElement>(null);
   const [companyError, setCompanyError] = useState<string | null>(null);
+  /** 담당자 선택으로 회사를 자동으로 채웠을 때 안내 / 다른 회사 연락처 경고 */
+  const [contactNote, setContactNote] = useState<string | null>(null);
+  const [quickPending, setQuickPending] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+  const onPendingChange = useCallback((p: boolean) => {
+    setQuickPending(p);
+    if (!p) setContactError(null);
+  }, []);
+
+  const pickContact = (c: Contact | null) => {
+    setContactNote(null);
+    if (!c) {
+      setForm((f) => ({ ...f, contactId: null, contact: "", title: "", email: "", phone: "" }));
+      return;
+    }
+    const company = c.companyId ? companies.find((x) => x.id === c.companyId) : undefined;
+    const next = { ...form, contactId: c.id, ...leadCopyOf(c) };
+    if (!form.companyId && company) {
+      setContactNote(`회사를 ${company.name}(으)로 채웠어요`);
+      setCompanyError(null);
+      setForm({ ...next, companyId: company.id, company: company.name });
+      return;
+    }
+    if (form.companyId && company && company.id !== form.companyId) setContactNote(`선택한 연락처는 ${company.name} 소속이에요`);
+    setForm(next);
+  };
 
   // 일정 탭: 열 때마다 구글에서 바뀐 내용 반영 (콜백이 렌더마다 바뀌어도 탭 전환 때만 실행)
   const syncRef = useRef(onSchedulesTab);
@@ -91,6 +134,11 @@ export default function LeadModal({
       label={lead ? lead.company : "새 리드 등록"}
       onClose={onClose}
       onSubmit={() => {
+        if (quickPending) {
+          setTab("info");
+          setContactError("새 연락처를 먼저 만들거나 취소해 주세요");
+          return;
+        }
         if (!form.companyId) {
           setTab("info");
           setCompanyError("회사를 선택하거나 새로 만들어 주세요");
@@ -167,18 +215,22 @@ export default function LeadModal({
           />
           {companyError && <div className="field-error" role="alert">{companyError}</div>}
         </Field>
-        <Field label="담당자">
-          <Input placeholder="홍길동" value={form.contact} onChange={(e) => set("contact", e.target.value)} />
-        </Field>
-        <Field label="직책">
-          <Input placeholder="구매팀장" value={form.title} onChange={(e) => set("title", e.target.value)} />
-        </Field>
-        <Field label="이메일">
-          <Input type="email" placeholder="name@company.com" value={form.email}
-            onChange={(e) => set("email", e.target.value)} />
-        </Field>
-        <Field label="전화번호">
-          <Input placeholder="010-0000-0000" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+        <Field label="담당자" full>
+          <ContactCombobox
+            contacts={contacts}
+            companies={companies}
+            value={form.contactId}
+            companyId={form.companyId}
+            onChange={pickContact}
+            onCreate={(input) => onCreateContact(input, form.companyId)}
+            legacy={form.contactId ? { contact: "", title: "", email: "", phone: "" } : form}
+            onClearLegacy={() => setForm((f) => ({ ...f, contact: "", title: "", email: "", phone: "" }))}
+            onPendingChange={onPendingChange}
+            onOpenContact={onOpenContact}
+            onEditContact={onEditContact}
+          />
+          {contactNote && <div className="field-note" role="status">{contactNote}</div>}
+          {contactError && <div className="field-error" role="alert">{contactError}</div>}
         </Field>
         <Field label="예상 금액 (원)">
           <Input type="number" min={0} step={10000} placeholder="10000000"

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>연락처 관리 + 리드 담당자 선택 — Low-fi Wireframe</title>
+<style>
+  /* Low fidelity: 흑백 + 손그림 느낌, 실제 디자인 아님 */
+  :root { --ink:#333; --line:#888; --soft:#bbb; --fill:#eee; --bg:#fafafa; --note:#fff8c4; --hit:#d6ecff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Comic Sans MS","Chalkboard SE","Apple SD Gothic Neo",sans-serif; color:var(--ink); background:#ddd; font-size:14px; }
+  .toc { position:sticky; top:0; z-index:10; background:#333; color:#fff; padding:10px 16px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .toc b { margin-right:8px; }
+  .toc button { background:#555; color:#fff; border:1px solid #777; border-radius:4px; padding:4px 9px; cursor:pointer; font:inherit; font-size:12px; }
+  .toc button.on { background:#fff; color:#333; }
+  .screen { display:none; max-width:1200px; margin:20px auto; background:var(--bg); border:2px solid var(--ink); border-radius:6px; overflow:hidden; position:relative; }
+  .screen.on { display:block; }
+  .screen.phone { max-width:390px; border-width:8px; border-radius:22px; }
+  .caption { background:var(--note); border-bottom:2px dashed var(--line); padding:8px 14px; font-size:13px; }
+  .caption b { margin-right:6px; }
+
+  .box { border:2px solid var(--ink); border-radius:4px; background:#fff; }
+  .dash { border:2px dashed var(--line); border-radius:4px; }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:2px solid var(--ink); border-radius:4px; padding:4px 10px; background:#fff; cursor:pointer; font:inherit; color:inherit; }
+  .btn.primary { background:var(--ink); color:#fff; }
+  .btn.sm { padding:2px 7px; font-size:12px; }
+  .btn.dis { opacity:.4; cursor:not-allowed; }
+  .btn.danger { border-style:dashed; }
+  .pill { display:inline-block; border:1.5px solid var(--ink); border-radius:10px; padding:0 7px; font-size:11px; }
+  .pill.dark { background:var(--ink); color:#fff; }
+  .muted { color:#777; font-size:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .spacer { flex:1; }
+  .anno { position:absolute; background:var(--note); border:1.5px solid #b9a800; padding:3px 7px; font-size:11px; border-radius:3px; transform:rotate(-1.5deg); box-shadow:2px 2px 0 rgba(0,0,0,.1); z-index:5; max-width:220px; }
+  .anno::before { content:"✎ "; }
+
+  /* 헤더 */
+  .header { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:2px solid var(--ink); background:#fff; }
+  .logo { font-weight:bold; }
+  .tabs { display:flex; border:2px solid var(--ink); border-radius:4px; overflow:hidden; }
+  .tabs span { padding:4px 12px; }
+  .tabs span.on { background:var(--ink); color:#fff; }
+  .tabs span.new { outline:3px dashed #b9a800; outline-offset:-3px; }
+  .search { border:2px solid var(--ink); border-radius:4px; padding:4px 8px; width:260px; color:#999; background:#fff; }
+
+  /* 목록 */
+  .main { padding:14px; }
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .select { border:2px solid var(--ink); border-radius:4px; padding:3px 8px; background:#fff; }
+  .toggle { border:2px solid var(--ink); border-radius:4px; padding:3px 8px; background:#fff; }
+  .toggle.on { background:var(--ink); color:#fff; }
+  table.list { width:100%; border-collapse:collapse; background:#fff; }
+  table.list th, table.list td { border-bottom:1.5px solid var(--soft); padding:8px; text-align:left; font-size:13px; }
+  table.list th { border-bottom:2px solid var(--ink); font-size:12px; }
+  table.list td.n, table.list th.n { text-align:right; }
+  table.list tr { cursor:pointer; }
+  table.list tr:hover td { background:var(--fill); }
+  .tier { display:inline-flex; width:20px; height:20px; border:2px solid var(--ink); border-radius:50%; align-items:center; justify-content:center; font-size:11px; font-weight:bold; }
+  .tier.a { background:var(--ink); color:#fff; }
+  .tag { display:inline-block; border:1.5px dashed var(--ink); border-radius:3px; padding:0 5px; font-size:11px; margin-right:3px; }
+
+  /* 상세 */
+  .detail-head { padding:14px; border-bottom:2px solid var(--ink); background:#fff; }
+  .detail-head h2 { margin:0; font-size:20px; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:14px; }
+  .kpi { padding:10px; }
+  .kpi .v { font-size:20px; font-weight:bold; margin-top:4px; }
+  .cols { display:grid; grid-template-columns:340px 1fr; gap:14px; padding:0 14px 14px; }
+  dl.info { margin:0; padding:12px; display:grid; grid-template-columns:96px 1fr; gap:6px 8px; font-size:13px; }
+  dl.info dt { color:#777; font-size:12px; }
+  dl.info dd { margin:0; }
+  .lead-row { display:flex; gap:10px; align-items:center; padding:8px 10px; border-bottom:1.5px solid var(--soft); cursor:pointer; }
+  .lead-row:hover { background:var(--fill); }
+  .stage { border:1.5px solid var(--ink); border-radius:3px; padding:0 6px; font-size:11px; min-width:62px; text-align:center; }
+  .stage.done { background:var(--fill); }
+  .sec-title { padding:8px 10px; border-bottom:2px solid var(--ink); font-weight:bold; display:flex; align-items:center; }
+
+  /* 모달 */
+  .overlay { background:rgba(0,0,0,.25); padding:30px; min-height:640px; display:flex; justify-content:center; align-items:flex-start; position:relative; }
+  .modal { width:680px; max-width:100%; background:#fff; position:relative; }
+  .modal-head { display:flex; align-items:center; padding:10px 14px; border-bottom:2px solid var(--ink); gap:8px; }
+  .modal-head h3 { margin:0; font-size:16px; }
+  .modal-tabs { display:flex; border-bottom:2px solid var(--soft); padding:0 14px; }
+  .modal-tabs span { padding:6px 12px; font-size:13px; }
+  .modal-tabs span.on { font-weight:bold; border-bottom:3px solid var(--ink); }
+  .modal-body { padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .modal-foot { display:flex; gap:8px; padding:10px 14px; border-top:2px solid var(--ink); }
+  .field { margin-bottom:10px; position:relative; }
+  .field.full { grid-column:1 / -1; }
+  .field label { display:block; font-size:12px; margin-bottom:3px; }
+  .input { border:2px solid var(--ink); border-radius:4px; padding:5px 8px; min-height:32px; background:#fff; }
+  .input.focus { outline:3px solid var(--hit); }
+  .input.err { border-style:dashed; }
+  .ph { color:#999; }
+  .legend { grid-column:1 / -1; font-weight:bold; font-size:13px; border-bottom:1.5px dashed var(--soft); padding:6px 0 4px; margin:4px 0 10px; }
+  .chipbox { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .chip { border:1.5px solid var(--ink); border-radius:12px; padding:1px 8px; font-size:12px; background:var(--fill); }
+  .textarea { min-height:70px; }
+  .banner { border:2px dashed var(--ink); padding:8px 10px; margin-bottom:10px; font-size:12px; grid-column:1 / -1; }
+  .warn { font-size:12px; margin-top:3px; }
+
+  /* 콤보박스 */
+  .combo-pop { position:absolute; left:0; right:0; top:100%; margin-top:2px; background:#fff; border:2px solid var(--ink); border-radius:4px; box-shadow:3px 3px 0 rgba(0,0,0,.15); z-index:4; font-size:13px; }
+  .opt { display:flex; gap:8px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--fill); }
+  .opt.hl { background:var(--hit); }
+  .opt .muted { font-size:11px; }
+  .opt-create { padding:8px 10px; border-top:2px solid var(--ink); font-weight:bold; background:#fff; }
+  .opt-create.hl { background:var(--hit); }
+  .combo-meta { padding:4px 10px; font-size:11px; color:#777; border-bottom:1.5px solid var(--soft); }
+  .selchip { display:flex; align-items:center; gap:6px; border:2px solid var(--ink); border-radius:4px; padding:4px 8px; background:var(--hit); min-height:32px; }
+  .hint { border:1.5px dashed var(--ink); border-radius:4px; padding:4px 8px; font-size:12px; margin-top:4px; display:flex; align-items:center; gap:6px; }
+  .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:18px; background:var(--ink); color:#fff; border-radius:16px; padding:6px 14px; font-size:12px; white-space:nowrap; z-index:6; }
+
+  /* 모바일 */
+  .m-card { margin:8px 12px; padding:10px; }
+  .m-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:2px solid var(--ink); background:#fff; }
+  .fab { position:absolute; right:16px; bottom:16px; width:46px; height:46px; border-radius:50%; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .sheet { position:absolute; left:0; right:0; bottom:0; top:70px; background:#fff; border-top:2px solid var(--ink); border-radius:14px 14px 0 0; }
+
+  /* 연락처 전용 */
+  .role { display:inline-block; border:1.5px solid var(--ink); border-radius:3px; padding:0 5px; font-size:10px; margin-left:4px; vertical-align:middle; }
+  .role.dm { background:var(--ink); color:#fff; }
+  .avatar { display:inline-flex; width:28px; height:28px; border:2px solid var(--ink); border-radius:50%; align-items:center; justify-content:center; font-size:12px; font-weight:bold; background:var(--fill); flex:none; }
+  .avatar.lg { width:48px; height:48px; font-size:18px; }
+  .link { text-decoration:underline; color:inherit; }
+  .grp { padding:4px 10px; font-size:11px; color:#777; background:var(--fill); border-bottom:1px solid var(--soft); }
+  .mini { border:2px dashed var(--ink); border-radius:4px; padding:10px; background:#fff; }
+  .mini .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .ro { display:grid; grid-template-columns:70px 1fr; gap:3px 8px; font-size:12px; margin-top:6px; padding:6px 8px; border:1.5px dashed var(--soft); border-radius:4px; }
+  .ro dt { color:#777; }
+  .ro dd { margin:0; }
+  .contact-row { display:flex; gap:8px; align-items:center; padding:7px 10px; border-bottom:1.5px solid var(--soft); }
+  .confirm { width:420px; background:#fff; }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <b>연락처 Wireframe</b>
+  <button data-go="s1" class="on">1. 연락처 목록</button>
+  <button data-go="s2">2. 등록·수정</button>
+  <button data-go="s3">3. 연락처 상세</button>
+  <button data-go="s4">4. 리드: 담당자 검색</button>
+  <button data-go="s5">5. 리드: 새 연락처 만들기</button>
+  <button data-go="s6">6. 리드: 선택됨 / 회사 자동</button>
+  <button data-go="s7">7. 회사 상세: 소속 연락처</button>
+  <button data-go="s8">8. 중복 · 삭제</button>
+  <button data-go="s9">9. 모바일</button>
+</nav>
+
+<!-- ───────── 1. 연락처 목록 ───────── -->
+<section class="screen on" id="s1">
+  <div class="caption"><b>①</b> 헤더에 <code>연락처</code> 메뉴 추가(<code>/contacts</code>, 회사 다음). 표 목록 + 필터·정렬. 진행 리드 수는 클라이언트 leads로 계산 (FR-1~FR-7)</div>
+  <div class="hdr" data-active="연락처" data-add="연락처 등록" data-ph="이름, 회사, 이메일, 부서, 태그 검색…"></div>
+  <div class="main">
+    <div class="toolbar">
+      <span class="toggle">내 담당만</span>
+      <span class="select">역할: 전체 ▾</span>
+      <span class="select">회사: 전체 ▾</span>
+      <span class="toggle on">진행 리드 있음</span>
+      <span class="toggle">회사 없음</span>
+      <span class="spacer"></span>
+      <span class="muted">38명</span>
+      <span class="select">정렬: 이름순 ▾</span>
+    </div>
+    <table class="list">
+      <thead><tr>
+        <th>이름</th><th>회사</th><th>부서 · 직함</th><th>이메일</th><th>휴대폰</th><th>담당 영업</th><th>태그</th>
+        <th class="n">진행 리드</th><th>최근 변경</th>
+      </tr></thead>
+      <tbody>
+        <tr data-go="s3"><td><b>김민수</b><span class="role dm">의사결정자</span></td><td>에이스상사</td><td>구매팀 · 팀장</td><td><a class="link" href="#">minsu@acme.co.kr</a></td><td><a class="link" href="#">010-1234-5678</a></td><td>홍길동</td><td><span class="tag">키맨</span></td><td class="n">2</td><td class="muted">2일 전</td></tr>
+        <tr data-go="s3"><td><b>박서연</b><span class="role">실무자</span></td><td>에이스상사</td><td>물류팀 · 과장</td><td><a class="link" href="#">sy.park@acme.co.kr</a></td><td class="muted">—</td><td>홍길동</td><td></td><td class="n">1</td><td class="muted">1주 전</td></tr>
+        <tr data-go="s3"><td><b>이준호</b><span class="role">영향력자</span></td><td>블루웨이브</td><td>CTO</td><td><a class="link" href="#">jh@bluewave.io</a></td><td><a class="link" href="#">010-2222-3333</a></td><td>김영희</td><td><span class="tag">기술검토</span></td><td class="n">1</td><td class="muted">오늘</td></tr>
+        <tr data-go="s3"><td><b>정하늘</b></td><td>그린푸드</td><td>대표</td><td><a class="link" href="#">ha@greenfood.kr</a></td><td class="muted">—</td><td class="muted">—</td><td></td><td class="n">1</td><td class="muted">방금</td></tr>
+        <tr data-go="s3"><td><b>오지은</b></td><td class="muted">(회사 없음)</td><td>프리랜서 컨설턴트</td><td><a class="link" href="#">jieun.oh@gmail.com</a></td><td><a class="link" href="#">010-9876-5432</a></td><td>홍길동</td><td><span class="tag">소개처</span></td><td class="n">0</td><td class="muted">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="anno" style="left:330px;top:62px">신규 메뉴: 회사 바로 다음</div>
+  <div class="anno" style="left:420px;top:420px">이메일 = mailto, 휴대폰 = tel 링크. 링크 클릭은 행 클릭(상세 이동)과 분리</div>
+  <div class="anno" style="left:30px;top:420px">회사 없는 연락처 허용 (프리랜서·개인 고객)</div>
+</section>
+
+<!-- ───────── 2. 등록·수정 모달 ───────── -->
+<section class="screen" id="s2">
+  <div class="caption"><b>②</b> 연락처 등록·수정 모달. 기본 정보 / 연락 수단 / 영업 관리 / 메모. 회사는 회사 콤보박스 재사용 (FR-9~FR-13)</div>
+  <div class="hdr" data-active="연락처" data-add="연락처 등록" data-ph="이름, 회사, 이메일, 부서, 태그 검색…"></div>
+  <div class="overlay">
+    <div class="modal box">
+      <div class="modal-head"><h3>새 연락처 등록</h3><span class="spacer"></span><span>✕</span></div>
+      <div class="modal-body">
+        <div class="legend">기본 정보</div>
+        <div class="field"><label>이름 *</label><div class="input focus">이준호</div></div>
+        <div class="field"><label>회사 <span class="muted">(선택)</span></label><div class="selchip">🏢 <b>블루웨이브</b><span class="muted">IT</span><span class="spacer"></span><span>✕</span></div></div>
+        <div class="field"><label>부서</label><div class="input">개발본부 <span class="muted">▾ 같은 회사 값 먼저</span></div></div>
+        <div class="field"><label>직함</label><div class="input">CTO</div></div>
+
+        <div class="legend">연락 수단</div>
+        <div class="field"><label>이메일</label><div class="input">jh@bluewave.io</div><div class="muted">소문자로 저장 · 다른 연락처와 중복 불가(Q4)</div></div>
+        <div class="field"><label>휴대폰</label><div class="input">010-2222-3333</div></div>
+        <div class="field"><label>유선 전화</label><div class="input ph">02-0000-0000 #내선</div></div>
+        <div class="field"><label>LinkedIn</label><div class="input">linkedin.com/in/junho-lee</div><div class="muted">https:// 자동</div></div>
+
+        <div class="legend">영업 관리</div>
+        <div class="field"><label>역할</label><div class="row"><span class="toggle">의사결정자</span><span class="toggle">실무자</span><span class="toggle on">영향력자</span><span class="toggle">없음</span></div></div>
+        <div class="field"><label>담당 영업</label><div class="input">김영희 ▾ <span class="muted">(팀원 목록, 기본 비움)</span></div></div>
+        <div class="field full"><label>태그 <span class="muted">(Enter로 추가, 최대 10개)</span></label>
+          <div class="input chipbox"><span class="chip">기술검토 ✕</span><span class="ph">태그 입력…</span></div></div>
+
+        <div class="legend">메모</div>
+        <div class="field full"><div class="input textarea ph">이 사람에 대한 메모 (선호 연락 시간, 관심사 등)</div></div>
+      </div>
+      <div class="modal-foot">
+        <span class="btn danger" data-go="s8">삭제</span>
+        <span class="muted">(수정 모드에서만)</span>
+        <span class="spacer"></span><span class="btn">취소</span><span class="btn primary" data-go="s3">저장</span>
+      </div>
+    </div>
+    <div class="anno" style="right:40px;top:140px">회사 미선택 + 이메일 도메인이 회사 도메인과 같으면 "같은 도메인 회사: 블루웨이브 [선택]" 힌트 (FR-10)</div>
+    <div class="anno" style="left:40px;top:300px">휴대폰·유선 둘 다 입력 가능. 리드 사본 phone = 휴대폰 → 없으면 유선</div>
+  </div>
+</section>
+
+<!-- ───────── 3. 연락처 상세 ───────── -->
+<section class="screen" id="s3">
+  <div class="caption"><b>③</b> <code>/contacts/[id]</code> 연락처 상세. 왼쪽 정보 + 오른쪽 연결 리드. 리드 클릭 → 기존 리드 모달 (FR-14~FR-17)</div>
+  <div class="hdr" data-active="연락처" data-add="연락처 등록" data-ph="이름, 회사, 이메일, 부서, 태그 검색…"></div>
+  <div class="detail-head">
+    <div class="muted"><a href="#" data-go="s1">← 연락처 목록</a></div>
+    <div class="row" style="margin-top:8px">
+      <span class="avatar lg">김</span>
+      <div>
+        <div class="row"><h2>김민수</h2><span class="role dm">의사결정자</span><span class="tag">키맨</span></div>
+        <div class="muted"><a class="link" href="#" data-go="s7">🏢 에이스상사</a> · 구매팀 · 팀장</div>
+      </div>
+      <span class="spacer"></span>
+      <span class="btn sm">✉ 메일</span><span class="btn sm">☎ 전화</span><span class="btn sm">in LinkedIn</span>
+      <span class="btn" data-go="s2">수정</span>
+    </div>
+  </div>
+  <div class="cols" style="padding-top:14px">
+    <div class="box">
+      <div class="sec-title">연락처 정보</div>
+      <dl class="info">
+        <dt>회사</dt><dd><a class="link" href="#" data-go="s7">에이스상사</a></dd>
+        <dt>부서 · 직함</dt><dd>구매팀 · 팀장</dd>
+        <dt>이메일</dt><dd>minsu@acme.co.kr</dd>
+        <dt>휴대폰</dt><dd>010-1234-5678</dd>
+        <dt>유선 전화</dt><dd>02-1234-5678 #201</dd>
+        <dt>LinkedIn</dt><dd class="muted">—</dd>
+        <dt>담당 영업</dt><dd>홍길동</dd>
+        <dt>메모</dt><dd>오전 통화 선호. 의사결정은 본부장 보고 후</dd>
+      </dl>
+      <div class="muted" style="padding:0 12px 10px">등록 2026-11-24 · 자동 생성(기존 리드)</div>
+    </div>
+    <div class="box">
+      <div class="sec-title">연결된 리드 3 <span class="muted" style="font-weight:normal;margin-left:8px">진행 2건 · 파이프라인 ₩38,000,000 · 수주 ₩12,000,000</span><span class="spacer"></span><span class="btn sm primary" data-go="s6">+ 이 사람으로 리드 추가</span></div>
+      <div class="lead-row"><span class="stage">협상</span><b>에이스상사</b><span class="muted">ERP 연동 2차 문의…</span><span class="spacer"></span>₩30,000,000<span class="muted">~12/20</span></div>
+      <div class="lead-row"><span class="stage">니즈 확인</span><b>에이스상사</b><span class="muted">교육 패키지</span><span class="spacer"></span>₩8,000,000<span class="muted">~01/31</span></div>
+      <div class="lead-row"><span class="stage done">수주</span><b>에이스상사</b><span class="muted">ERP 1차</span><span class="spacer"></span>₩12,000,000<span class="muted">10/02</span></div>
+    </div>
+  </div>
+  <div class="anno" style="right:30px;top:340px">진행 중 → 수주 → 실주 순. 리드 추가 시 담당자 + 회사 선택된 상태로 리드 모달 (FR-16)</div>
+  <div class="anno" style="left:40px;bottom:20px">마이그레이션으로 만든 연락처는 "자동 생성(기존 리드)" 표시</div>
+</section>
+
+<!-- ───────── 4. 리드 모달: 담당자 검색 ───────── -->
+<section class="screen" id="s4">
+  <div class="caption"><b>④</b> 리드 모달의 담당자·직책·이메일·전화 4칸 → <b>담당자 콤보박스</b> 1개. 선택된 회사의 연락처를 위에, 나머지는 "다른 회사" (FR-18, FR-19, FR-23)</div>
+  <div class="hdr" data-active="파이프라인" data-add="새 리드" data-ph="회사, 담당자, 메모 검색…"></div>
+  <div class="overlay">
+    <div class="modal box">
+      <div class="modal-head"><h3>새 리드 등록</h3><span class="spacer"></span><span>✕</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>에이스상사</b><span class="muted">제조 · A</span><span class="spacer"></span><span>✕</span></div></div>
+        <div class="field full"><label>담당자 <span class="muted">(선택)</span></label>
+          <div class="input focus">🔍 김<span style="border-left:2px solid var(--ink);margin-left:1px"></span></div>
+          <div class="combo-pop" role="listbox">
+            <div class="combo-meta">4명</div>
+            <div class="grp">에이스상사 연락처</div>
+            <div class="opt hl" data-go="s6"><span class="avatar">김</span><b>김</b>민수<span class="role dm">의사결정자</span><span class="spacer"></span><span class="muted">구매팀 · 팀장</span></div>
+            <div class="opt"><span class="avatar">김</span><b>김</b>도윤<span class="spacer"></span><span class="muted">재무팀 · 대리</span></div>
+            <div class="grp">다른 회사</div>
+            <div class="opt"><span class="avatar">김</span><b>김</b>태희<span class="spacer"></span><span class="muted">블루웨이브 · PM</span></div>
+            <div class="opt"><span class="avatar">김</span><b>김</b>수진<span class="spacer"></span><span class="muted">(회사 없음) · 프리랜서</span></div>
+            <div class="opt-create" data-go="s5">+ "김" 새 연락처로 만들기</div>
+          </div>
+        </div>
+        <div class="field"><label>예상 금액 (원)</label><div class="input ph">10000000</div></div>
+        <div class="field"><label>예상 마감일</label><div class="input ph">연도-월-일</div></div>
+        <div class="field"><label>단계</label><div class="input">신규 리드 ▾</div></div>
+        <div class="field"><label>우선순위</label><div class="input">보통 ▾</div></div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary">저장</span></div>
+    </div>
+    <div class="anno" style="left:40px;top:120px">입력 전 포커스만 해도 회사 연락처 목록 표시 (보통 2~3명)</div>
+    <div class="anno" style="right:40px;top:200px">검색: 이름·이메일·부서. ↑↓ / Enter / Esc</div>
+    <div class="anno" style="right:40px;top:470px">담당자 비워도 저장 가능 (Q6)</div>
+  </div>
+</section>
+
+<!-- ───────── 5. 리드 모달: 새 연락처 간이 생성 ───────── -->
+<section class="screen" id="s5">
+  <div class="caption"><b>⑤</b> 결과 없음 → "새 연락처로 만들기" → 콤보박스 자리에 <b>간이 입력 폼</b>. 회사는 리드 회사로 자동. 만들기 → <code>POST /api/contacts</code> → 선택 (FR-20)</div>
+  <div class="hdr" data-active="파이프라인" data-add="새 리드" data-ph="회사, 담당자, 메모 검색…"></div>
+  <div class="overlay" style="gap:20px">
+    <div class="modal box" style="width:420px">
+      <div class="modal-head"><h3>새 리드 등록</h3><span class="pill">A. 결과 없음</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>그린푸드</b><span class="spacer"></span><span>✕</span></div></div>
+        <div class="field full"><label>담당자</label>
+          <div class="input focus">🔍 정하늘</div>
+          <div class="combo-pop">
+            <div class="combo-meta">일치하는 연락처가 없어요</div>
+            <div class="opt-create hl" style="border-top:none">+ "정하늘" 새 연락처로 만들기 <span class="muted" style="font-weight:normal">Enter</span></div>
+          </div>
+        </div>
+        <div style="height:80px" class="field full"></div>
+      </div>
+    </div>
+    <div class="modal box">
+      <div class="modal-head"><h3>새 리드 등록</h3><span class="pill">B. 간이 생성 폼</span><span class="spacer"></span><span>✕</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>그린푸드</b><span class="spacer"></span><span>✕</span></div></div>
+        <div class="field full"><label>담당자</label>
+          <div class="mini">
+            <div class="row" style="margin-bottom:8px"><b>새 연락처</b><span class="muted">· 그린푸드 소속으로 만들어요</span></div>
+            <div class="grid2">
+              <div><label class="muted">이름 *</label><div class="input">정하늘</div></div>
+              <div><label class="muted">직함</label><div class="input">대표</div></div>
+              <div><label class="muted">이메일</label><div class="input">ha@greenfood.kr</div></div>
+              <div><label class="muted">휴대폰</label><div class="input ph">010-0000-0000</div></div>
+            </div>
+            <div class="row" style="margin-top:8px"><span class="muted">부서·역할 등은 연락처 메뉴에서</span><span class="spacer"></span><span class="btn sm">취소</span><span class="btn sm primary" data-go="s6">만들기</span></div>
+          </div>
+        </div>
+        <div class="field"><label>예상 금액 (원)</label><div class="input">3000000</div></div>
+        <div class="field"><label>단계</label><div class="input">신규 리드 ▾</div></div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary dis">저장</span></div>
+    </div>
+    <div class="anno" style="right:40px;bottom:40px">간이 폼이 열려 있는 동안 리드 저장 비활성 ("연락처를 먼저 만들거나 취소해 주세요")</div>
+    <div class="anno" style="left:40px;bottom:40px">리드를 취소해도 만든 연락처는 남음</div>
+  </div>
+</section>
+
+<!-- ───────── 6. 리드 모달: 선택됨 / 회사 자동 채움 / 다른 회사 경고 ───────── -->
+<section class="screen" id="s6">
+  <div class="caption"><b>⑥</b> 선택되면 칩 + 이메일·휴대폰 읽기 전용(Q3). 회사 없는 리드에 연락처를 고르면 회사 자동 채움, 다른 회사 연락처면 경고만 (FR-21, FR-22, FR-24)</div>
+  <div class="hdr" data-active="파이프라인" data-add="새 리드" data-ph="회사, 담당자, 메모 검색…"></div>
+  <div class="overlay" style="gap:20px;align-items:flex-start">
+    <div class="modal box" style="width:500px">
+      <div class="modal-head"><h3>에이스상사 · 김민수</h3><span class="pill">A. 선택됨 (리드 수정)</span></div>
+      <div class="modal-tabs"><span class="on">정보</span><span>미팅 노트</span><span>다음 미팅</span><span>이메일</span><span>이력</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>에이스상사</b><span class="spacer"></span><span>✕</span></div></div>
+        <div class="field full"><label>담당자</label>
+          <div class="selchip">👤 <b>김민수</b><span class="muted">구매팀 · 팀장</span><span class="role dm">의사결정자</span><span class="spacer"></span><span>✕</span></div>
+          <dl class="ro"><dt>이메일</dt><dd>minsu@acme.co.kr</dd><dt>휴대폰</dt><dd>010-1234-5678</dd></dl>
+          <div class="row" style="margin-top:4px"><a class="link muted" href="#" data-go="s3">연락처 정보 →</a><span class="spacer"></span><span class="btn sm" data-go="s2">수정</span></div>
+        </div>
+        <div class="field"><label>예상 금액 (원)</label><div class="input">30000000</div></div>
+        <div class="field"><label>단계</label><div class="input">협상 ▾</div></div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary">저장</span></div>
+      <div class="toast">연락처 '정하늘'을 만들었어요 (간이 생성 직후)</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="modal box" style="width:460px">
+        <div class="modal-head"><h3>새 리드 등록</h3><span class="pill">B. 회사 자동 채움</span></div>
+        <div class="modal-body">
+          <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>블루웨이브</b><span class="spacer"></span><span>✕</span></div>
+            <div class="hint">ℹ 연락처의 회사로 채웠어요</div></div>
+          <div class="field full"><label>담당자</label><div class="selchip">👤 <b>이준호</b><span class="muted">CTO</span><span class="spacer"></span><span>✕</span></div></div>
+        </div>
+      </div>
+      <div class="modal box" style="width:460px">
+        <div class="modal-head"><h3>새 리드 등록</h3><span class="pill">C. 다른 회사 연락처</span></div>
+        <div class="modal-body">
+          <div class="field full"><label>회사 *</label><div class="selchip">🏢 <b>에이스상사</b><span class="spacer"></span><span>✕</span></div></div>
+          <div class="field full"><label>담당자</label><div class="selchip">👤 <b>김태희</b><span class="muted">PM</span><span class="spacer"></span><span>✕</span></div>
+            <div class="warn">⚠ 선택한 연락처는 블루웨이브 소속이에요 (저장은 가능)</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="anno" style="left:40px;bottom:30px">저장 시 서버가 연락처 값으로 리드 사본(contact·title·email·phone) 채움. 담당자 변경 → lead_events updated</div>
+</section>
+
+<!-- ───────── 7. 회사 상세: 소속 연락처 ───────── -->
+<section class="screen" id="s7">
+  <div class="caption"><b>⑦</b> 회사 상세(회사 기능)에 <b>소속 연락처</b> 섹션 추가. <code>+ 연락처 추가</code> → 회사 선택된 상태로 연락처 모달 (FR-28)</div>
+  <div class="hdr" data-active="회사" data-add="회사 등록" data-ph="회사명, 업종, 도메인, 태그 검색…"></div>
+  <div class="detail-head">
+    <div class="muted"><a href="#">← 회사 목록</a></div>
+    <div class="row" style="margin-top:6px"><h2>에이스상사</h2><span class="tier a">A</span><span class="tag">재계약</span><span class="spacer"></span><span class="btn">수정</span></div>
+  </div>
+  <div class="cols" style="padding-top:14px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="box">
+        <div class="sec-title">회사 정보</div>
+        <dl class="info"><dt>업종</dt><dd>제조</dd><dt>규모</dt><dd>51-200명</dd><dt>도메인</dt><dd>acme.co.kr</dd><dt>…</dt><dd class="muted">(회사 기능 와이어프레임 ③)</dd></dl>
+      </div>
+      <div class="box" style="outline:3px dashed #b9a800;outline-offset:2px">
+        <div class="sec-title">소속 연락처 3 <span class="spacer"></span><span class="btn sm" data-go="s2">+ 연락처 추가</span></div>
+        <div class="contact-row" data-go="s3"><span class="avatar">김</span><b>김민수</b><span class="role dm">의사결정자</span><span class="spacer"></span><span class="muted">구매팀 · 팀장 · 진행 2</span></div>
+        <div class="contact-row"><span class="avatar">박</span><b>박서연</b><span class="role">실무자</span><span class="spacer"></span><span class="muted">물류팀 · 과장 · 진행 1</span></div>
+        <div class="contact-row"><span class="avatar">김</span><b>김도윤</b><span class="spacer"></span><span class="muted">재무팀 · 대리 · 진행 0</span></div>
+      </div>
+    </div>
+    <div class="box">
+      <div class="sec-title">연결된 리드 5 <span class="spacer"></span><span class="btn sm primary">+ 이 회사로 리드 추가</span></div>
+      <div class="lead-row"><span class="stage">협상</span><b>김민수</b><span class="muted">구매팀장 · ERP 연동 2차…</span><span class="spacer"></span>₩30,000,000</div>
+      <div class="lead-row"><span class="stage">제안/견적</span><b>박서연</b><span class="muted">물류팀 과장 · 물류 모듈…</span><span class="spacer"></span>₩10,000,000</div>
+      <div class="lead-row"><span class="stage">신규 리드</span><b class="muted">(담당자 없음)</b><span class="muted">교육 패키지 관심</span><span class="spacer"></span>₩8,000,000</div>
+    </div>
+  </div>
+  <div class="anno" style="left:40px;bottom:20px">역할 순(의사결정자 → 영향력자 → 실무자 → 없음) 정렬. 행 클릭 → 연락처 상세</div>
+</section>
+
+<!-- ───────── 8. 중복 · 삭제 ───────── -->
+<section class="screen" id="s8">
+  <div class="caption"><b>⑧</b> 예외 상태: 이메일 중복(409, Q4) / 같은 회사 동명이인 경고(FR-11) / 연결 리드가 있는 연락처 삭제(Q1)</div>
+  <div class="hdr" data-active="연락처" data-add="연락처 등록" data-ph="이름, 회사, 이메일, 부서, 태그 검색…"></div>
+  <div class="overlay" style="gap:20px">
+    <div class="modal box" style="width:400px">
+      <div class="modal-head"><h3>새 연락처 등록</h3><span class="pill">이메일 중복</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>이메일</label><div class="input err">Minsu@acme.co.kr</div>
+          <div class="warn">⚠ 이미 등록된 이메일이에요: <b>김민수</b> (에이스상사) · <a href="#" data-go="s3">그 연락처 보기</a></div></div>
+        <div class="field full muted">리드 모달 간이 생성에서는 "기존 연락처 선택" 버튼으로 바로 선택</div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary dis">저장</span></div>
+    </div>
+    <div class="modal box" style="width:400px">
+      <div class="modal-head"><h3>새 연락처 등록</h3><span class="pill">동명이인</span></div>
+      <div class="modal-body">
+        <div class="field full"><label>이름 *</label><div class="input">김민수</div>
+          <div class="hint">💡 같은 회사(에이스상사)에 '김민수'가 이미 있어요 · <a href="#" data-go="s3">보기</a></div></div>
+        <div class="field full muted">경고만 — 저장 가능</div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary">그래도 저장</span></div>
+    </div>
+    <div class="confirm box">
+      <div class="modal-head"><h3>연락처 삭제</h3></div>
+      <div style="padding:14px">
+        <p style="margin-top:0"><b>김민수</b>을(를) 삭제할까요?</p>
+        <div class="banner" style="margin:0">연결된 리드 3건은 담당자 <b>연결만 해제</b>돼요. 리드에 적힌 담당자 이름·연락처는 그대로 남아요.</div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn">취소</span><span class="btn primary">삭제</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 9. 모바일 ───────── -->
+<section class="screen" id="s9" style="max-width:none;background:transparent;border:none">
+  <div class="caption" style="border:2px solid var(--ink);border-radius:6px;max-width:820px;margin:0 auto 10px"><b>⑨</b> 모바일(640px 이하): 연락처 카드(전화·메일 바로 걸기) / 리드 모달 담당자 검색은 전체 화면 시트 (FR-8)</div>
+  <div class="row" style="justify-content:center;gap:30px;align-items:flex-start">
+    <div class="screen phone on" style="margin:0;width:390px;min-height:700px">
+      <div class="m-head"><b>연락처</b><span class="spacer"></span><span>🔍</span><span>☰</span></div>
+      <div class="row" style="padding:8px 12px"><span class="toggle">내 담당만</span><span class="select">역할 ▾</span><span class="select">이름순 ▾</span></div>
+      <div class="m-card box"><div class="row"><span class="avatar">김</span><div><b>김민수</b><span class="role dm">의사결정자</span><div class="muted">에이스상사 · 구매팀 팀장</div></div><span class="spacer"></span><span class="btn sm">☎</span><span class="btn sm">✉</span></div></div>
+      <div class="m-card box"><div class="row"><span class="avatar">이</span><div><b>이준호</b><span class="role">영향력자</span><div class="muted">블루웨이브 · CTO</div></div><span class="spacer"></span><span class="btn sm">☎</span><span class="btn sm">✉</span></div></div>
+      <div class="m-card box"><div class="row"><span class="avatar">오</span><div><b>오지은</b><div class="muted">(회사 없음) · 프리랜서</div></div><span class="spacer"></span><span class="btn sm">☎</span><span class="btn sm">✉</span></div></div>
+      <div class="fab">+</div>
+    </div>
+    <div class="screen phone on" style="margin:0;width:390px;min-height:700px;background:#999">
+      <div style="padding:20px;color:#fff" class="muted">(리드 모달)</div>
+      <div class="sheet">
+        <div class="m-head" style="border-radius:14px 14px 0 0"><span>←</span><div class="input focus" style="flex:1">🔍 김</div></div>
+        <div class="grp">에이스상사 연락처</div>
+        <div class="opt hl" style="padding:12px"><b>김</b>민수<span class="spacer"></span><span class="muted">구매팀 · 팀장</span></div>
+        <div class="opt" style="padding:12px"><b>김</b>도윤<span class="spacer"></span><span class="muted">재무팀 · 대리</span></div>
+        <div class="grp">다른 회사</div>
+        <div class="opt" style="padding:12px"><b>김</b>태희<span class="spacer"></span><span class="muted">블루웨이브 · PM</span></div>
+        <div class="opt-create" style="padding:14px">+ "김" 새 연락처로 만들기</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<template id="hdr-tpl">
+  <div class="header">
+    <span class="logo">◆ Pipeline CRM</span>
+    <div class="tabs"><span>파이프라인</span><span>회사</span><span class="new">연락처</span><span>미팅 노트</span><span>캘린더</span><span>설정</span></div>
+    <span class="search"></span>
+    <span class="spacer"></span><span class="muted">🌓</span><span class="pill">AI Assistant</span><span class="btn primary sm add"></span><span class="pill">홍 ▾</span>
+  </div>
+</template>
+
+<script>
+  // 공통 헤더 삽입: data-active(현재 메뉴), data-add(추가 버튼), data-ph(검색 placeholder)
+  const tpl = document.getElementById("hdr-tpl");
+  document.querySelectorAll(".hdr").forEach((h) => {
+    const node = tpl.content.cloneNode(true);
+    node.querySelectorAll(".tabs span").forEach((s) => s.classList.toggle("on", s.textContent === h.dataset.active));
+    node.querySelector(".add").textContent = "+ " + h.dataset.add;
+    node.querySelector(".search").textContent = "🔍 " + h.dataset.ph;
+    h.replaceWith(node);
+  });
+  // 화면 전환 (와이어프레임 내비게이션)
+  function go(id) {
+    document.querySelectorAll("body > .screen").forEach((s) => s.classList.toggle("on", s.id === id));
+    document.querySelectorAll(".toc button").forEach((b) => b.classList.toggle("on", b.dataset.go === id));
+    history.replaceState(null, "", "#" + id);
+    window.scrollTo(0, 0);
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go]");
+    if (t) { e.preventDefault(); go(t.dataset.go); }
+  });
+  if (location.hash && document.getElementById(location.hash.slice(1))) go(location.hash.slice(1));
+</script>
+</body>
+</html>

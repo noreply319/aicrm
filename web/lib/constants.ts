@@ -1,4 +1,4 @@
-import type { CompanySize, CompanyTier, NoteSource, Priority, StageId } from "./types";
+import type { CompanySize, CompanyTier, ContactRole, NoteSource, Priority, StageId } from "./types";
 
 // 단계 색: 디자인 시스템 데이터 팔레트 (docs/design-system/design-system.html)
 export const STAGES: { id: StageId; name: string; color: string }[] = [
@@ -84,3 +84,16 @@ export const COMPANY_TAG_LEN = 20;
 export const COMPANY_NOTES_MAX = 5000;
 /** 리드 모달 회사 검색 결과 최대 개수 */
 export const COMPANY_SEARCH_LIMIT = 8;
+
+// ───────── 연락처 ─────────
+/** 연락처 역할. 바꾸면 db/schema.sql의 contacts.role CHECK도 함께 */
+export const CONTACT_ROLES: { id: ContactRole; label: string }[] = [
+  { id: "decision_maker", label: "의사결정자" },
+  { id: "influencer", label: "영향력자" },
+  { id: "practitioner", label: "실무자" },
+];
+export const CONTACT_ROLE_LABEL = Object.fromEntries(CONTACT_ROLES.map((r) => [r.id, r.label])) as Record<ContactRole, string>;
+export const CONTACT_NAME_MAX = 50;
+export const CONTACT_NOTES_MAX = 5000;
+/** 리드 모달 담당자 검색 결과 최대 개수 */
+export const CONTACT_SEARCH_LIMIT = 8;

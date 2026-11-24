@@ -8,7 +8,7 @@ export async function resetDb() {
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
   await c.connect();
   try {
-    await c.query("TRUNCATE meeting_notes, lead_events, leads, companies RESTART IDENTITY CASCADE");
+    await c.query("TRUNCATE meeting_notes, lead_events, leads, contacts, companies RESTART IDENTITY CASCADE");
   } finally {
     await c.end();
   }
@@ -66,6 +66,22 @@ export async function fakeNoteAi(page: Page) {
   await page.route("**/api/meetings/*/schedule-candidates", (route) =>
     route.fulfill({ json: { registered: [], candidates: [] } })
   );
+}
+
+/** 리드 모달: 담당자 콤보박스에서 이름으로 새 연락처를 만들어 선택한다 */
+export async function createContactInLead(page: Page, name: string, fields: { title?: string; email?: string } = {}) {
+  const combo = page.getByRole("combobox", { name: "담당자" });
+  await combo.fill(name);
+  await page.getByRole("option", { name: new RegExp(`"${name}" 새 연락처로 만들기`) }).click();
+  if (fields.title) await page.getByLabel("새 연락처 직함").fill(fields.title);
+  if (fields.email) await page.getByLabel("새 연락처 이메일").fill(fields.email);
+  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await page.getByTestId("contact-chip").filter({ hasText: name }).waitFor();
+}
+
+export async function createContact(request: APIRequestContext, data: Record<string, unknown>) {
+  const res = await request.post("/api/contacts", { data });
+  return (await res.json()) as { id: string; name: string };
 }
 
 export async function createCompany(request: APIRequestContext, data: Record<string, unknown>) {

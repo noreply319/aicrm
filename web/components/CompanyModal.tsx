@@ -15,6 +15,8 @@ interface Props {
   allTags: string[];
   /** 연결 리드 수: 0이 아니면 삭제 불가 */
   leadCount: number;
+  /** 소속 연락처 수 (삭제하면 회사 없음이 된다) */
+  contactCount?: number;
   onSave: (input: CompanyInput) => Promise<void>;
   onDelete?: () => Promise<void>;
   /** 중복 안내의 "그 회사로 이동" */
@@ -32,7 +34,7 @@ const toInput = (c: Company): CompanyInput => {
   return rest;
 };
 
-export default function CompanyModal({ company, team, industries, allTags, leadCount, onSave, onDelete, onOpenCompany, onClose }: Props) {
+export default function CompanyModal({ company, team, industries, allTags, leadCount, contactCount = 0, onSave, onDelete, onOpenCompany, onClose }: Props) {
   const [form, setForm] = useState<CompanyInput>(() => (company ? toInput(company) : empty()));
   // 사업자번호·도메인은 입력 중 값을 그대로 보여주고 저장할 때 정리
   const [bizInput, setBizInput] = useState(() => formatBusinessNumber(company?.businessNumber ?? ""));
@@ -77,7 +79,8 @@ export default function CompanyModal({ company, team, industries, allTags, leadC
   };
 
   const remove = async () => {
-    if (!onDelete || !confirm(`'${company?.name}' 회사를 삭제할까요?`)) return;
+    const extra = contactCount ? `\n소속 연락처 ${contactCount}명은 회사 없음으로 바뀌어요.` : "";
+    if (!onDelete || !confirm(`'${company?.name}' 회사를 삭제할까요?${extra}`)) return;
     try {
       await onDelete();
     } catch (e) {

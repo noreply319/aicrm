@@ -5,9 +5,12 @@ import Link from "next/link";
 import { emptyStats, formatBusinessNumber, type CompanyStats } from "@/lib/company";
 import { STAGES } from "@/lib/constants";
 import { formatDateTime, formatWon } from "@/lib/format";
-import type { Company, Lead, TeamMember } from "@/lib/types";
+import { positionOf } from "@/lib/contact";
+import { CONTACT_ROLES } from "@/lib/constants";
+import type { Company, Contact, Lead, TeamMember } from "@/lib/types";
+import { RoleBadge } from "./ContactList";
 import { TierBadge } from "./CompanyList";
-import { Badge, Button, EmptyState, Icon, Panel, buttonClass } from "./ui";
+import { Avatar, Badge, Button, EmptyState, Icon, Panel, buttonClass } from "./ui";
 
 interface Props {
   company: Company | null;
@@ -19,13 +22,24 @@ interface Props {
   onEdit: () => void;
   onOpenLead: (id: string) => void;
   onAddLead: () => void;
+  /** 소속 연락처 */
+  contacts: Contact[];
+  /** 연락처별 진행 리드 수 */
+  contactOpenLeads: Record<string, number>;
+  onOpenContact: (id: string) => void;
+  onAddContact: () => void;
 }
+
+// 소속 연락처: 의사결정자 → 영향력자 → 실무자 → 없음
+const ROLE_ORDER = new Map<string | null, number>(CONTACT_ROLES.map((r, i) => [r.id, i]));
 
 const STAGE_ORDER = new Map(STAGES.map((s, i) => [s.id, i]));
 // 진행 중 → 수주 → 실주 순, 같은 그룹 안에서는 단계가 앞선(진척된) 리드 먼저
 const groupOf = (l: Lead) => (l.stage === "won" ? 1 : l.stage === "lost" ? 2 : 0);
 
-export default function CompanyDetail({ company, ready, stats, leads, team, onEdit, onOpenLead, onAddLead }: Props) {
+export default function CompanyDetail({
+  company, ready, stats, leads, team, onEdit, onOpenLead, onAddLead, contacts, contactOpenLeads, onOpenContact, onAddContact,
+}: Props) {
   if (!ready) return <div className="loading">불러오는 중…</div>;
   if (!company) {
     return (
@@ -82,6 +96,7 @@ export default function CompanyDetail({ company, ready, stats, leads, team, onEd
       </div>
 
       <div className="company-cols">
+        <div className="company-side">
         <Panel title="회사 정보">
           <dl className="company-info">
             {info.map(([k, v]) => (
@@ -91,6 +106,30 @@ export default function CompanyDetail({ company, ready, stats, leads, team, onEd
           </dl>
           <div className="muted company-meta">등록 {formatDateTime(company.createdAt).slice(0, 10)} · 수정 {formatDateTime(company.updatedAt).slice(0, 10)}</div>
         </Panel>
+          <Panel
+            title={`소속 연락처 ${contacts.length}`}
+            actions={<Button size="sm" icon="plus" onClick={onAddContact}>연락처 추가</Button>}
+          >
+            {contacts.length === 0 ? (
+              <EmptyState small title="등록된 연락처가 없어요" />
+            ) : (
+              <div className="company-leads">
+                {[...contacts]
+                  .sort((a, b) => (ROLE_ORDER.get(a.role) ?? 9) - (ROLE_ORDER.get(b.role) ?? 9) || a.name.localeCompare(b.name, "ko"))
+                  .map((c) => (
+                    <div key={c.id} role="button" tabIndex={0} className="company-lead contact-row" onClick={() => onOpenContact(c.id)}
+                      onKeyDown={(e) => e.key === "Enter" && onOpenContact(c.id)}>
+                      <Avatar name={c.name} size="sm" />
+                      <b>{c.name}</b>
+                      {c.role && <RoleBadge role={c.role} />}
+                      <span className="spacer" />
+                      <span className="muted ellipsis">{[positionOf(c), `진행 ${contactOpenLeads[c.id] ?? 0}`].filter(Boolean).join(" · ")}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </Panel>
+        </div>
         <Panel
           title={`연결된 리드 ${leads.length}`}
           actions={<Button variant="primary" size="sm" icon="plus" onClick={onAddLead}>이 회사로 리드 추가</Button>}

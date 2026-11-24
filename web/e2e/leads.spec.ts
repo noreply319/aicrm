@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createLead, resetDb } from "./helpers";
+import { createContactInLead, createLead, resetDb } from "./helpers";
 
 test.beforeEach(resetDb);
 
@@ -10,7 +10,7 @@ test("새 리드를 등록하면 신규 리드 컬럼에 카드가 생긴다", a
   await page.getByRole("combobox", { name: "회사" }).fill("이투이테스트");
   await page.getByRole("option", { name: /"이투이테스트" 새 회사로 생성/ }).click();
   await expect(page.getByTestId("company-chip")).toContainText("이투이테스트");
-  await page.getByPlaceholder("홍길동").fill("박서연");
+  await createContactInLead(page, "박서연");
   await page.getByRole("button", { name: "저장", exact: true }).click();
 
   await expect(page.getByText("새 리드가 등록되었습니다")).toBeVisible();

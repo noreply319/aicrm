@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import { E2E_SESSION_TOKEN, E2E_USER_EMAIL, TEST_DATABASE_URL } from "./test/setup/config";
 
-const PORT = 3100;
+// 다른 worktree에서 동시에 e2e를 돌리면 E2E_PORT로 포트를 바꾼다
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 
 /**
  * e2e 테스트: 테스트 DB(ai_crm_test)에 연결한 개발 서버(3100)를 띄워 실제 브라우저로 확인한다.

@@ -16,15 +16,24 @@ interface ModalProps {
   children: ReactNode;
 }
 
+/** 열려 있는 모달 순서 (마지막이 맨 위) */
+const openStack: symbol[] = [];
+
 /** 오버레이 + 대화 상자. 내용은 ModalHeader / 본문 / ModalFooter 순서로 넣는다 */
 export default function Modal({ label, onClose, size = "md", onSubmit, className, children }: ModalProps) {
   // 렌더마다 바뀌는 콜백이어도 리스너는 한 번만 등록
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // 모달 위에 모달을 띄우면(리드 모달 → 연락처 수정) Esc는 맨 위 모달만 닫는다
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
+    const me = Symbol(label);
+    openStack.push(me);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && openStack[openStack.length - 1] === me && closeRef.current();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      openStack.splice(openStack.indexOf(me), 1);
+    };
   }, []);
 
   const cls = cx("modal", size === "wide" && "modal-wide", size === "lg" && "modal-lg", className);

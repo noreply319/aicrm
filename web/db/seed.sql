@@ -22,3 +22,6 @@ WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);
 
 -- 샘플 리드를 회사에 연결 (schema.sql의 마이그레이션과 같은 함수)
 SELECT crm_link_lead_companies();
+
+-- 샘플 리드 담당자 → 연락처 (연락처가 하나도 없을 때만)
+SELECT crm_link_lead_contacts() WHERE NOT EXISTS (SELECT 1 FROM contacts);

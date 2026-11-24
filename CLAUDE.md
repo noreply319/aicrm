@@ -69,7 +69,7 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, CompanyList, CompanyDetail, CompanyModal, CompanyCombobox
+    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, CompanyList, CompanyDetail, CompanyModal, CompanyCombobox, ContactList, ContactDetail, ContactModal, ContactCombobox
     │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
@@ -83,6 +83,8 @@ AI CRM/                      # git 저장소 루트
     │   ├── audioFile.ts     # 클라이언트: 녹음 파일 → 업로드 가능한 WAV 구간으로 분할
     │   ├── companies.ts     # 서버 전용: 회사 컬럼/매핑, 리드 회사 결정, 중복(409) 처리
     │   ├── company.ts       # 공용 순수 함수: 회사명 정규화, 사업자번호·도메인, 검색, 회사별 집계 · useCompanies.ts: 클라이언트 훅
+    │   ├── contacts.ts      # 서버 전용: 연락처 컬럼/매핑, 리드 담당자 사본 채움·전파, 중복(409) 처리
+    │   ├── contact.ts       # 공용 순수 함수: 이름 키, 담당자 사본, 검색, 연락처별 집계 · useContacts.ts: 클라이언트 훅
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -144,7 +146,7 @@ AI CRM/                      # git 저장소 루트
 npm test                  # unit + integration (Vitest)
 npm run test:unit         # 순수 함수·OpenAI 응답 처리 (DB·네트워크 없음, fetch는 가짜)
 npm run test:integration  # Route Handler를 로컬 테스트 DB에 직접 호출
-npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(3100)를 띄워 Chrome으로 확인
+npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(3100, E2E_PORT로 변경)를 띄워 Chrome으로 확인
 ```
 
 - 위치: `web/test/unit`, `web/test/integration`, `web/e2e`. 설정: `vitest.config.mts`, `playwright.config.ts`.
@@ -228,6 +230,16 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - API: `/api/companies`(GET·POST, 409면 `{ error, company: 기존 회사 }`), `/api/companies/[id]`(GET·PATCH·DELETE), `/api/team`(담당 영업 선택용 팀원 id·이름).
 - 화면: 사이드바 `회사`(`/companies` CompanyList, `/companies/[id]` CompanyDetail), CompanyModal(등록·수정), 리드 모달 CompanyCombobox(검색·키보드 선택·이름만으로 바로 생성). 회사별 리드 수·금액은 클라이언트 `leads`로 계산(`statsByCompany`).
 - AI Assistant 컨텍스트 `companies`: 이름·업종·규모·등급·태그·담당 영업·도메인, 메모는 질문에 회사명이 나온 회사만. 전화·주소·사업자번호·대표자명은 보내지 않음.
+
+## 연락처
+
+- 문서: `docs/contacts/requirements.md`(13장: 구현하면서 정한 점), `docs/contacts/wireframe.html`
+- 테이블 `contacts`(이메일 소문자, 빈 값이 아니면 유니크 `contacts_email_idx`, `company_id` 선택 — 회사 삭제 시 NULL), `leads.contact_id`(FK `ON DELETE SET NULL`).
+  리드의 `contact`·`title`·`email`·`phone`은 **담당자 사본** — 리드 API는 `contactId`가 있으면 연락처 값으로 채우고(전화 = 휴대폰, 없으면 유선), `PATCH /api/contacts/[id]`는 연결된 **모든** 리드의 사본을 같은 트랜잭션에서 바꾸고 리드마다 `updated {…, via: "contact"}` 이력. 삭제는 리드 연결만 끊고 사본은 남김(`via: "contact_deleted"`).
+- 마이그레이션 `crm_link_lead_contacts()`(이메일 같으면 한 사람, 없으면 회사+`crm_person_key` 이름)는 `crm_migrations`에 기록해 **한 번만** 실행. `crm_person_key()` = `lib/contact.ts` `personKey()`.
+- API: `/api/contacts`(GET·POST, 409면 `{ error, contact: 기존 연락처 }`), `/api/contacts/[id]`(GET·PATCH·DELETE).
+- 화면: 사이드바 `연락처`(`/contacts` ContactList, `/contacts/[id]` ContactDetail), ContactModal, 리드 모달 ContactCombobox(회사 연락처 먼저, 간이 생성 폼, `연락처 수정`은 리드 모달 위에 ContactModal), 회사 상세 소속 연락처.
+- AI Assistant 컨텍스트 `contacts`: 이름·회사·부서·직함·역할·태그·담당 영업, 메모는 질문에 이름이 나온 사람만. 이메일·전화·LinkedIn은 보내지 않음.
 
 ## 참고 문서
 

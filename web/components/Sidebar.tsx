@@ -5,11 +5,12 @@ import Link from "next/link";
 import type { Me } from "@/lib/types";
 import { Avatar, Badge, Icon, type IconName } from "./ui";
 
-export type View = "pipeline" | "companies" | "meetings" | "calendar" | "settings";
+export type View = "pipeline" | "companies" | "contacts" | "meetings" | "calendar" | "settings";
 
 export const NAV: { view: View; href: string; label: string; icon: IconName }[] = [
   { view: "pipeline", href: "/", label: "파이프라인", icon: "pipeline" },
   { view: "companies", href: "/companies", label: "회사", icon: "building" },
+  { view: "contacts", href: "/contacts", label: "연락처", icon: "users" },
   { view: "meetings", href: "/meetings", label: "미팅 노트", icon: "notes" },
   { view: "calendar", href: "/calendar", label: "캘린더", icon: "calendar" },
   { view: "settings", href: "/settings", label: "설정", icon: "settings" },

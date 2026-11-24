@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { LEAD_COLUMNS, toLead, type LeadRow } from "@/lib/db";
 import { requestUserId } from "@/lib/auth";
 import { resolveLeadCompany } from "@/lib/companies";
+import { leadContactCopy } from "@/lib/contacts";
 import { diffLead, recordEvent, snapshot, withTransaction } from "@/lib/events";
 import { parseLeadInput, UUID_RE } from "@/lib/validate";
 
@@ -27,20 +28,25 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const company = await resolveLeadCompany(client, d.companyId, d.company, userId);
     if (!company) return "no-company" as const;
-    const input = { ...d, companyId: company.id, company: company.name };
+    // 담당 연락처가 있으면 담당자 사본은 연락처 값으로 채운다 (클라이언트 값 무시)
+    const copy = d.contactId ? await leadContactCopy(client, d.contactId) : null;
+    if (d.contactId && !copy) return "no-contact" as const;
+    const input = { ...d, ...copy, companyId: company.id, company: company.name };
 
     const { rows } = await client.query<LeadRow>(
       `UPDATE leads SET company_id=$12, company=$2, contact=$3, title=$4, email=$5, phone=$6, value=$7,
-              close_date=$8, stage=$9, priority=$10, notes=$11, updated_at=now()
+              close_date=$8, stage=$9, priority=$10, notes=$11, contact_id=$13, updated_at=now()
        WHERE id=$1
        RETURNING ${LEAD_COLUMNS}`,
-      [id, input.company, d.contact, d.title, d.email, d.phone, d.value, d.closeDate || null, d.stage, d.priority, d.notes, company.id]
+      [id, input.company, input.contact, input.title, input.email, input.phone, d.value, d.closeDate || null, d.stage, d.priority, d.notes,
+        company.id, d.contactId]
     );
     const changes = diffLead(toLead(before), input);
     if (Object.keys(changes).length > 0) await recordEvent(client, id, input.company, "updated", changes);
     return toLead(rows[0]);
   });
   if (result === "no-company") return NextResponse.json({ error: "회사를 찾을 수 없습니다" }, { status: 400 });
+  if (result === "no-contact") return NextResponse.json({ error: "담당 연락처를 찾을 수 없습니다" }, { status: 400 });
   return result ? NextResponse.json(result) : notFound();
 }
 

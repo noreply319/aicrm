@@ -15,6 +15,9 @@ export interface Lead {
   companyId: string | null;
   /** 회사명 사본 (회사명을 바꾸면 서버가 함께 갱신) */
   company: string;
+  /** 담당 연락처. 없으면 null (담당자 사본 텍스트만 있을 수 있음) */
+  contactId: string | null;
+  /** 담당자 사본: contact(이름)·title·email·phone — 연락처를 고르거나 연락처를 수정하면 서버가 채운다 */
   contact: string;
   title: string;
   email: string;
@@ -56,6 +59,32 @@ export interface Company {
 }
 
 export type CompanyInput = Omit<Company, "id" | "createdAt" | "updatedAt">;
+
+export type ContactRole = "decision_maker" | "practitioner" | "influencer";
+
+/** 연락처 (영업 상대방 한 사람, 팀 공유) */
+export interface Contact {
+  id: string;
+  name: string;
+  /** 소속 회사 (없을 수 있음) */
+  companyId: string | null;
+  department: string;
+  title: string;
+  /** 소문자. 빈 값이 아니면 다른 연락처와 중복 불가 */
+  email: string;
+  mobile: string;
+  officePhone: string;
+  linkedinUrl: string;
+  role: ContactRole | null;
+  /** 담당 영업 (users.id) */
+  ownerId: string | null;
+  tags: string[];
+  notes: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+export type ContactInput = Omit<Contact, "id" | "createdAt" | "updatedAt">;
 
 /** 담당 영업 선택용 팀원 */
 export interface TeamMember {

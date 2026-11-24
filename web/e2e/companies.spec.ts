@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createCompany, createLead, resetDb } from "./helpers";
+import { createCompany, createContactInLead, createLead, resetDb } from "./helpers";
 
 test.beforeEach(resetDb);
 
@@ -17,7 +17,7 @@ test("리드 등록: 회사를 검색해 드롭다운에서 키보드로 선택�
   await combo.press("Enter");
   await expect(page.getByTestId("company-chip")).toContainText("(주)에이스상사");
 
-  await page.getByPlaceholder("홍길동").fill("김민수");
+  await createContactInLead(page, "김민수");
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByText("새 리드가 등록되었습니다")).toBeVisible();
   await expect(page.locator(".card").filter({ hasText: "(주)에이스상사" })).toBeVisible();
@@ -26,7 +26,7 @@ test("리드 등록: 회사를 검색해 드롭다운에서 키보드로 선택�
 test("리드 등록: 회사를 선택하지 않으면 저장되지 않는다", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "새 리드" }).click();
-  await page.getByPlaceholder("홍길동").fill("김민수");
+  await createContactInLead(page, "김민수");
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByText("회사를 선택하거나 새로 만들어 주세요")).toBeVisible();
 });
@@ -45,7 +45,7 @@ test("회사 메뉴: 등록 → 상세 → 이 회사로 리드 추가 → 목�
   await expect(page.getByRole("heading", { name: "블루웨이브" })).toBeVisible();
   await page.getByRole("button", { name: "이 회사로 리드 추가" }).click();
   await expect(page.getByTestId("company-chip")).toContainText("블루웨이브");
-  await page.getByPlaceholder("홍길동").fill("이지은");
+  await createContactInLead(page, "이지은");
   await page.getByPlaceholder("10000000").fill("21500000");
   await page.getByRole("button", { name: "저장", exact: true }).click();
 

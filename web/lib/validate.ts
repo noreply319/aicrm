@@ -1,10 +1,12 @@
 import { businessDigits, isFreeMailDomain, normalizeDomain } from "./company";
+import { isValidEmail, normalizeUrl } from "./contact";
 import {
   COMPANY_NAME_MAX, COMPANY_NOTES_MAX, COMPANY_SIZES, COMPANY_TAG_LEN, COMPANY_TAG_MAX, COMPANY_TIERS,
+  CONTACT_NAME_MAX, CONTACT_NOTES_MAX, CONTACT_ROLES,
   NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix,
 } from "./constants";
 import type {
-  CalendarEventInput, ChatMessage, CompanyInput, CompanySize, CompanyTier, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId,
+  CalendarEventInput, ChatMessage, CompanyInput, CompanySize, CompanyTier, ContactInput, ContactRole, LeadInput, MeetingNoteInput, NoteSource, Priority, StageId,
 } from "./types";
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
@@ -25,6 +27,10 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
   const company = str(b.company, COMPANY_NAME_MAX);
   if (!companyId && !company) return { ok: false, error: "회사명은 필수입니다" };
 
+  // 담당자는 contactId로 지정한다 (담당자 사본은 서버가 연락처 값으로 채움). 없으면 보낸 텍스트를 그대로 둔다.
+  const contactId = typeof b.contactId === "string" && b.contactId !== "" ? b.contactId : null;
+  if (contactId !== null && !UUID_RE.test(contactId)) return { ok: false, error: "담당자가 올바르지 않습니다" };
+
   const value = Number(b.value ?? 0);
   if (!Number.isFinite(value) || value < 0) return { ok: false, error: "금액이 올바르지 않습니다" };
 
@@ -39,6 +45,7 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
     data: {
       companyId,
       company,
+      contactId,
       contact: str(b.contact, 100),
       title: str(b.title, 100),
       email: str(b.email, 200),
@@ -53,6 +60,80 @@ export function parseLeadInput(body: unknown): { ok: true; data: LeadInput } | {
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 태그 목록 검증 (회사·연락처 공용): 공백 제거·중복 제거. 잘못되면 에러 메시지 문자열 */
+function parseTags(v: unknown): string[] | string {
+  if (v !== undefined && v !== null && !Array.isArray(v)) return "태그가 올바르지 않습니다";
+  const tags: string[] = [];
+  for (const t of (v as unknown[] | undefined) ?? []) {
+    const tag = str(t, 1000);
+    if (!tag) continue;
+    if (tag.length > COMPANY_TAG_LEN) return `태그는 ${COMPANY_TAG_LEN}자 이하로 입력하세요`;
+    if (!tags.includes(tag)) tags.push(tag);
+  }
+  if (tags.length > COMPANY_TAG_MAX) return `태그는 ${COMPANY_TAG_MAX}개까지 등록할 수 있습니다`;
+  return tags;
+}
+
+const optionalId = (v: unknown): string | null | false =>
+  v === null || v === undefined || v === "" ? null : typeof v === "string" && UUID_RE.test(v) ? v : false;
+
+const ROLE_IDS = new Set<string>(CONTACT_ROLES.map((r) => r.id));
+const PHONE_RE = /^[0-9+\-()\s]*$/;
+
+/** 연락처 요청 본문 검증. 이름만 보내도 된다 (리드 모달에서 바로 생성). */
+export function parseContactInput(body: unknown): { ok: true; data: ContactInput } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+
+  const name = str(b.name, 1000).replace(/\s+/g, " ");
+  if (!name) return { ok: false, error: "이름은 필수입니다" };
+  if (name.length > CONTACT_NAME_MAX) return { ok: false, error: `이름은 ${CONTACT_NAME_MAX}자 이하로 입력하세요` };
+
+  const companyId = optionalId(b.companyId);
+  if (companyId === false) return { ok: false, error: "회사가 올바르지 않습니다" };
+  const ownerId = optionalId(b.ownerId);
+  if (ownerId === false) return { ok: false, error: "담당 영업이 올바르지 않습니다" };
+
+  const email = str(b.email, 1000).toLowerCase();
+  if (email && (email.length > 254 || !isValidEmail(email))) return { ok: false, error: "이메일 형식이 올바르지 않습니다" };
+
+  const mobile = str(b.mobile, 1000);
+  if (mobile.length > 30 || !PHONE_RE.test(mobile)) return { ok: false, error: "휴대폰 번호는 숫자·-·+만 30자 이하로 입력하세요" };
+  const officePhone = str(b.officePhone, 1000);
+  if (officePhone.length > 30) return { ok: false, error: "유선 전화는 30자 이하로 입력하세요" };
+
+  const rawUrl = str(b.linkedinUrl, 1000);
+  const linkedinUrl = rawUrl ? normalizeUrl(rawUrl) : "";
+  if (linkedinUrl === null || linkedinUrl.length > 500) return { ok: false, error: "LinkedIn 주소가 올바르지 않습니다" };
+
+  const role = b.role === null || b.role === undefined || b.role === "" ? null : ROLE_IDS.has(b.role as string) ? (b.role as ContactRole) : false;
+  if (role === false) return { ok: false, error: "역할이 올바르지 않습니다" };
+
+  const tags = parseTags(b.tags);
+  if (typeof tags === "string") return { ok: false, error: tags };
+
+  const notes = typeof b.notes === "string" ? b.notes.trim() : "";
+  if (notes.length > CONTACT_NOTES_MAX) return { ok: false, error: `메모는 ${CONTACT_NOTES_MAX.toLocaleString()}자 이하로 입력하세요` };
+
+  return {
+    ok: true,
+    data: {
+      name,
+      companyId,
+      department: str(b.department, 50),
+      title: str(b.title, 50),
+      email,
+      mobile,
+      officePhone,
+      linkedinUrl,
+      role,
+      ownerId,
+      tags,
+      notes,
+    },
+  };
+}
 
 const SIZES = new Set<string>(COMPANY_SIZES);
 const TIERS = new Set<string>(COMPANY_TIERS);
@@ -89,15 +170,8 @@ export function parseCompanyInput(body: unknown): { ok: true; data: CompanyInput
   const ownerId = typeof b.ownerId === "string" && b.ownerId !== "" ? b.ownerId : null;
   if (ownerId !== null && !UUID_RE.test(ownerId)) return { ok: false, error: "담당 영업이 올바르지 않습니다" };
 
-  const tags: string[] = [];
-  if (b.tags !== undefined && b.tags !== null && !Array.isArray(b.tags)) return { ok: false, error: "태그가 올바르지 않습니다" };
-  for (const t of (b.tags as unknown[] | undefined) ?? []) {
-    const tag = str(t, 1000);
-    if (!tag) continue;
-    if (tag.length > COMPANY_TAG_LEN) return { ok: false, error: `태그는 ${COMPANY_TAG_LEN}자 이하로 입력하세요` };
-    if (!tags.includes(tag)) tags.push(tag);
-  }
-  if (tags.length > COMPANY_TAG_MAX) return { ok: false, error: `태그는 ${COMPANY_TAG_MAX}개까지 등록할 수 있습니다` };
+  const tags = parseTags(b.tags);
+  if (typeof tags === "string") return { ok: false, error: tags };
 
   const notes = typeof b.notes === "string" ? b.notes.trim() : "";
   if (notes.length > COMPANY_NOTES_MAX) return { ok: false, error: `메모는 ${COMPANY_NOTES_MAX.toLocaleString()}자 이하로 입력하세요` };
