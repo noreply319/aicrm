@@ -23,6 +23,7 @@ import CalendarView from "./CalendarView";
 import EventModal, { type EventModalMode } from "./EventModal";
 import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
+import ContractsView from "./ContractsView";
 
 type ModalState = { open: false } | { open: true; leadId: string | null; stage: StageId; tab: LeadModalTab };
 
@@ -56,6 +57,7 @@ type EventModalState =
 
 const viewOf = (pathname: string): View =>
   pathname.startsWith("/meetings") ? "meetings"
+    : pathname.startsWith("/contracts") ? "contracts"
     : pathname.startsWith("/calendar") ? "calendar"
       : pathname.startsWith("/settings") ? "settings"
         : "pipeline";
@@ -467,6 +469,8 @@ export default function CrmApp() {
               onDismissCandidate={dismissSchedule}
               onExpired={auth.reload}
             />
+          ) : view === "contracts" ? (
+            <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
           ) : view === "settings" ? (
             <SettingsView
               me={auth.me}
@@ -488,7 +492,7 @@ export default function CrmApp() {
           )}
         </div>
         {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-        <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+        <AssistantPanel open={assistantOpen && view !== "contracts"} onClose={() => setAssistantOpen(false)} />
       </div>
       {modal.open && (
         <LeadModal

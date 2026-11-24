@@ -5,7 +5,7 @@ import Link from "next/link";
 import { THEME_KEY } from "@/lib/constants";
 import type { Me } from "@/lib/types";
 
-export type View = "pipeline" | "meetings" | "calendar" | "settings";
+export type View = "pipeline" | "meetings" | "contracts" | "calendar" | "settings";
 
 interface Props {
   view: View;
@@ -33,6 +33,7 @@ function toggleTheme() {
 const NAV: { view: View; href: string; label: string }[] = [
   { view: "pipeline", href: "/", label: "파이프라인" },
   { view: "meetings", href: "/meetings", label: "미팅 노트" },
+  { view: "contracts", href: "/contracts", label: "계약서" },
   { view: "calendar", href: "/calendar", label: "캘린더" },
   { view: "settings", href: "/settings", label: "설정" },
 ];
@@ -83,7 +84,8 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
             <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
           </svg>
         </button>
-        <button
+        {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant 버튼을 숨긴다 */}
+        {view !== "contracts" && <button
           className={`btn${assistantOpen ? " btn-active" : ""}`}
           title="AI Assistant 열기/닫기"
           aria-pressed={assistantOpen}
@@ -91,7 +93,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
         >
           <span className="assistant-badge">AI</span>
           <span className="hide-mobile">Assistant</span>
-        </button>
+        </button>}
         {addLabel && (
           <button className="btn btn-primary hide-mobile" onClick={onAdd}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">

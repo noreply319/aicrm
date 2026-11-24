@@ -8,7 +8,7 @@ import { pool } from "./db";
  * 구글 OAuth 2.0 (SDK 없이 fetch)
  *  - 로그인: openid email profile
  *  - 캘린더 연동(설정 → Google 캘린더): 로그인 권한에 캘린더 권한을 추가로 받는다 (include_granted_scopes)
- *  - Gmail 연동(설정 → Gmail): 같은 방식으로 Gmail 읽기 권한을 추가로 받는다
+ *  - Gmail 연동(설정 → Gmail): 같은 방식으로 Gmail 읽기·보내기 권한을 추가로 받는다
  * 리프레시 토큰은 사용자당 하나(받은 권한 전체)를 두 기능이 같이 쓰고, 기능별 사용 여부는 users.*_enabled로 구분한다.
  * 리디렉션 URI는 하나(/api/auth/callback)만 쓰고, 어떤 흐름인지는 state 쿠키의 purpose로 구분한다.
  */
@@ -23,8 +23,14 @@ export const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 export const CALENDAR_EVENTS_SCOPE = CALENDAR_SCOPES[0];
-/** 메일 읽기 전용 (보내기·수정·삭제 권한 없음) */
+/** 메일 읽기 (리드 이메일 탭·AI Assistant) */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+/** 메일 보내기 (계약서·견적서 발송). 수정·삭제 권한은 받지 않는다 */
+export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+
+/** Gmail이 연동돼 있고 발송 권한까지 받았는지 (이 기능 도입 전에 연동한 사용자는 다시 연동해야 한다) */
+export const canSendGmail = (user: Pick<SessionUser, "refreshToken" | "calendarExpired" | "calendarEnabled" | "gmailEnabled" | "googleScopes">) =>
+  featureState(user, "gmail") === "connected" && user.googleScopes.split(" ").includes(GMAIL_SEND_SCOPE);
 
 export const OAUTH_COOKIE = "crm_oauth";
 export const CALLBACK_PATH = "/api/auth/callback";
@@ -93,7 +99,7 @@ export function buildAuthRequest(
     client_id: id,
     redirect_uri: appOrigin(reqUrl) + CALLBACK_PATH,
     response_type: "code",
-    scope: [...LOGIN_SCOPES, ...(purpose === "calendar" ? CALENDAR_SCOPES : purpose === "gmail" ? [GMAIL_SCOPE] : [])].join(" "),
+    scope: [...LOGIN_SCOPES, ...(purpose === "calendar" ? CALENDAR_SCOPES : purpose === "gmail" ? [GMAIL_SCOPE, GMAIL_SEND_SCOPE] : [])].join(" "),
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",

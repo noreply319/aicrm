@@ -69,7 +69,8 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder
+    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서)
+    ├── assets/fonts/        # PDF 한글 폰트 (나눔고딕, OFL)
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
     │   ├── useLeads.ts      # 클라이언트 데이터 훅 (모든 데이터 변경의 단일 진입점)
@@ -145,6 +146,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
   `TEST_DATABASE_URL`로 변경 가능하지만 로컬의 이름에 `test`가 들어간 DB만 허용 — 개발(`ai_crm`)·운영 DB를 넣지 말 것.
 - OpenAI는 실제로 호출하지 않는다: unit·integration은 `fetch`를, e2e는 `page.route`로 API 응답을 가짜로 대체. e2e 녹음은 가짜 마이크(`getUserMedia` 대체) 사용.
 - e2e는 설치된 Chrome(`channel: "chrome"`)을 쓰므로 브라우저 다운로드 불필요. 순서대로 1개씩 실행(같은 DB).
+- 여러 워크트리에서 동시에 테스트하면 같은 DB·포트를 써서 서로 데이터를 지운다 → 워크트리별로 `TEST_DATABASE_URL=postgresql://localhost:5432/ai_crm_<작업명>_test`, `E2E_PORT=3101` 등을 지정.
 - e2e 로그인: `e2e/global-setup.ts`가 테스트 DB에 테스트 사용자·세션을 만들고 모든 요청에 세션 쿠키를 붙인다(서버 `ALLOWED_EMAILS`=테스트 계정). 노트 저장 후 자동 요약·다음 미팅 추출은 `fakeNoteAi`로 가짜 응답.
 - 새 기능을 추가하면 중요한 흐름은 테스트를 함께 추가. API 변경 시 integration 테스트로 이력(`lead_events`) 기록까지 확인.
 
@@ -202,7 +204,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 
 ## Gmail 연동
 
-- 설정 → Gmail → `/api/gmail/connect`로 `gmail.readonly` 권한 추가 (같은 콜백, purpose `gmail`). Google Cloud Console에서 **Gmail API 사용 설정** 필요, 테스트 사용자만 사용 가능(제한 범위).
+- 설정 → Gmail → `/api/gmail/connect`로 `gmail.readonly` + `gmail.send` 권한 추가 (같은 콜백, purpose `gmail`, `?next=`로 돌아갈 화면 지정 가능). 발송 권한 여부는 `users.google_scopes`로 판단(`canSendGmail`, `/api/me`의 `gmail.canSend`) — 발송 기능 도입 전에 연동한 사용자는 다시 연동해야 함. Google Cloud Console에서 **Gmail API 사용 설정** 필요, 테스트 사용자만 사용 가능(제한 범위).
 - 리프레시 토큰은 사용자당 하나(`users.google_refresh_token`)를 캘린더·Gmail이 공유. 기능별 사용 여부는 `users.calendar_enabled`·`gmail_enabled`, 만료는 `calendar_expired`(공통). 상태 계산은 `lib/auth.ts`의 `featureState()`.
 - 연동 해제(`disconnectFeature`): 다른 기능이 켜져 있으면 해당 기능만 끄고, 마지막 기능이면 구글에 토큰 폐기 후 삭제 (구글 폐기는 앱 권한 전체를 없애므로).
 - 서버: `lib/gmail.ts`(Gmail REST, fetch). 검색 대상은 `leadTarget()`: 리드 이메일이 회사 도메인이면 `@도메인` 전체(같은 회사 다른 사람 포함, 화면에 "회사" 배지), 무료 메일(`FREE_MAIL_DOMAINS`)·내 계정과 같은 도메인이면 담당자 주소만. 검색어 `{from:x to:x cc:x bcc:x}` 후 헤더로 정확히 다시 거른다(`involvesTarget`).
@@ -210,6 +212,19 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - API: `/api/gmail/{connect,connection}`, `/api/leads/[id]/emails`(GET 저장된 목록, Gmail 호출 없음), `.../emails/sync`(POST 새 메일 저장, `{pageToken}`이면 이전 페이지), `.../emails/summarize`(POST pending 요약, 최대 20건, `{retryFailed}`), `.../emails/[messageId]`(본문 — 리드 주소가 헤더에 있는 메일만).
 - 화면: 리드 상세 `이메일` 탭(`LeadEmails`: 저장 목록 즉시 표시 → sync → summarize, 목록에 AI 요약), 설정 Gmail 카드.
 - AI Assistant: 컨텍스트 `emails`에 **질문과 관련된 저장 메일만**(`findRelevantEmails`: 질문에 나온 회사·담당자의 메일 + 제목·요약 키워드 일치, 최대 30건, 제목·요약만). `search_lead_emails` 도구는 저장된 요약 검색(leadId면 새 메일 동기화·요약 후). 이메일 주소는 이름만 남기고 제목·요약은 `maskPii` 후 전송.
+
+## 계약서·견적서
+
+- 문서: `docs/contracts/requirements.md`, `docs/contracts/wireframe.html`
+- 화면: 헤더 메뉴 `계약서`(`/contracts`, `ContractsView`) — 탭 `새 문서`(왼쪽 `DocAssistant` / 오른쪽 `DocPaper`), `작성한 문서`, `템플릿`(`TemplateEditor`). 메일은 `SendDocModal`. 이 화면에서는 조회형 AI Assistant 패널을 숨긴다.
+- 템플릿: 본문의 `{{항목}}`이 바뀌는 부분(`#` 제목, `##` 조항, `-` 목록, `{{품목표}}` 견적 표). 예약 항목: 자동 `{{문서번호}} {{작성일}} {{문서명}} {{작성자}} {{작성자_이메일}}`, 견적 계산 `{{공급가액}} {{부가세}} {{합계}} {{합계_한글}}`. 항목 설정은 저장할 때 본문·메일 양식에 맞춰 동기화(`syncFields`).
+- 공용 로직 `lib/docTemplate.ts`(서버·클라이언트): 본문 블록, 값 해석(날짜·금액·기간·선택지 등), 합계·한글 금액, 종료일 자동 계산. 서버 `lib/documents.ts`(조회·저장, `rev`로 동시 수정 감지), `lib/docChat.ts`(대화 엔진), `lib/pdf.ts`(pdf-lib), `lib/mime.ts`(첨부 메일).
+- 대화: 다음 질문은 **서버가 결정**(리드 → 견적 품목 → 빈 항목 순서대로 → 완성). 답변은 규칙으로 먼저 해석하고 안 될 때만 OpenAI. OpenAI에는 항목 이름·유형·보기, 품목, 이번 답변(`maskPii`)만 보내고 문서 본문·다른 값·리드 연락처는 보내지 않는다. 이메일·전화번호 항목은 AI로 채우지 않는다.
+- 문서는 생성 시점의 템플릿을 복사(snapshot)해 가진다. 상태 `draft → completed → sent`, 발송한 문서는 수정·삭제 불가(복제로 새 문서번호).
+- PDF: 나눔고딕(`web/assets/fonts`, OFL) 전체 임베드(pdf-lib subset은 한글이 깨짐, 약 750KB). `next.config.ts`의 `outputFileTracingIncludes`로 배포 번들에 포함.
+- 발송: `/api/documents/[id]/send` → Gmail `messages.send` → 같은 트랜잭션에서 `document_sends`(받는 사람 주소), 문서 `sent`, `lead_events.document_sent`(주소 없이 받는 사람 수만 — Assistant 컨텍스트로 쓰이므로). 발송 후 리드 단계 이동은 버튼 제안만(견적서 → 제안/견적, 계약서 → 협상).
+- 테이블: `document_templates`, `documents`(`field_values` — `values`는 예약어), `document_sends`.
+- API: `/api/templates`(GET·POST), `[id]`(GET·PATCH·DELETE 보관한 것만), `[id]/duplicate`, `defaults`(기본 템플릿) · `/api/documents`(GET·POST), `[id]`(GET·PATCH 직접 수정·DELETE), `[id]/chat`, `[id]/duplicate`, `[id]/pdf`, `[id]/email-draft`, `[id]/send`.
 
 ## 참고 문서
 

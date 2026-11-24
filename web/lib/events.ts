@@ -7,7 +7,8 @@ import type { Lead, LeadInput } from "./types";
 export type LeadEventType =
   | "created" | "updated" | "moved" | "deleted"
   | "note_created" | "note_updated" | "note_deleted"
-  | "meeting_scheduled" | "meeting_rescheduled" | "meeting_canceled";
+  | "meeting_scheduled" | "meeting_rescheduled" | "meeting_canceled"
+  | "document_sent";
 
 export type FieldChange = { from: unknown; to: unknown };
 
