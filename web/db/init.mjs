@@ -27,6 +27,16 @@ try {
   }
   const { rows } = await client.query("SELECT count(*)::int AS n FROM leads");
   console.log(`leads: ${rows[0].n} rows`);
+} catch (e) {
+  // schema.sql은 한 번에 실행되므로 실패하면 전체가 롤백된다 (일부만 적용되지 않음)
+  if (e?.code === "42501") {
+    console.error(
+      "✗ 권한 부족: 일부 테이블의 소유자가 DATABASE_URL 사용자가 아닙니다.\n" +
+        "  확인: psql -d ai_crm -c \"select tablename, tableowner from pg_tables where schemaname='public'\"\n" +
+        "  해결: 해당 테이블을 만든 계정으로 ALTER TABLE <테이블> OWNER TO crm_app; 실행 후 다시 npm run db:init"
+    );
+  }
+  throw e;
 } finally {
   await client.end();
 }

@@ -141,6 +141,7 @@ AI CRM/                      # git 저장소 루트
 - 원격 DB는 SSL 사용, URL의 `sslmode` 파라미터는 제거 후 `ssl` 옵션으로 지정 (pg가 검증 모드로 해석해 실패하므로).
 - Supabase 직접 호스트(`db.<ref>.supabase.co`)는 IPv6 전용이라 Vercel에서 접속 불가 → 반드시 pooler 사용.
 - 새 환경 변수는 `web/.env.example`에 키만 추가.
+- `schema.sql`이 바뀐 커밋을 받거나 병합한 뒤에는 로컬 DB에 `npm run db:init` 실행(운영은 위 Supabase 명령). 안 하면 새 이력 타입·컬럼에서 CHECK 위반(23514)·없는 컬럼 에러로 500 — `withTransaction`이 이런 에러면 서버 로그에 안내를 남긴다. 테이블은 `crm_app` 소유로 만들 것(다른 계정으로 `schema.sql`을 실행하면 이후 `db:init`이 "must be owner"로 실패).
 
 ## 테스트
 

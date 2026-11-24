@@ -58,6 +58,22 @@ export async function recordEvent(
   );
 }
 
+// DB 스키마가 코드보다 오래됐을 때 나는 에러 코드
+// 23514 CHECK 위반(새 이력 타입 등), 42703 없는 컬럼, 42P01 없는 테이블
+const SCHEMA_MISMATCH_CODES = new Set(["23514", "42703", "42P01"]);
+
+/** 스키마 불일치로 보이는 DB 에러면 서버 로그에 해결 방법을 남긴다 (응답에는 노출하지 않음) */
+export function logSchemaMismatchHint(e: unknown): void {
+  if (typeof e !== "object" || e === null) return;
+  const { code, constraint, table } = e as { code?: unknown; constraint?: unknown; table?: unknown };
+  if (typeof code !== "string" || !SCHEMA_MISMATCH_CODES.has(code)) return;
+  const target = typeof constraint === "string" ? constraint : typeof table === "string" ? table : "";
+  console.error(
+    `[db] DB 스키마가 최신이 아닐 수 있습니다 (code ${code}${target ? `, ${target}` : ""}). ` +
+      "web/db/schema.sql을 DB에 다시 적용하세요 — 로컬: npm run db:init"
+  );
+}
+
 /** 트랜잭션 헬퍼: 성공 시 COMMIT, 예외 시 ROLLBACK */
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
@@ -68,6 +84,7 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
     return result;
   } catch (e) {
     await client.query("ROLLBACK");
+    logSchemaMismatchHint(e);
     throw e;
   } finally {
     client.release();

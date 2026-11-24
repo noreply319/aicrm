@@ -619,3 +619,21 @@
 > 커밋하고 머지 해줘.
 
 - 결과: main에서 직접 작업해 머지할 브랜치 없음. 작업 트리에 다른 세션 변경(`events.ts`·`init.mjs`·`globals.css` 등, CLAUDE.md의 db:init 규칙, 히스토리 87·88)이 섞여 있어 이번 작업분(`templates.sql`, CLAUDE.md 한 줄, 히스토리 86·89)만 골라 main에 커밋. push 안 함
+
+## 87. 2026-11-24 — 견적서 메일 발송 500 에러 분석
+
+> 견적서 메일 보내기 500에러 나는데 에러 분석해서 수정 방안 작성해줘. (에러 로그: `lead_events_type_check` 위반, `document_sent`)
+
+- 결과: 코드 문제 아님. `schema.sql`에는 `document_sent`가 있으나 로컬 `ai_crm` DB 제약에는 없음(계약서 기능 후 스키마 미적용). 운영 Supabase 제약은 정상(읽기 전용 조회). 수정 방안(로컬 `db:init`)·재발 방지안 제시, 변경 없음
+
+## 88. 2026-11-24 — 로컬 DB 스키마 적용 + 재발 방지
+
+> 1번 적용하고 재발방지도 구현해줘.
+
+- 결과: `npm run db:init`은 계약서 테이블 3개(`document_templates`·`documents`·`document_sends`)가 OS 계정 소유라 "must be owner"로 실패(전체 롤백). 소유자 변경은 권한 검토에서 거부돼, `lead_events_type_check` 제약만 `crm_app`으로 적용 → `document_sent` 포함 확인. 재발 방지: `lib/events.ts`에 `logSchemaMismatchHint`(23514·42703·42P01이면 서버 로그에 `db:init` 안내, `withTransaction`에서 호출), `db/init.mjs`에 권한 부족(42501) 안내, CLAUDE.md에 스키마 변경 후 `db:init` 규칙 추가. build 통과(테스트 생략)
+
+## 91. 2026-11-24 — 스키마 불일치 재발 방지 커밋
+
+> 위에 커밋하고 머지해줘.
+
+- 결과: main에서 직접 작업해 머지할 브랜치 없음. 작업 트리에 다른 세션 변경(templates.sql·globals.css·AssistantPanel·CrmApp, CLAUDE.md·history.md의 86번 스테이징분)이 섞여 있어 임시 인덱스로 이번 작업분(events.ts·init.mjs·CLAUDE.md 규칙 한 줄·history 87~89)만 커밋, 다른 세션 스테이징은 유지. push 안 함
