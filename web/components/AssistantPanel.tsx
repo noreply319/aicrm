@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
-import { Alert, Badge, Button, IconButton, Textarea } from "./ui";
+import { Alert, Badge, Button, Icon, IconButton, Textarea } from "./ui";
 
 interface Props {
   open: boolean;
+  onOpen: () => void;
   onClose: () => void;
 }
 
@@ -16,7 +17,7 @@ const SUGGESTIONS = [
   "현재 파이프라인 금액 합계는?",
 ];
 
-export default function AssistantPanel({ open, onClose }: Props) {
+export default function AssistantPanel({ open, onOpen, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,8 +59,10 @@ export default function AssistantPanel({ open, onClose }: Props) {
     }
   };
 
+  // 닫아도 대화가 유지되도록 언마운트하지 않고 오른쪽으로 밀어 숨긴다 (inert: 숨긴 동안 포커스 불가)
   return (
-    <aside className="assistant" aria-label="AI Assistant" hidden={!open}>
+    <>
+    <aside className={`assistant${open ? "" : " closed"}`} aria-label="AI Assistant" aria-hidden={!open} inert={!open}>
       <div className="assistant-head">
         <div className="assistant-title">
           <Badge tone="brand">AI</Badge> Assistant
@@ -69,7 +72,7 @@ export default function AssistantPanel({ open, onClose }: Props) {
             새 대화
           </Button>
         )}
-        <IconButton icon="close" label="닫기" size="sm" onClick={onClose} />
+        <IconButton icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />
       </div>
 
       <div className="assistant-messages" ref={listRef}>
@@ -121,5 +124,18 @@ export default function AssistantPanel({ open, onClose }: Props) {
         </Button>
       </form>
     </aside>
+    {/* 숨긴 동안 오른쪽 가장자리 탭으로 다시 열기 (데스크톱) */}
+    <button
+      type="button"
+      className={`assistant-handle${open ? "" : " show"}`}
+      title="AI Assistant 보이기"
+      aria-label="AI Assistant 보이기"
+      tabIndex={open ? -1 : 0}
+      onClick={onOpen}
+    >
+      <Icon name="chevronLeft" size={14} />
+      <Badge tone="brand">AI</Badge>
+    </button>
+    </>
   );
 }

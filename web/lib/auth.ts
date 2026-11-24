@@ -28,12 +28,14 @@ export interface SessionUser {
   gmailEnabled: boolean;
   calendarId: string;
   googleSub: string;
+  /** 구글에서 받은 권한 (공백 구분) */
+  googleScopes: string;
 }
 
 export const USER_COLUMNS = `
   u.id, u.email, u.name, u.picture, u.google_refresh_token AS "refreshToken",
   u.calendar_expired AS "calendarExpired", u.calendar_id AS "calendarId", u.google_sub AS "googleSub",
-  u.calendar_enabled AS "calendarEnabled", u.gmail_enabled AS "gmailEnabled"`;
+  u.calendar_enabled AS "calendarEnabled", u.gmail_enabled AS "gmailEnabled", u.google_scopes AS "googleScopes"`;
 
 export type GoogleFeature = "calendar" | "gmail";
 export type ConnectionState = "connected" | "expired" | "none";

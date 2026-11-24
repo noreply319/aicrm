@@ -453,3 +453,133 @@
 > commit하고 main에 merge해줘.
 
 - 결과: 작업이 이미 `main` 브랜치에서 진행돼 별도 merge 없이 main에 직접 커밋. 다른 작업의 `docs/companies`, `docs/contacts`, `docs/contracts`, `package-lock.json`은 제외. push는 안 함
+
+## 69. 2026-11-24 — 왼쪽 메뉴 접기·AI Assistant 숨기기 애니메이션
+
+> 왼쪽 메뉴에 숨기기 보여주기 아이콘 넣어주고, 숨기고 보여주기 할때 애니메이션으로 자연스럽게 구현해줘. AI Assistant도 오른쪽에 숨기고 보여질수 있게 해줘.
+
+- 결과: 사이드바 아래(프로필 위)에 접기/펼치기 버튼 → 232px ↔ 72px 아이콘 레일(폭·라벨 페이드 0.28s, 아이콘 위치 고정). Assistant는 패널 머리 버튼으로 오른쪽으로 밀어 숨김(폭·이동·투명도 0.3s), 숨긴 동안 오른쪽 가장자리 "AI" 탭으로 다시 열기, 모바일은 아래로 내려가는 시트. 두 상태 모두 localStorage 저장·첫 페인트 전 적용(깜빡임 없음), 첫 화면 이후에만 애니메이션, prefers-reduced-motion이면 끔. e2e `layout.spec.ts` 2개 추가, build·unit·e2e 8개 통과(임시 복사본 3200 포트·별도 테스트 DB). 커밋 안 함
+
+
+## 70. 2026-11-24 — 메뉴 접기·Assistant 숨기기 commit / main 반영
+
+> 커밋 하고 main에 머지해줘.
+
+- 결과: 코드는 이미 `405e43b`로 main에 커밋된 상태 → 남은 문서(`CLAUDE.md`, `docs/design-system/design-system.html`, `prompts/history.md`)를 main에 추가 커밋. main에서 작업해 별도 merge 없음. 다른 작업의 `docs/companies`·`contacts`·`contracts`, `package-lock.json` 제외. push 안 함
+
+## 67. 2026-11-24 — 왼쪽 메뉴에 계약서 표시
+
+> 계약서 메뉴가 왼쪽 메인 메뉴에 보이지 않는데 해당 이슈 수정해줘.
+
+- 결과: 원인은 계약서 기능이 `feature/contracts`에만 있고 main에는 새 디자인 시스템(왼쪽 사이드바)이 들어와 있던 것. 워크트리에 main(`ce6f390`, `ecd8ec1`)을 병합 → 사이드바 `계약서` 메뉴(문서 아이콘) 추가, 계약서 화면을 디자인 시스템 UI(Button·Badge·Alert·Field·Tabs·Modal)로 전환, 계약서 화면에서 조회형 Assistant·다시 열기 탭 숨김. unit+integration 75·e2e 12 통과, build 통과 (`8b4b0de`). main fast-forward는 원본 checkout에 다른 세션의 미커밋 수정(CrmApp·Sidebar·globals.css 등)이 있어 git이 거부 → 보류
+
+## 71. 2026-11-24 — 'N' 단축키 useEffect 의존성 배열 크기 변경 에러
+
+> 아래 화면에서 에러나는 거 분석해서 수정해줘. (Console Error: The final argument passed to useEffect changed size between renders — CrmApp.tsx:270)
+
+- 결과: 원인은 개발 중 HMR(Fast Refresh) — 설정 모달 추가로 의존성 배열이 4개→5개(`settingsOpen`)로 바뀐 코드가 상태 유지된 채 반영돼 React가 경고. 코드 자체 버그는 아님(새로고침 시 사라짐). 재발 방지로 모달 열림 여부를 `anyModalOpen` 하나로 합쳐 배열을 `[anyModalOpen, onAdd]`로 고정. build 통과. 커밋 안 함
+
+## 68. 2026-11-24 — 계약서 기능 커밋·main 병합 요청
+
+> commit, main merge 진행해줘.
+
+- 결과: 계약서 기능은 `feature/contracts`(`8b4b0de`)에 커밋 완료. main 폴더에 다른 세션의 진행 중 작업(설정 모달·사이드바, 임시 e2e 파일)이 있어 선택형으로 질문 → "그 세션이 끝날 때까지 대기" 선택. main 폴더가 정리되면 병합하도록 대기 중
+
+## 72. 2026-11-24 — 모바일 배경이 어두운 초록 → 데스크톱과 같은 배경
+
+> 모바일에서 메뉴 화면 뿐아니라 배경색이 데스크탑과 다르게 어두운 초록인데 데스크탑과 동일한 배경 색으로 변경해줘.
+
+- 결과: 원인은 `globals.css`의 `@media (prefers-color-scheme: dark)` 블록 — 휴대폰이 기기 다크 모드라 다크 토큰(`--bg: #0d1a15` 어두운 초록)이 자동 적용. 확인 중 다른 세션이 같은 수정(해당 블록 제거, 다크는 테마 버튼 `[data-theme="dark"]`로만, `Header.tsx` 토글 정리, e2e `mobile.spec.ts`에 다크 기기 배경 테스트, CLAUDE.md 반영)을 이미 작업 트리에 적용 → 중복 수정 없이 남은 `prefers-color-scheme` 참조 없음·build 통과만 확인. 커밋 안 함
+
+## 71. 2026-11-24 — 설정 모달 · Assistant 고정 패널 · 모바일 배경 · 메인 폭 확장
+
+> 설정은 아래 로그 아웃 위에 설정 누르면 가운데 모달로 뜨게 수정해줘. 그리고 설정은 사이드 메뉴에서 없애줘.
+>
+> 그리고 AI Assistant는 상단 헤더 부터 앨 화면까지 고정으로 표시되게 해줘. 현재 파이프 라인에서는 상단이 잘리고 있어.
+>
+> 모바일에서 메뉴 화면 뿐아니라 배경색이 데스크탑과 다르게 어두운 초록인데 데스크탑과 동일한 배경 색으로 변경해줘.
+>
+> AI 질문 창과 메인창과 겹치지 않게 하고, 메인 창은 AI 창과 메뉴 남은 공가 다 width 확장되게 구현해줘. 즉 AI 창 또는 메뉴가 숨겨지면 해당 화면까지 메인 창은 확장되어야해.
+
+- 결과: 사이드 메뉴에서 설정 제거 → 프로필 메뉴 "설정"(로그아웃 위)이 가운데 모달로 열림(`useOpenSettings`, 앱 안 "설정 → Google 연동" 안내도 모달). OAuth 복귀 `/settings`는 파이프라인 위 모달, 닫으면 `/`. 모바일은 하단 탭 오른쪽 끝 프로필 버튼. Assistant는 배너·지표를 왼쪽으로 옮겨 상단 바 아래~화면 끝 고정 패널. 기기 다크 모드 자동 적용 제거(테마 버튼으로만 다크) → 모바일도 밝은 배경. 641px 이상은 Assistant를 항상 나란히 배치(300~380px)해 메인과 겹치지 않고, 메인은 남은 폭 전체(숨김·접기 시 확장, 미팅 노트 최대폭 제거, 지표 카드 자동 줄바꿈). 이전 작업에서 생긴 프로필 팝오버 잘림(사이드바 overflow) 수정. e2e 16개(설정·겹침/확장·다크 기기 테스트 추가)·build·unit 통과. 커밋 안 함
+
+
+## 73. 2026-11-24 — 회사 기능 commit / main 병합 요청
+
+> commit하고 main 에 merge해줘.
+
+- 결과: `feature/companies`에 `63b9bc3` 커밋. main checkout에 같은 파일(CrmApp·Header·LeadModal·globals.css 등)을 고치는 디자인 작업이 커밋 전이라 병합 보류 후 확인 요청
+
+## 74. 2026-11-24 — 디자인 커밋 후 회사 기능 병합
+
+> 디자인 커밋 하고 머지 했어.
+
+- 결과: main(디자인 시스템 `ce6f390`, 사이드바 접기 `ecd8ec1`)을 `feature/companies`에 두 번 병합(`1cee40d`, `09eb06d`) — 회사 메뉴를 Sidebar `NAV`로 옮기고(building 아이콘 추가) 회사 화면·콤보박스·모달을 `@/components/ui`(Modal·Field·Button·Badge·Panel·EmptyState·Alert)와 새 토큰으로 변환. build·unit+integration 79·e2e 12 통과(별도 테스트 DB). e2e 첫 테스트에서 개발 서버가 페이지를 계속 새로고침하는 현상이 간헐적으로 나옴(원인 미확인, 재실행 시 통과). main checkout에 다시 같은 파일의 미커밋 변경이 있어 main 병합은 보류
+
+## 72. 2026-11-24 — 모바일 파이프라인: 단계 탭 + 세로 목록
+
+> 모바일에서는 파이프 라인 내용이 세로로 보여지고, 탭을 클릭해서 다른 funnel에 있는 리드 볼 수 있도록 수정해줘.
+
+- 결과: 640px 이하에서 칸반 가로 스와이프 → 단계 탭(가로 스크롤, 단계별 개수 배지, `Tabs`에 `scrollable` 옵션 추가) + 선택한 단계의 리드만 화면 폭 세로 목록. 데스크톱은 기존 칸반 그대로. e2e(모바일 탭 전환, 데스크톱 7개 컬럼) 추가, 전체 e2e 17개·build·unit 통과. 커밋 안 함
+
+
+## 73. 2026-11-24 — commit / main merge 요청
+
+> commit하고 main merge해줘.
+
+- 결과: 선택형 질문 → "전부 커밋 + 기능 브랜치 3개 병합" 선택. 확인해 보니 main 변경은 다른 세션이 이미 `a985d61`로 커밋(설정 모달·Assistant 고정·모바일 배경·모바일 단계 탭 포함), contracts·companies 워크트리는 다른 세션이 main을 병합하는 중(충돌 해결 중), contacts 워크트리는 미커밋 작업 중 → 진행 중 작업과 충돌하지 않게 병합 보류, 사용자에게 보고
+
+## 75. 2026-11-24 — 연락처 기능 구현 (worktree)
+
+> 위에 내용으로 새로운 워크트리에서 구현해줘.
+
+- 결과: 회사 기능(`feature/companies`, 다른 세션 작업)이 커밋·main 병합을 마친 뒤 그 위에 `worktress/contacts`(`feature/contacts`) 생성(선택형 질문으로 결정). `contacts` 테이블·`leads.contact_id`·1회 마이그레이션(`crm_link_lead_contacts`, `crm_migrations`), `/api/contacts` CRUD(이메일 중복 409, 수정 시 모든 연결 리드 담당자 사본·이력 갱신, 삭제 시 연결만 해제), 리드 API `contactId`, 사이드바 `연락처` 목록·상세·등록 모달, 리드 모달 담당자 콤보박스(회사 연락처 먼저·간이 생성·리드 모달 위 연락처 수정, Modal Esc는 맨 위만), 회사 상세 소속 연락처, Assistant 컨텍스트(이메일·전화 제외). unit+integration 102·build 통과, e2e 15개 통과(다른 worktree e2e와 동시 실행 중 부하로 2개가 한 번 시간 초과 → 재실행 통과). 별도 테스트 DB `ai_crm_test_contacts`·`E2E_PORT=3110` 사용. 커밋·로컬 `ai_crm`·운영 스키마 적용은 안 함
+
+## 76. 2026-11-24 — 모바일 하단 탭 맨 왼쪽 AI 메뉴
+
+> 그리고 모바일에서는 메뉴에서 제일 왼쪽에 AI 메뉴 넣어줘. AI 메뉴 누르면 AI Assistant 채팅 나오게 해줘.
+
+- 결과: 모바일(640px 이하) 하단 탭 맨 왼쪽에 "AI"(✨) 메뉴 → 누르면 탭 바 위 전체 화면 AI Assistant 채팅(다시 누르거나 다른 메뉴를 누르면 닫힘, 열려 있으면 AI 탭만 선택 표시). 모바일 상단 바의 AI 버튼은 숨김, 데스크톱은 그대로. e2e 2개 추가(모바일 AI 탭, 데스크톱엔 AI 메뉴 없음) 통과. 작업 중 다른 세션이 feature/contracts를 main에 병합 중(MERGE_HEAD)이었고 그 과정에서 이 변경이 함께 스테이징됨 — git 상태는 건드리지 않음. 커밋 안 함
+
+
+## 77. 2026-11-24 — 기능 브랜치 main 병합
+
+> 지금 병합해줘
+
+- 결과: `feature/contracts`(`2d18c0d`) → `feature/companies`(`77373d5`) 순서로 main에 병합. `feature/contacts`는 커밋된 고유 변경이 없어(연락처 작업은 워크트리에 미커밋) 병합할 것 없음. 충돌은 main(설정 모달·모바일 AI 탭) 기준에 계약서·회사 변경을 다시 얹어 해결, 계약서 화면에선 조회형 Assistant(상단 버튼·모바일 AI 탭·패널) 숨김, 테스트 DB TRUNCATE에 문서·회사 테이블 모두 포함. e2e에서 Next.js 개발 표시가 모바일 AI 탭을 가려 `E2E_HIDE_DEV_INDICATOR`로 숨김. 새 패키지(pdf-lib) `npm ci`, audit 0. build·unit+integration 104·e2e 26 통과(테스트 건너뛰기 지시 전). 다른 세션의 미커밋 문서·이력·e2e 수정 일부가 병합 커밋에 함께 들어감. push 안 함, 운영 DB 스키마 미적용
+
+## 69. 2026-11-24 — 계약서 기능 커밋·main 병합 (재요청)
+
+> commit 하고 main에 merge해줘.
+
+- 결과: 최신 main(`a985d61` 설정 모달·하단 탭 AI)을 워크트리에 병합하며 충돌 해결 중, 다른 세션이 이미 `feature/contracts`(`8b4b0de`)를 main에 병합(`2d18c0d`)한 것을 확인 — 같은 방식으로 해결돼 있어(사이드바 계약서 메뉴, 계약서 화면에서 AI 버튼·패널·하단 AI 탭 숨김) 워크트리 쪽 중복 병합은 취소. main에 pdf-lib 설치 확인. 다른 세션이 전달한 사용자 지시로 이후 테스트는 생략
+
+## 78. 2026-11-24 — 회사 기능 main 병합 마무리 · 테스트 skip
+
+> commit 후에 main에 merge해줘. / test는 skip해줘. / 모든 session에서 test는 전부 skip 하게 알려줘.
+
+- 결과: main checkout의 완료된 작업(설정 모달·Assistant 고정 패널)을 `a985d61`로 커밋 → 그 사이 다른 세션이 `feature/companies`(09eb06d)를 main에 병합(`77373d5`) → 남은 차이(모바일 e2e에서 Next.js 개발 도구 버튼이 하단 AI 탭을 가리는 문제를 숨김 처리)만 `31ca1b2`로 main에 fast-forward. 진행 중이던 e2e 중단, 다른 세션 4곳에 테스트 skip 전달(메모리에도 저장). 타입 체크만 확인, push 안 함
+
+## 79. 2026-11-24 — 연락처 기능 남은 작업 진행
+
+> 하지 하지 않은 부분 진행해줘.
+
+- 결과: 로컬 `ai_crm`에 schema.sql 적용(적용 전 pg_dump 백업, 회사 8·연락처 8 생성, 미연결 0건). 라이트·다크·모바일 스크린샷 확인 → 연락처 목록 표가 Assistant 패널이 열려 좁을 때 글자 단위 줄바꿈 → 줄바꿈 없이 가로 스크롤로 수정, build 통과. 도중 다른 세션(aicrm-fa)이 전달한 "모든 세션 테스트 건너뛰기" 지시로 e2e 첫 페이지 반복 새로고침 조사는 중단(일반 브라우저로는 재현 안 됨). 운영 Supabase는 읽기 전용 확인(회사·연락처 테이블 없음, 리드 8건) 후 선택형 질문 → **배포 때 함께 적용**하기로 결정(요구사항 14장). 커밋 안 함
+
+## 80. 2026-11-24 — 디자인 작업 진행상황 확인
+
+> 진행상황 확인해줘.
+
+- 결과: 계약서(`2d18c0d`)·회사(`77373d5`) 머지 완료, 진행 중 머지 없음. 모바일 AI 탭 코드는 계약서 머지에, 남은 3개 파일(e2e "N" 숨김·디자인 문서·#76)은 회사 머지에 포함 확인. 충돌 표시 없음, build 통과(테스트는 사용자 지시로 skip). 하단 탭이 AI + 메뉴 5개 + 프로필 7칸이 되어 모바일 폭 확인 필요
+
+## 81. 2026-11-24 — 진행상황 한국어로 정리
+
+> 진행상황 한국어로 알려줘.
+
+- 결과: main `31ca1b2`(회사 세션이 main을 병합한 뒤 main을 그 커밋으로 앞당김), origin보다 14커밋 앞(push 안 함). 계약서·회사 워크트리는 병합 정리 완료(변경 없음), 연락처는 워크트리에 미커밋 38개. 운영 DB 스키마 미적용
+
+## 81. 2026-11-24 — 디자인 작업 기록 commit / main 반영
+
+> 커밋하고 메인에 머지해줘.
+
+- 결과: 코드는 이미 계약서·회사 머지로 main에 반영된 상태 → 남은 `prompts/history.md`(#69·#78~#81, 다른 세션 기록 포함)만 main에 직접 커밋. main에서 작업해 별도 merge 없음. 연락처 작업 중인 `docs/contacts/` 제외. push 안 함, 테스트는 사용자 지시로 skip

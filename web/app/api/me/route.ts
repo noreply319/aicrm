@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { featureState, getSessionUser } from "@/lib/auth";
 import { listCalendars } from "@/lib/calendar";
 import { pool } from "@/lib/db";
-import { googleErrorResponse, unauthorized } from "@/lib/google";
+import { canSendGmail, googleErrorResponse, unauthorized } from "@/lib/google";
 import type { Me } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export async function GET() {
       state: featureState(user, "calendar"),
       calendarId: user.calendarId,
     },
-    gmail: { state: featureState(user, "gmail") },
+    gmail: { state: featureState(user, "gmail"), canSend: canSendGmail(user) },
   };
   return NextResponse.json(me);
 }

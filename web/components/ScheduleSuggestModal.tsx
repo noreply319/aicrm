@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useOpenSettings } from "@/lib/settingsModal";
 import type { Me, ScheduledMeeting } from "@/lib/types";
 import { CandidateRow } from "./CalendarView";
 import { Alert, Button, Modal, ModalFooter, ModalHeader } from "./ui";
@@ -20,6 +20,7 @@ interface Props {
 
 /** 미팅 노트 저장 후 "다음 미팅 일정을 찾았어요" 확인 창 */
 export default function ScheduleSuggestModal({ candidates, reason, company, calendarState, onConfirm, onDismiss, onLater, onClose }: Props) {
+  const openSettings = useOpenSettings();
   return (
     <Modal label="다음 미팅 일정" size="lg" onClose={onClose}>
       <ModalHeader title="🗓 확인이 필요한 다음 미팅이 있어요" onClose={onClose} />
@@ -32,7 +33,7 @@ export default function ScheduleSuggestModal({ candidates, reason, company, cale
         {calendarState !== "connected" && (
           <Alert tone="warning">
             캘린더가 {calendarState === "expired" ? "연동 만료 상태" : "연동되지 않은 상태"}입니다.{" "}
-            <Link href="/settings" onClick={onClose}>설정 → Google 연동</Link> 후 캘린더 화면에서 등록할 수 있습니다.
+            <button type="button" className="link-btn" onClick={() => { onClose(); openSettings(); }}>설정 → Google 연동</button> 후 캘린더 화면에서 등록할 수 있습니다.
             (&lsquo;나중에&rsquo;를 누르면 후보로 남겨 둡니다)
           </Alert>
         )}

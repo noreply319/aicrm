@@ -20,11 +20,13 @@ interface Props {
   onDrop: () => void;
   onOpen: (id: string) => void;
   onAdd: () => void;
+  /** 모바일에서 선택되지 않은 단계 (640px 이하에서만 숨김) */
+  mobileHidden?: boolean;
 }
 
 export default function Column({
   stage, leads, noteCounts, nextMeetings, draggingId, dropIndex,
-  onDragStart, onDragEnd, onHover, onLeave, onDrop, onOpen, onAdd,
+  onDragStart, onDragEnd, onHover, onLeave, onDrop, onOpen, onAdd, mobileHidden,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const total = leads.reduce((s, l) => s + (Number(l.value) || 0), 0);
@@ -44,7 +46,7 @@ export default function Column({
 
   return (
     <section
-      className={`column${dropIndex !== null ? " drag-over" : ""}`}
+      className={`column${dropIndex !== null ? " drag-over" : ""}${mobileHidden ? " mobile-hidden" : ""}`}
       style={{ "--stage": stage.color } as CSSProperties}
       onDragOver={(e) => {
         if (!draggingId) return;

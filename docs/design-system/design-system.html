@@ -120,7 +120,7 @@
     <!-- ───────── 색상 ───────── -->
     <section class="doc-sec" id="color">
       <h2>색상</h2>
-      <p class="lead">오른쪽 아래 버튼으로 라이트/다크를 바꿔 보세요. 모든 값은 CSS 변수이며 다크 값은 <code>prefers-color-scheme</code> 블록과 <code>[data-theme="dark"]</code> 두 곳에 함께 정의합니다.</p>
+      <p class="lead">오른쪽 아래 버튼으로 라이트/다크를 바꿔 보세요. 모든 값은 CSS 변수이며 다크 값은 <code>[data-theme="dark"]</code>에 정의합니다. 다크 테마는 상단 바 테마 버튼으로 켤 때만 적용되고, 기기의 다크 모드는 따르지 않습니다(모바일·데스크톱 모두 기본 밝은 배경).</p>
       <h3>브랜드</h3>
       <div class="grid g6" id="sw-brand"></div>
       <h3>표면 · 글자 · 선</h3>
@@ -186,9 +186,9 @@
       </div>
       <table class="tok" style="margin-top:12px">
         <tr><th style="width:22%">너비</th><th>사이드바</th><th>기타</th></tr>
-        <tr><td>&gt; 1024px</td><td>232px, 아이콘 + 라벨, 아래 프로필 메뉴</td><td>Assistant 오른쪽 고정 패널</td></tr>
-        <tr><td>641 – 1024px</td><td>72px 아이콘 레일 (라벨은 스크린리더용으로 숨김, 툴팁)</td><td>960px 이하 Assistant는 떠 있는 시트</td></tr>
-        <tr><td>≤ 640px</td><td>하단 탭 바 (아이콘 + 짧은 라벨), 프로필 메뉴 숨김(설정 화면에서 로그아웃)</td><td>추가는 FAB, 모달은 전체 화면</td></tr>
+        <tr><td>&gt; 1024px</td><td>232px, 아이콘 + 라벨, 아래 프로필 메뉴. <b>접기 버튼</b>(프로필 위)으로 72px 레일 ↔ 펼침 (0.28s, 상태 저장)</td><td>Assistant는 오른쪽에 붙은 패널로 <b>상단 바 바로 아래부터 화면 끝까지 고정</b>(스크롤해도 그대로). 패널 머리 버튼으로 오른쪽으로 밀어 숨김(0.3s), 숨긴 동안 오른쪽 가장자리 "AI" 탭으로 다시 열기 (상태 저장)</td></tr>
+        <tr><td>641 – 1024px</td><td>72px 아이콘 레일 (라벨은 스크린리더용으로 숨김, 툴팁)</td><td>Assistant도 오른쪽에 나란히 (폭 <code>--assistant-w</code> = 300~380px). 메인은 겹치지 않고 남은 폭 전체</td></tr>
+        <tr><td>≤ 640px</td><td>하단 탭 바: 맨 왼쪽 <b>AI</b>(Assistant 채팅, 탭 바 위 전체 화면) · 메뉴 아이콘 + 짧은 라벨 · 오른쪽 끝 프로필 버튼(설정·로그아웃). 다른 메뉴를 누르면 AI 채팅은 닫힘</td><td>파이프라인은 <b>단계 탭</b>(가로 스크롤, 개수 배지) + 선택한 단계 리드 세로 목록. 추가는 FAB, 모달은 전체 화면, Assistant는 하단 탭 위 떠 있는 시트 (처음엔 닫힘)</td></tr>
       </table>
     </section>
 
@@ -400,8 +400,8 @@
       <p class="lead">요청에서 정해지지 않은 부분은 아래처럼 <b>기본안으로 구현</b>했습니다. 바꾸려면 알려 주세요.</p>
       <div class="q"><b>Q1. 로고·서비스명</b> — Greenhouse 로고·이름은 쓰지 않고 기존 "◆ Pipeline CRM" 유지(민트 배경 로고 칩 + 세리프 워드마크). 전용 로고가 있으면 교체.</div>
       <div class="q"><b>Q2. 폰트</b> — Greenhouse의 Untitled Sans/Serif는 상용이라 Inter + Source Serif 4(next/font, 무료)로 대체. 세리프는 영문·숫자(브랜드, 지표)에만 사용.</div>
-      <div class="q"><b>Q3. 사이드바 접기</b> — 사용자가 직접 접는 토글은 없음. 화면 너비에 따라 자동(1024px 이하 아이콘 레일, 640px 이하 하단 탭).</div>
-      <div class="q"><b>Q4. 모바일 프로필 메뉴</b> — 하단 탭 바에는 4개 메뉴만. 로그아웃·연동 상태는 설정 화면에서.</div>
+      <div class="q"><b>Q3. 사이드바 접기</b> — 접기 버튼으로 완전히 숨기지 않고 72px 아이콘 레일로 접음(메뉴 이동·펼치기 버튼이 항상 보이도록). 1024px 이하는 자동 레일, 640px 이하 하단 탭. 애니메이션은 <code>html.ui-anim</code>(첫 화면 이후)에서만, 동작 줄이기 설정이면 끔.</div>
+      <div class="q"><b>Q4. 설정 위치</b> — 사이드 메뉴에서 빼고 프로필 메뉴(로그아웃 위)의 "설정" → 가운데 모달. 모바일은 하단 탭 오른쪽 끝 프로필 버튼. 앱 안의 "설정 → Google 연동" 안내도 같은 모달을 연다(<code>useOpenSettings</code>).</div>
       <div class="q"><b>Q5. 상단 바 구성</b> — 화면 제목 · 검색 · 테마 · AI Assistant · 추가 버튼. 알림·전역 검색(⌘K)은 범위 밖.</div>
       <div class="q"><b>Q6. 추가 예정 메뉴</b> — 회사·계약서(다른 작업에서 설계 중)는 <code>Sidebar.tsx</code>의 <code>NAV</code>에 한 줄 추가하면 같은 모양으로 들어감. 와이어프레임에 위치만 표시.</div>
       <div class="q"><b>Q7. 다크 테마</b> — Greenhouse에는 다크 테마가 없어 자체 정의(에버그린 계열 어두운 배경 + 밝은 민트 그린 primary).</div>

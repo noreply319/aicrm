@@ -285,6 +285,7 @@ function systemPrompt(context: string, state: CalendarState = "none", userName =
   본문은 녹음 전사일 수 있어 오인식이 있을 수 있습니다.
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
   meeting_scheduled/meeting_rescheduled/meeting_canceled(다음 미팅 등록/변경/취소). by는 변경한 사용자입니다.
+  document_sent(계약서·견적서 메일 발송: kind=contract 계약서/quote 견적서, title, docNumber, recipients=받는 사람 수).
 - 이력은 최근 ${MAX_EVENTS}건까지만 포함됩니다.
 - scheduledMeetings는 CRM에서 잡은 다음 미팅입니다(팀 전체). status: scheduled(등록자 owner의 구글 캘린더에 등록됨),
   candidate(미팅 노트에서 찾았지만 아직 확정 안 됨, certainty=tentative면 시간 미정). 다른 팀원의 미팅은 여기서 답하세요.
