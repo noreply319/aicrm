@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { KIND_LABEL } from "@/lib/docTemplate";
 import type { DocAction, DocMessage, DocTemplate, DocumentRecord } from "@/lib/types";
+import DocBadge from "./DocBadge";
+import { Alert, Badge, Button, Input, Textarea } from "./ui";
 
 interface Props {
   /** null = 아직 문서를 고르지 않음 (템플릿 선택 단계) */
@@ -63,7 +64,7 @@ export default function DocAssistant(p: Props) {
     <section className="doc-chat" aria-label="문서 작성 Assistant">
       <div className="doc-chat-head">
         <div className="assistant-title">
-          <span className="assistant-badge">AI</span> 문서 작성 Assistant
+          <Badge tone="brand">AI</Badge> 문서 작성 Assistant
           {doc && <span className="muted">· {doc.title}</span>}
         </div>
         {doc && progress && progress.total > 0 && (
@@ -135,7 +136,7 @@ export default function DocAssistant(p: Props) {
         {busy && <div className="bubble bubble-assistant bubble-loading">확인 중…</div>}
       </div>
 
-      {p.error && <div className="assistant-error" role="alert">⚠ {p.error}</div>}
+      {p.error && <Alert tone="danger">{p.error}</Alert>}
 
       <form
         className="assistant-input"
@@ -144,7 +145,7 @@ export default function DocAssistant(p: Props) {
           submit();
         }}
       >
-        <textarea
+        <Textarea
           value={input}
           rows={2}
           maxLength={2000}
@@ -163,7 +164,7 @@ export default function DocAssistant(p: Props) {
             }
           }}
         />
-        <button className="btn btn-primary" type="submit" disabled={busy || !input.trim() || doc?.status === "sent"}>전송</button>
+        <Button variant="primary" type="submit" disabled={busy || !input.trim() || doc?.status === "sent"}>전송</Button>
       </form>
     </section>
   );
@@ -172,7 +173,7 @@ export default function DocAssistant(p: Props) {
 function TemplateButton({ t, disabled, onClick }: { t: DocTemplate; disabled: boolean; onClick: () => void }) {
   return (
     <button type="button" className="tpl-btn" disabled={disabled} onClick={onClick}>
-      <span className={`kind-pill ${t.kind}`}>{KIND_LABEL[t.kind]}</span>
+      <DocBadge kind={t.kind} />
       <span className="tpl-btn-name">{t.name}</span>
       <span className="muted">항목 {t.fields.length}{t.lineItems ? " + 품목" : ""}</span>
     </button>
@@ -208,7 +209,7 @@ function Message({ m, doc, active, showResult, onAction, onDownload, onEmail }: 
       )}
       {active && field?.type === "date" && (
         <div className="quick-row">
-          <input type="date" className="quick-date" aria-label={`${field.key} 날짜 선택`} value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input type="date" className="quick-date" aria-label={`${field.key} 날짜 선택`} value={date} onChange={(e) => setDate(e.target.value)} />
           <button type="button" className="quick-btn" disabled={!date} onClick={() => onAction("answer", date)}>입력</button>
         </div>
       )}
@@ -222,16 +223,16 @@ function Message({ m, doc, active, showResult, onAction, onDownload, onEmail }: 
             </div>
           </div>
           <div className="quick-row">
-            <button type="button" className="btn btn-sm" onClick={onDownload}>⬇ PDF 다운로드</button>
-            <button type="button" className="btn btn-sm btn-primary" onClick={onEmail}>✉ 메일로 보내기</button>
-            {doc.status === "completed" && <button type="button" className="btn btn-sm" onClick={() => onAction("reopen")}>계속 수정</button>}
+            <Button size="sm" onClick={onDownload}>⬇ PDF 다운로드</Button>
+            <Button size="sm" variant="primary" icon="mail" onClick={onEmail}>메일로 보내기</Button>
+            {doc.status === "completed" && <Button size="sm" variant="ghost" onClick={() => onAction("reopen")}>계속 수정</Button>}
           </div>
         </div>
       )}
       {m.kind === "sent" && showResult && (
         <div className="quick-row">
-          <button type="button" className="btn btn-sm" onClick={onDownload}>⬇ PDF 다운로드</button>
-          <button type="button" className="btn btn-sm" onClick={onEmail}>✉ 다시 보내기</button>
+          <Button size="sm" onClick={onDownload}>⬇ PDF 다운로드</Button>
+          <Button size="sm" icon="mail" onClick={onEmail}>다시 보내기</Button>
         </div>
       )}
     </div>

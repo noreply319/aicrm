@@ -5,6 +5,7 @@ import {
   computeTotals, displayValue, formatNumber, lineAmount, parseBody, resolveKey, type DocContext, type Seg,
 } from "@/lib/docTemplate";
 import type { TemplateField } from "@/lib/types";
+import { Button, Input, Select, Textarea } from "./ui";
 
 interface Props {
   body: string;
@@ -172,16 +173,16 @@ function ValueEditor({ field, value, style, onSave, onClose }: {
     <div className="value-pop" ref={ref} style={style} role="dialog" aria-label={`${field.key} 수정`} onKeyDown={onKey}>
       <b>{field.key}</b>
       {field.type === "choice" ? (
-        <select value={v} onChange={(e) => setV(e.target.value)}>
+        <Select value={v} onChange={(e) => setV(e.target.value)}>
           <option value="">(빈칸)</option>
           {field.options.map((o) => <option key={o}>{o}</option>)}
-        </select>
+        </Select>
       ) : field.type === "date" ? (
-        <input type="date" value={v} onChange={(e) => setV(e.target.value)} />
+        <Input type="date" value={v} onChange={(e) => setV(e.target.value)} />
       ) : field.type === "multiline" ? (
-        <textarea rows={4} value={v} onChange={(e) => setV(e.target.value)} />
+        <Textarea rows={4} value={v} onChange={(e) => setV(e.target.value)} />
       ) : (
-        <input
+        <Input
           value={field.type === "money" || field.type === "number" ? displayValue(field, v) : v}
           inputMode={field.type === "money" || field.type === "number" ? "numeric" : undefined}
           onChange={(e) => setV(field.type === "money" || field.type === "number" ? e.target.value.replace(/[^\d]/g, "") : e.target.value)}
@@ -190,8 +191,8 @@ function ValueEditor({ field, value, style, onSave, onClose }: {
       {error && <div className="value-pop-error">⚠ {error}</div>}
       <div className="value-pop-foot">
         <span className="muted">Enter 저장 · Esc 취소</span>
-        <button type="button" className="btn btn-sm" onClick={onClose}>취소</button>
-        <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={save}>저장</button>
+        <Button size="sm" variant="ghost" onClick={onClose}>취소</Button>
+        <Button size="sm" variant="primary" disabled={busy} onClick={save}>저장</Button>
       </div>
     </div>
   );

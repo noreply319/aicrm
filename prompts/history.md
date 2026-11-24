@@ -396,3 +396,60 @@
 > 상단에 회사  추가하고, 회사 정보를 등록할 수 있게 해줘. 등록된 리드 등록할때 서치 & 드롭다운으로 선택하거나 없으면 리드에서 바로 생성 버튼 눌러서 생성할 수 있게 구현해줘. 관련해서 먼저 명확하지 않은 부분 질문하고, docs에 구현 계획 문서와 low fidelity wireframe html로 구현해줘.
 
 - 결과: 질의응답(회사 항목 기본·사업자·영업 관리·이메일 도메인 전부, 기존 리드 회사명으로 자동 생성·연결, 목록+상세, 바로 생성은 이름만 즉시) 반영해 `docs/companies/requirements.md`(FR-1~30, `companies` 테이블 + `leads.company_id`·회사명 사본 유지 설계, API·구현 순서·테스트, 확인 필요 Q1~Q7)와 `docs/companies/wireframe.html`(8개 화면) 작성. 구현 전
+
+## 50. 2026-11-24 — 자동 요약 기능 commit / main merge
+
+> 해당 기능 commit하고 main에 merge 해줘.
+
+- 결과: 기능 코드는 이미 `c717287`로 커밋·main에 merge(`089b1e9`)된 상태 → 남은 관련 문서(`docs/meeting-notes/` 요구사항·와이어프레임, `prompts/history.md`)를 main에 커밋(`bd85ed5`). 다른 작업의 `docs/companies`, `docs/contracts`, `package-lock.json` 이름 변경은 제외. push는 안 함
+
+## 65. 2026-11-24 — 회사 기능 확인 질문 선택형으로 결정
+
+> 선택지로 결정 하도록 질문해줘.
+
+- 결과: Q1~Q7을 선택형으로 질문 → 모두 추천안 선택(회사 연결 필수, 병합 제외, 리드 연결 회사 삭제 불가, 사업자번호 경고만, 부분 일치 검색만, 담당 영업 비워 둠, 회사별 담당자 관리 제외). `docs/companies/requirements.md` 11장 결정 사항으로 반영, 상태 확정
+
+## 64. 2026-11-24 — 계약서·견적서 기능 구현 (워크트리)
+
+> 해당 내용으로 새로운 워크트리에서 구현해줘.
+
+- 결과: `worktress/aicrm-contracts`(feature/contracts, main `06ea0a5` 기준)에 구현. 헤더 `계약서` 메뉴(왼쪽 문서 작성 Assistant / 오른쪽 문서 미리보기, 모바일 대화·문서 전환), 템플릿 등록(드래그 → 항목 지정, 항목 패널, 견적 품목 표, 메일 양식)·복제·보관, 리드 선택 → 자동 채움 → 한 번에 하나씩 질문(규칙 해석 우선, 안 되면 AI — 이메일·전화번호·본문 미전송) → 완성 → PDF(pdf-lib + 나눔고딕) 다운로드·내 Gmail 발송(gmail.send 추가, 받는 사람·참조·제목·본문·첨부 확인), 발송 이력·리드 단계 이동 제안. 테이블 3개 + `document_sent` 이력. unit+integration 75개·e2e 10개 통과, build 통과, npm audit 0. 운영 DB 미적용, 구글 콘솔 gmail.send 범위 추가 필요. 미커밋
+
+## 66. 2026-11-24 — 회사 기능 구현 (worktree)
+
+> 새로운 워크트리에서 구현 시작해줘.
+
+- 결과: `worktress/companies`(feature/companies)에 구현. `companies` 테이블 + `leads.company_id`(회사명 사본 유지) + 기존 리드 자동 연결 함수 `crm_link_lead_companies()`, `/api/companies`·`/api/companies/[id]`·`/api/team`, 회사명 변경 시 연결 리드 회사명·이력 갱신, 리드 모달 회사 콤보박스(검색·키보드·바로 생성·도메인 추천), 헤더 `회사` 메뉴(목록·필터·정렬·상세·등록/수정/삭제), Assistant 컨텍스트에 회사 정보. 별도 테스트 DB(`ai_crm_test_companies`)에서 unit+integration 79·e2e 10 통과, build 통과. 공용 `ai_crm_test`는 다른 세션 테스트와 겹쳐 실패해 분리. 문서 13장에 계획 대비 변경(리드 API 회사명 fallback, 도메인 자동 채움·Gmail 회사 도메인 검색 보류) 기록. 커밋 안 함
+
+## 67. 2026-11-24 — Greenhouse 스타일 디자인 시스템 · 왼쪽 사이드바 메뉴
+
+> Greenhouse UI Design System을 참고해서 비슷한 Brand color와 Design System으로 Design System 과 Component만들고, 메뉴도 동일하게 왼쪽으로 옮겨줘. UI Compoment는 하드코드로 만들지 말고 재사용해서 일관성있도록 해줘. 명확하지 않은 부분은 docs에 해당 디자인으로 디자인 시스템 html로 만들어주고, 디자인도 wireframe html로 구현해줘.
+>
+> Greenhouse: https://support.greenhouse.io/hc/en-us
+
+- 결과: Greenhouse 테마 CSS의 실제 값(에버그린 #15372C, 그린 #008561, 민트 #C9F0E5, pill 버튼)을 바탕으로 "Evergreen" 토큰(라이트/다크)으로 `globals.css` 재작성, `components/ui/`(Button·Badge·Field·Tabs·Alert·Panel·EmptyState·Avatar·Icon·Modal) 추가 후 모든 화면 컴포넌트를 이것으로 교체. 상단 탭 메뉴 → 왼쪽 `Sidebar`(1024px 이하 아이콘 레일, 640px 이하 하단 탭) + 상단 바(제목·검색·Assistant·추가), 로그인 화면 2단 구성. `docs/design-system/design-system.html`(토큰·컴포넌트 카탈로그, 결정 필요 Q1~Q7 기본안) · `wireframe.html`(9개 화면). build·unit·e2e 6개 통과(다른 세션의 3000/3100 서버를 피해 임시 복사본·별도 테스트 DB로 실행)
+
+
+## 66. 2026-11-24 — 연락처 메뉴 요구사항·와이어프레임
+
+> contacts 메뉴도 추가하고 등록할수 있게해줘. 관련해서 명확하지 않은 부분이나 개선점 있으면 질문해줘. docs에 요구사항 문서와 low fidelity wireframe html로 구현해줘.
+
+- 결과: 선택형 1·2차 질의응답(리드 담당자를 연락처에서 선택·사본 유지, 회사 연결 선택, 기존 리드 담당자 → 연락처 자동 생성·연결, 부서·유선 전화·역할·담당 영업·태그·메모·LinkedIn 포함 / 삭제 시 연결만 해제, 수정 시 모든 연결 리드 사본 갱신, 리드 모달은 읽기 전용+수정 버튼, 이메일 중복 불가, 회사 기능 먼저 구현, 담당자 없는 리드 허용) 반영해 `docs/contacts/requirements.md`(FR-1~30, `contacts` 테이블 + `leads.contact_id`, 마이그레이션·API·구현 순서·테스트)와 `docs/contacts/wireframe.html`(9개 화면) 작성. 상태 확정, 구현 전
+
+## 65. 2026-11-24 — 구현 결과 한국어로 설명
+
+> 한국 말로 설명해줘.
+
+- 결과: 계약서·견적서 구현 결과(실서비스 미검증 항목, 동작 방식, 요구사항과 달라진 점, 로컬 실행·배포 전 할 일)를 한국어로 다시 설명
+
+## 66. 2026-11-24 — 구글 로그인 설정 에러 + 계약서 기능 커밋·병합
+
+> 아래 처럼 메세지 에러가 나. ⚠ 서버의 구글 로그인 설정이 없습니다 (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). / commit하고 main 에 merge해줘.
+
+- 결과: 에러 원인은 워크트리(3000 포트로 실행 중)에 `.env.local`이 없던 것 → 원본 `web/.env.local` 복사(커밋 제외), 로컬 `ai_crm`에 schema.sql 적용(문서 테이블 3개). `feature/contracts`를 `0c37652`로 커밋하고 최신 main(`bd85ed5`)을 워크트리에 병합(충돌 없음). main 병합은 보류: 원본 checkout에 다른 작업(사이드바·디자인 시스템, CrmApp·Header·globals.css 등 수정)이 커밋되지 않은 채 있어 덮어쓸 위험
+
+## 68. 2026-11-24 — 디자인 시스템 commit / main 반영
+
+> commit하고 main에 merge해줘.
+
+- 결과: 작업이 이미 `main` 브랜치에서 진행돼 별도 merge 없이 main에 직접 커밋. 다른 작업의 `docs/companies`, `docs/contacts`, `docs/contracts`, `package-lock.json`은 제외. push는 안 함

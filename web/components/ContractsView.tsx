@@ -7,6 +7,8 @@ import type {
   DocAction, DocChatResult, DocKind, DocStatus, DocTemplate, DocumentRecord, DocumentSummary, Me,
 } from "@/lib/types";
 import DocAssistant from "./DocAssistant";
+import DocBadge from "./DocBadge";
+import { Alert, Button, Checkbox, EmptyState, Input, Select, Tabs } from "./ui";
 import DocPaper from "./DocPaper";
 import SendDocModal from "./SendDocModal";
 import TemplateEditor from "./TemplateEditor";
@@ -22,7 +24,6 @@ interface Props {
 
 type Tab = "new" | "docs" | "templates";
 
-const STATUS_LABEL: Record<DocStatus, string> = { draft: "작성 중", completed: "완성", sent: "발송됨" };
 const fmtDate = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(5, 16).replace("-", "/");
 
 /** 계약서 메뉴: 새 문서(왼쪽 Assistant + 오른쪽 문서) / 작성한 문서 / 템플릿 */
@@ -160,16 +161,16 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
 
   return (
     <div className="contracts">
-      <nav className="sub-tabs" aria-label="계약서 메뉴">
-        {([["new", "새 문서"], ["docs", "작성한 문서"], ["templates", "템플릿"]] as const).map(([id, label]) => (
-          <button key={id} type="button" className={tab === id ? "on" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}>
-            {label}
-          </button>
-        ))}
+      <div className="sub-tabs">
+        <Tabs
+          items={[{ id: "new", label: "새 문서" }, { id: "docs", label: "작성한 문서" }, { id: "templates", label: "템플릿" }]}
+          value={tab}
+          onChange={setTab}
+        />
         {tab === "new" && doc && (
-          <button type="button" className="btn btn-sm sub-tabs-action" onClick={() => { setDoc(null); setError(null); }}>+ 새 문서</button>
+          <Button size="sm" icon="plus" className="sub-tabs-action" onClick={() => { setDoc(null); setError(null); }}>새 문서</Button>
         )}
-      </nav>
+      </div>
 
       {tab === "new" && (
         <>
@@ -198,7 +199,7 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
                 <>
                   <div className="doc-tool">
                     <b className="doc-tool-title">{doc.title}</b>
-                    <span className={`status-badge ${doc.status}`}>{STATUS_LABEL[doc.status]}</span>
+                    <DocBadge status={doc.status} />
                     {doc.company && <span className="muted">{doc.company}</span>}
                     <span className="spacer" />
                     {doc.status === "draft" && missing > 0 && (
@@ -208,11 +209,11 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
                       </button>
                     )}
                     {doc.status === "draft" ? (
-                      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => chat({ action: "complete" })}>완성하기</button>
+                      <Button size="sm" disabled={busy} onClick={() => chat({ action: "complete" })}>완성하기</Button>
                     ) : (
                       <>
-                        <button type="button" className="btn btn-sm" onClick={download}>⬇ PDF</button>
-                        <button type="button" className="btn btn-sm btn-primary" onClick={() => setSending(true)}>✉ 메일</button>
+                        <Button size="sm" onClick={download}>⬇ PDF</Button>
+                        <Button size="sm" variant="primary" icon="mail" onClick={() => setSending(true)}>메일</Button>
                       </>
                     )}
                   </div>
@@ -226,11 +227,7 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
                   />
                 </>
               ) : (
-                <div className="doc-empty">
-                  <div className="empty-icon">📄</div>
-                  <b>템플릿을 고르면 여기에 문서가 표시돼요</b>
-                  <p className="muted">답변할 때마다 바뀌는 부분이 채워집니다</p>
-                </div>
+                <EmptyState icon="📄" title="템플릿을 고르면 여기에 문서가 표시돼요" description="답변할 때마다 바뀌는 부분이 채워집니다" />
               )}
             </section>
           </div>
@@ -321,20 +318,20 @@ function DocumentList({ onOpen, onNotice }: { onOpen: (id: string) => void; onNo
   return (
     <div className="contracts-main">
       <div className="list-toolbar">
-        <input type="search" className="list-search" placeholder="제목·회사명·문서번호 검색" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as DocKind | "")}>
+        <Input type="search" className="list-search" aria-label="문서 검색" placeholder="제목·회사명·문서번호 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as DocKind | "")}>
           <option value="">종류: 전체</option><option value="contract">계약서</option><option value="quote">견적서</option>
-        </select>
-        <select aria-label="상태" value={status} onChange={(e) => setStatus(e.target.value as DocStatus | "")}>
+        </Select>
+        <Select aria-label="상태" value={status} onChange={(e) => setStatus(e.target.value as DocStatus | "")}>
           <option value="">상태: 전체</option><option value="draft">작성 중</option><option value="completed">완성</option><option value="sent">발송됨</option>
-        </select>
-        <label className="check-row"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> 내 문서만</label>
+        </Select>
+        <Checkbox label="내 문서만" checked={mine} onChange={setMine} />
       </div>
-      {error && <div className="modal-error" role="alert">⚠ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {docs === null ? (
         <div className="loading">불러오는 중…</div>
       ) : docs.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">🗂</div><p>작성한 문서가 없습니다.</p></div>
+        <EmptyState icon="🗂" title="작성한 문서가 없습니다" />
       ) : (
         <div className="doc-table-wrap">
           <table className="doc-table">
@@ -345,21 +342,19 @@ function DocumentList({ onOpen, onNotice }: { onOpen: (id: string) => void; onNo
               {docs.map((d) => (
                 <tr key={d.id} onClick={() => onOpen(d.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(d.id)}>
                   <td><b>{d.title}</b><div className="muted">{d.docNumber}</div></td>
-                  <td><span className={`kind-pill ${d.kind}`}>{KIND_LABEL[d.kind]}</span></td>
+                  <td><DocBadge kind={d.kind} /></td>
                   <td>{d.company || <span className="muted">— 리드 없음</span>}</td>
                   <td>
-                    <span className={`status-badge ${d.status}`}>
-                      {STATUS_LABEL[d.status]}{d.status === "draft" && d.progress.total ? ` ${d.progress.filled}/${d.progress.total}` : ""}
-                    </span>
+                    <DocBadge status={d.status} suffix={d.status === "draft" && d.progress.total ? ` ${d.progress.filled}/${d.progress.total}` : ""} />
                   </td>
                   <td>{d.createdByName || "—"}</td>
                   <td className="muted">
                     {d.sentAt ? `${fmtDate(d.sentAt)} 발송${d.sendCount > 1 ? ` (${d.sendCount}회)` : ""}` : fmtDate(d.updatedAt)}
                   </td>
                   <td className="doc-actions" onClick={(e) => e.stopPropagation()}>
-                    {d.status !== "draft" && <a className="btn btn-sm" href={`/api/documents/${d.id}/pdf`} title="PDF 다운로드">⬇</a>}
-                    <button type="button" className="btn btn-sm" onClick={() => duplicate(d)}>복제</button>
-                    {d.status !== "sent" && <button type="button" className="btn btn-sm btn-danger" aria-label="삭제" onClick={() => remove(d)}>🗑</button>}
+                    {d.status !== "draft" && <Button size="sm" href={`/api/documents/${d.id}/pdf`} title="PDF 다운로드">⬇</Button>}
+                    <Button size="sm" onClick={() => duplicate(d)}>복제</Button>
+                    {d.status !== "sent" && <Button size="sm" variant="danger" aria-label="삭제" onClick={() => remove(d)}>삭제</Button>}
                   </td>
                 </tr>
               ))}
@@ -414,23 +409,23 @@ function TemplateList({ templates, onReload, onEdit, onNew, onUse, onLoadDefault
   return (
     <div className="contracts-main">
       <div className="list-toolbar">
-        <div className="seg" role="radiogroup" aria-label="종류">
-          {([["", "전체"], ["contract", "계약서"], ["quote", "견적서"]] as const).map(([v, l]) => (
-            <button key={v} type="button" role="radio" aria-checked={kind === v} className={kind === v ? "on" : ""} onClick={() => setKind(v)}>{l}</button>
-          ))}
-        </div>
-        <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> 보관함 보기</label>
+        <Tabs
+          items={[{ id: "all", label: "전체" }, { id: "contract", label: "계약서" }, { id: "quote", label: "견적서" }]}
+          value={kind || "all"}
+          onChange={(v) => setKind(v === "all" ? "" : v)}
+        />
+        <Checkbox label="보관함 보기" checked={showArchived} onChange={setShowArchived} />
         <span className="spacer" />
-        <button type="button" className="btn btn-primary" onClick={onNew}>+ 템플릿 등록</button>
+        <Button variant="primary" icon="plus" onClick={onNew}>템플릿 등록</Button>
       </div>
-      {error && <div className="modal-error" role="alert">⚠ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {list === null ? (
         <div className="loading">불러오는 중…</div>
       ) : (
         <div className="tpl-grid">
           {list.map((t) => (
             <div key={t.id} className="tpl-card">
-              <span className={`kind-pill ${t.kind}`}>{KIND_LABEL[t.kind]}</span>
+              <DocBadge kind={t.kind} />
               <h3>{t.name}</h3>
               {t.description && <p className="muted">{t.description}</p>}
               <div className="muted">항목 {t.fields.length}{t.lineItems ? " + 품목 표" : ""} · 문서 {t.documentCount}건</div>
@@ -438,16 +433,16 @@ function TemplateList({ templates, onReload, onEdit, onNew, onUse, onLoadDefault
               <div className="tpl-card-actions">
                 {showArchived ? (
                   <>
-                    <button type="button" className="btn btn-sm" onClick={() => run(() => api(`/api/templates/${t.id}`, { method: "PATCH", body: JSON.stringify({ archived: false }) }), "템플릿을 복원했습니다")}>복원</button>
-                    <button type="button" className="btn btn-sm btn-danger" onClick={() => confirm(`‘${t.name}’ 템플릿을 삭제할까요?\n이 템플릿으로 만든 문서는 그대로 남습니다.`) && run(() => api(`/api/templates/${t.id}`, { method: "DELETE" }), "템플릿을 삭제했습니다")}>삭제</button>
+                    <Button size="sm" onClick={() => run(() => api(`/api/templates/${t.id}`, { method: "PATCH", body: JSON.stringify({ archived: false }) }), "템플릿을 복원했습니다")}>복원</Button>
+                    <Button size="sm" variant="danger" onClick={() => confirm(`‘${t.name}’ 템플릿을 삭제할까요?\n이 템플릿으로 만든 문서는 그대로 남습니다.`) && run(() => api(`/api/templates/${t.id}`, { method: "DELETE" }), "템플릿을 삭제했습니다")}>삭제</Button>
                   </>
                 ) : (
                   <>
-                    <button type="button" className="btn btn-sm" onClick={() => onEdit(t)}>수정</button>
-                    <button type="button" className="btn btn-sm" onClick={() => run(() => api(`/api/templates/${t.id}/duplicate`, { method: "POST" }), "템플릿을 복제했습니다")}>복제</button>
-                    <button type="button" className="btn btn-sm" onClick={() => run(() => api(`/api/templates/${t.id}`, { method: "PATCH", body: JSON.stringify({ archived: true }) }), "템플릿을 보관했습니다")}>보관</button>
+                    <Button size="sm" onClick={() => onEdit(t)}>수정</Button>
+                    <Button size="sm" onClick={() => run(() => api(`/api/templates/${t.id}/duplicate`, { method: "POST" }), "템플릿을 복제했습니다")}>복제</Button>
+                    <Button size="sm" onClick={() => run(() => api(`/api/templates/${t.id}`, { method: "PATCH", body: JSON.stringify({ archived: true }) }), "템플릿을 보관했습니다")}>보관</Button>
                     <span className="spacer" />
-                    <button type="button" className="btn btn-sm btn-primary" onClick={() => onUse(t)}>이걸로 작성</button>
+                    <Button size="sm" variant="primary" onClick={() => onUse(t)}>이걸로 작성</Button>
                   </>
                 )}
               </div>
@@ -455,8 +450,8 @@ function TemplateList({ templates, onReload, onEdit, onNew, onUse, onLoadDefault
           ))}
           {!showArchived && (
             <div className="tpl-card tpl-card-new">
-              <button type="button" className="btn" onClick={onNew}>+ 새 템플릿</button>
-              <button type="button" className="btn btn-sm" onClick={onLoadDefaults}>기본 템플릿 불러오기</button>
+              <Button icon="plus" onClick={onNew}>새 템플릿</Button>
+              <Button size="sm" variant="ghost" onClick={onLoadDefaults}>기본 템플릿 불러오기</Button>
             </div>
           )}
           {showArchived && list.length === 0 && <p className="muted">보관한 템플릿이 없습니다.</p>}

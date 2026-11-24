@@ -9,6 +9,7 @@ import {
 } from "@/lib/docTemplate";
 import type { DocKind, DocTemplate, DocTemplateInput, FieldType, LeadSource, TemplateField } from "@/lib/types";
 import DocPaper from "./DocPaper";
+import { Alert, Badge, Button, Checkbox, Field, Input, Select, Tabs, Textarea } from "./ui";
 
 interface Props {
   /** null = 새 템플릿 */
@@ -125,37 +126,33 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
   return (
     <div className="tpl-editor">
       <div className="tpl-editor-bar">
-        <button type="button" className="btn btn-sm" onClick={onClose}>← 템플릿</button>
-        <input className="tpl-name" aria-label="템플릿 이름" placeholder="템플릿 이름 (예: SaaS 서비스 이용 계약서)" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-        <div className="seg" role="radiogroup" aria-label="문서 종류">
-          {(["contract", "quote"] as const).map((k) => (
-            <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
-              {KIND_LABEL[k]}
-            </button>
-          ))}
-        </div>
+        <Button size="sm" variant="ghost" icon="chevronLeft" onClick={onClose}>템플릿</Button>
+        <Input className="tpl-name" aria-label="템플릿 이름" placeholder="템플릿 이름 (예: SaaS 서비스 이용 계약서)" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+        <Tabs
+          className="tpl-kind"
+          items={(["contract", "quote"] as const).map((k) => ({ id: k, label: KIND_LABEL[k] }))}
+          value={kind}
+          onChange={setKind}
+        />
         <span className="spacer" />
-        <button type="button" className={`btn btn-sm${preview ? " btn-active" : ""}`} aria-pressed={preview} onClick={() => setPreview((v) => !v)}>미리보기</button>
-        <button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={save}>{saving ? "저장 중…" : "저장"}</button>
+        <Button size="sm" active={preview} aria-pressed={preview} onClick={() => setPreview((v) => !v)}>미리보기</Button>
+        <Button size="sm" variant="primary" disabled={saving} onClick={save}>{saving ? "저장 중…" : "저장"}</Button>
       </div>
-      {error && <div className="modal-error tpl-error" role="alert">⚠ {error}</div>}
+      {error && <Alert tone="danger" className="tpl-error">{error}</Alert>}
 
       <div className="tpl-editor-grid">
         <div className="tpl-main">
-          <input className="tpl-desc" placeholder="설명 (선택)" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
+          <Input className="tpl-desc" aria-label="설명" placeholder="설명 (선택)" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
           <div className="tpl-tabs">
-            <div className="seg">
-              <button type="button" className={tab === "body" ? "on" : ""} onClick={() => setTab("body")}>본문</button>
-              <button type="button" className={tab === "email" ? "on" : ""} onClick={() => setTab("email")}>메일 양식</button>
-            </div>
+            <Tabs items={[{ id: "body", label: "본문" }, { id: "email", label: "메일 양식" }]} value={tab} onChange={setTab} />
             {tab === "body" && !preview && (
               <>
-                <button type="button" className="btn btn-sm" disabled={!selection} onClick={() => setNaming({ name: "", all: true })} title="본문에서 바뀌는 글자를 드래그한 뒤 누르세요">
+                <Button size="sm" disabled={!selection} onClick={() => setNaming({ name: "", all: true })} title="본문에서 바뀌는 글자를 드래그한 뒤 누르세요">
                   ⬚ 항목으로 지정
-                </button>
-                <button type="button" className="btn btn-sm" onClick={() => insertAtCursor("{{새 항목}}")}>+ 항목 삽입</button>
+                </Button>
+                <Button size="sm" onClick={() => insertAtCursor("{{새 항목}}")}>+ 항목 삽입</Button>
                 {kind === "quote" && (
-                  <button type="button" className="btn btn-sm" disabled={hasItems} onClick={() => insertAtCursor(`\n{{${ITEMS_KEY}}}\n`)}>▦ 품목 표 삽입</button>
+                  <Button size="sm" disabled={hasItems} onClick={() => insertAtCursor(`\n{{${ITEMS_KEY}}}\n`)}>▦ 품목 표 삽입</Button>
                 )}
               </>
             )}
@@ -166,17 +163,14 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
             <div className="assign-pop" role="dialog" aria-label="항목으로 지정">
               <b>선택한 글자를 항목으로 지정</b> <span className="muted">“{selection.text}”</span>
               <div className="row">
-                <input autoFocus placeholder="항목 이름 (예: 이용 요금)" value={naming.name} maxLength={TEMPLATE_LIMITS.key}
+                <Input autoFocus aria-label="항목 이름" placeholder="항목 이름 (예: 이용 요금)" value={naming.name} maxLength={TEMPLATE_LIMITS.key}
                   onChange={(e) => setNaming({ ...naming, name: e.target.value })}
                   onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && (e.preventDefault(), assign())} />
-                <button type="button" className="btn btn-sm" onClick={() => setNaming(null)}>취소</button>
-                <button type="button" className="btn btn-sm btn-primary" disabled={!naming.name.trim()} onClick={assign}>항목으로 지정</button>
+                <Button size="sm" onClick={() => setNaming(null)}>취소</Button>
+                <Button size="sm" variant="primary" disabled={!naming.name.trim()} onClick={assign}>항목으로 지정</Button>
               </div>
               {occurrences > 1 && (
-                <label className="check-row">
-                  <input type="checkbox" checked={naming.all} onChange={(e) => setNaming({ ...naming, all: e.target.checked })} />
-                  본문의 같은 글자 {occurrences}곳 모두 바꾸기
-                </label>
+                <Checkbox label={`본문의 같은 글자 ${occurrences}곳 모두 바꾸기`} checked={naming.all} onChange={(all) => setNaming({ ...naming, all })} />
               )}
             </div>
           )}
@@ -185,7 +179,7 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
             preview ? (
               <div className="tpl-preview"><DocPaper body={body} ctx={previewCtx} /></div>
             ) : (
-              <textarea
+              <Textarea
                 ref={bodyRef}
                 className="tpl-source"
                 aria-label="템플릿 본문"
@@ -200,14 +194,12 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
             )
           ) : (
             <div className="tpl-email">
-              <div className="field">
-                <label htmlFor="tpl-subject">메일 제목</label>
-                <input id="tpl-subject" value={emailSubject} maxLength={200} onChange={(e) => setEmailSubject(e.target.value)} />
-              </div>
-              <div className="field">
-                <label htmlFor="tpl-mail-body">메일 본문</label>
-                <textarea id="tpl-mail-body" rows={12} value={emailBody} maxLength={TEMPLATE_LIMITS.email} onChange={(e) => setEmailBody(e.target.value)} />
-              </div>
+              <Field label="메일 제목">
+                <Input aria-label="메일 제목" value={emailSubject} maxLength={200} onChange={(e) => setEmailSubject(e.target.value)} />
+              </Field>
+              <Field label="메일 본문">
+                <Textarea aria-label="메일 본문" rows={12} value={emailBody} maxLength={TEMPLATE_LIMITS.email} onChange={(e) => setEmailBody(e.target.value)} />
+              </Field>
               <p className="muted">메일에도 {"{{항목}}"}을 쓸 수 있어요. 보낼 때 값이 채워지고, 보내기 전에 수정할 수 있습니다.</p>
             </div>
           )}
@@ -231,8 +223,8 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
                 <button type="button" className="field-row-name" aria-expanded={open === f.key} onClick={() => setOpen(open === f.key ? null : f.key)}>
                   {f.key}
                 </button>
-                <span className="pill">{FIELD_TYPE_LABEL[f.type]}</span>
-                {f.required && <span className="pill">필수</span>}
+                <Badge>{FIELD_TYPE_LABEL[f.type]}</Badge>
+                {f.required && <Badge tone="warning">필수</Badge>}
                 {f.leadSource && <span className="muted">← 리드: {LEAD_SOURCE_LABEL[f.leadSource]}</span>}
                 <span className="spacer" />
                 <button type="button" className="mini-btn" aria-label={`${f.key} 위로`} disabled={i === 0} onClick={() => move(f.key, i - 1)}>▲</button>
@@ -242,27 +234,27 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
                 <div className="field-row-body">
                   <div className="two">
                     <label>유형
-                      <select value={f.type} onChange={(e) => updateField(f.key, { type: e.target.value as FieldType })}>
+                      <Select value={f.type} onChange={(e) => updateField(f.key, { type: e.target.value as FieldType })}>
                         {Object.entries(FIELD_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+                      </Select>
                     </label>
                     <label>리드 자동 채움
-                      <select value={f.leadSource} onChange={(e) => updateField(f.key, { leadSource: e.target.value as LeadSource })}>
+                      <Select value={f.leadSource} onChange={(e) => updateField(f.key, { leadSource: e.target.value as LeadSource })}>
                         {Object.entries(LEAD_SOURCE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+                      </Select>
                     </label>
                   </div>
-                  <label>질문 문구<input value={f.question} maxLength={200} placeholder="비우면 자동 (예: 회사명을 알려주세요.)" onChange={(e) => updateField(f.key, { question: e.target.value })} /></label>
-                  <label>예시·설명<input value={f.hint} maxLength={200} placeholder="예: 2026-12-01" onChange={(e) => updateField(f.key, { hint: e.target.value })} /></label>
+                  <label>질문 문구<Input value={f.question} maxLength={200} placeholder="비우면 자동 (예: 회사명을 알려주세요.)" onChange={(e) => updateField(f.key, { question: e.target.value })} /></label>
+                  <label>예시·설명<Input value={f.hint} maxLength={200} placeholder="예: 2026-12-01" onChange={(e) => updateField(f.key, { hint: e.target.value })} /></label>
                   {f.type === "choice" && (
                     <label>보기 (쉼표로 구분)
-                      <input defaultValue={f.options.join(", ")} placeholder="월 분할, 연 일시불"
+                      <Input defaultValue={f.options.join(", ")} placeholder="월 분할, 연 일시불"
                         onBlur={(e) => updateField(f.key, { options: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
                     </label>
                   )}
                   <div className="two">
-                    <label>기본값 (빠른 답변 버튼)<input value={f.defaultValue} maxLength={200} onChange={(e) => updateField(f.key, { defaultValue: e.target.value })} /></label>
-                    <label className="check-row"><input type="checkbox" checked={f.required} onChange={(e) => updateField(f.key, { required: e.target.checked })} /> 필수</label>
+                    <label>기본값 (빠른 답변 버튼)<Input value={f.defaultValue} maxLength={200} onChange={(e) => updateField(f.key, { defaultValue: e.target.value })} /></label>
+                    <Checkbox label="필수" checked={f.required} onChange={(required) => updateField(f.key, { required })} />
                   </div>
                 </div>
               )}
@@ -273,13 +265,13 @@ export default function TemplateEditor({ template, onSaved, onClose }: Props) {
             <div className="tpl-items-config">
               <b>품목 표</b>
               {!hasItems && <p className="muted">본문에 ‘품목 표 삽입’으로 {`{{${ITEMS_KEY}}}`}를 넣으세요.</p>}
-              <label className="check-row"><input type="checkbox" checked={lineItems.spec} onChange={(e) => setLineItems({ ...lineItems, spec: e.target.checked })} /> 규격 열 표시</label>
+              <Checkbox label="규격 열 표시" checked={lineItems.spec} onChange={(spec) => setLineItems({ ...lineItems, spec })} />
               <label>부가세
-                <select value={lineItems.vat} onChange={(e) => setLineItems({ ...lineItems, vat: e.target.value as typeof lineItems.vat })}>
+                <Select value={lineItems.vat} onChange={(e) => setLineItems({ ...lineItems, vat: e.target.value as typeof lineItems.vat })}>
                   <option value="excluded">별도 (10% 추가)</option>
                   <option value="included">단가에 포함</option>
                   <option value="none">없음</option>
-                </select>
+                </Select>
               </label>
             </div>
           )}

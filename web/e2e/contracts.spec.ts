@@ -31,7 +31,11 @@ test("계약서: 템플릿 버튼 → 리드 선택(자동 채움) → 하나씩
   });
   await fakeGmailSend(page);
 
-  await page.goto("/contracts");
+  // 왼쪽 메뉴의 계약서로 이동
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "계약서" }).click();
+  await expect(page).toHaveURL(/\/contracts$/);
+  await expect(page.getByRole("link", { name: "계약서" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
   // 이 화면에서는 조회형 Assistant를 숨긴다
   await expect(page.getByRole("button", { name: /Assistant/ })).toHaveCount(0);
@@ -73,7 +77,7 @@ test("계약서: 템플릿 버튼 → 리드 선택(자동 채움) → 하나씩
   await expect(page.getByText(/그래도 완성할까요/)).toBeVisible();
   await page.getByRole("button", { name: "빈칸으로 완성" }).click();
   await expect(page.getByText("문서를 완성했어요.", { exact: false })).toBeVisible();
-  await expect(page.locator(".status-badge.completed")).toBeVisible();
+  await expect(page.locator(".doc-status-completed")).toBeVisible();
   await shot(page, "5-completed");
 
   // PDF 다운로드
@@ -94,7 +98,7 @@ test("계약서: 템플릿 버튼 → 리드 선택(자동 채움) → 하나씩
   await modal.getByRole("button", { name: "보내기" }).click();
   await expect(modal).toBeHidden();
   await expect(page.getByText(/kim@ace\.co\.kr에 계약서를 보냈어요/)).toBeVisible();
-  await expect(page.locator(".status-badge.sent")).toBeVisible();
+  await expect(page.locator(".doc-status-sent")).toBeVisible();
 });
 
 test("견적서: 품목을 말하면 표에 추가되고 합계·한글 금액이 계산된다", async ({ page, request }) => {
@@ -125,8 +129,8 @@ test("견적서: 품목을 말하면 표에 추가되고 합계·한글 금액�
 test("템플릿 등록: 본문 글자를 드래그해 항목으로 지정하면 항목 패널에 생긴다", async ({ page }) => {
   await page.goto("/contracts");
   await expect(page.getByText(/등록된 템플릿이 없어요/)).toBeVisible();
-  await page.getByRole("button", { name: "템플릿", exact: true }).click();
-  await page.getByRole("button", { name: "+ 템플릿 등록" }).click();
+  await page.getByRole("tab", { name: "템플릿", exact: true }).click();
+  await page.getByRole("button", { name: "템플릿 등록" }).click();
   await page.getByLabel("템플릿 이름").fill("NDA");
   const src = page.getByLabel("템플릿 본문");
   await src.fill("# 비밀유지계약서\n\n갑: 한빛소프트\n계약일: {{계약일}}");

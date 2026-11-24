@@ -69,7 +69,8 @@ AI CRM/                      # git 저장소 루트
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
     │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
-    ├── components/          # CrmApp, Header, StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서)
+    ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서)
+    │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
     ├── assets/fonts/        # PDF 한글 폰트 (나눔고딕, OFL)
     ├── lib/
     │   ├── db.ts            # 서버 전용: pg 커넥션 풀, 환경별 DB 선택
@@ -104,8 +105,12 @@ AI CRM/                      # git 저장소 루트
 - 클라이언트에서 DB 직접 접근 금지. 데이터 변경은 `app/api` Route Handler → `useLeads` 경유.
 - `lib/db.ts`는 `server-only` — 클라이언트 컴포넌트에서 import 금지.
 
-### 스타일
-- `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--prio-*` 등)만 사용. 색상 하드코딩 지양.
+### 스타일 / 디자인 시스템 (Evergreen — Greenhouse 계열 에버그린·그린·민트)
+- 문서: `docs/design-system/design-system.html`(토큰·컴포넌트 카탈로그, 앱 `globals.css`를 그대로 불러옴), `wireframe.html`(사이드바 레이아웃).
+- 버튼·배지·입력·탭·알림·모달·빈 상태·아바타는 `@/components/ui`만 사용. `<button className="btn …">`, 새 `.xxx-pill` 클래스 등 직접 마크업 금지. 모달의 Esc·바깥 클릭은 `Modal`이 처리.
+- 우선순위 색은 `PRIORITY_TONE`, 연동 상태는 `STATE_TONE`(Sidebar.tsx) → Badge tone. e2e가 쓰는 클래스(`.card`, `.note-badge`, `.unassigned-pill`, `.autosave-note` 등)는 className으로 유지.
+- 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하 하단 탭). 상단 바(`Header`)는 제목·검색·테마·Assistant·추가 버튼.
+- `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
 - 새 색상 토큰은 라이트(`:root`)와 다크(두 군데: `prefers-color-scheme` 블록, `[data-theme="dark"]`) 모두에 정의.
 
 ### 데이터 / API
@@ -216,7 +221,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 ## 계약서·견적서
 
 - 문서: `docs/contracts/requirements.md`, `docs/contracts/wireframe.html`
-- 화면: 헤더 메뉴 `계약서`(`/contracts`, `ContractsView`) — 탭 `새 문서`(왼쪽 `DocAssistant` / 오른쪽 `DocPaper`), `작성한 문서`, `템플릿`(`TemplateEditor`). 메일은 `SendDocModal`. 이 화면에서는 조회형 AI Assistant 패널을 숨긴다.
+- 화면: 왼쪽 메뉴 `계약서`(`/contracts`, `ContractsView`) — 탭 `새 문서`(왼쪽 `DocAssistant` / 오른쪽 `DocPaper`), `작성한 문서`, `템플릿`(`TemplateEditor`). 메일은 `SendDocModal`. 이 화면에서는 조회형 AI Assistant 패널을 숨긴다.
 - 템플릿: 본문의 `{{항목}}`이 바뀌는 부분(`#` 제목, `##` 조항, `-` 목록, `{{품목표}}` 견적 표). 예약 항목: 자동 `{{문서번호}} {{작성일}} {{문서명}} {{작성자}} {{작성자_이메일}}`, 견적 계산 `{{공급가액}} {{부가세}} {{합계}} {{합계_한글}}`. 항목 설정은 저장할 때 본문·메일 양식에 맞춰 동기화(`syncFields`).
 - 공용 로직 `lib/docTemplate.ts`(서버·클라이언트): 본문 블록, 값 해석(날짜·금액·기간·선택지 등), 합계·한글 금액, 종료일 자동 계산. 서버 `lib/documents.ts`(조회·저장, `rev`로 동시 수정 감지), `lib/docChat.ts`(대화 엔진), `lib/pdf.ts`(pdf-lib), `lib/mime.ts`(첨부 메일).
 - 대화: 다음 질문은 **서버가 결정**(리드 → 견적 품목 → 빈 항목 순서대로 → 완성). 답변은 규칙으로 먼저 해석하고 안 될 때만 OpenAI. OpenAI에는 항목 이름·유형·보기, 품목, 이번 답변(`maskPii`)만 보내고 문서 본문·다른 값·리드 연락처는 보내지 않는다. 이메일·전화번호 항목은 AI로 채우지 않는다.

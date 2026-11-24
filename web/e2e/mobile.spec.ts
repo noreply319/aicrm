@@ -39,7 +39,7 @@ test("모바일 계약서: 2단 대신 대화/문서 전환, 답변하면 문서
   await expect(page.locator(".pane-dot")).toBeVisible();
   if (process.env.E2E_SHOTS_DIR) await page.screenshot({ path: `${process.env.E2E_SHOTS_DIR}/9-mobile-chat.png` });
 
-  await page.getByRole("tab", { name: /문서/ }).click();
+  await page.getByRole("tab", { name: /📄 문서/ }).click();
   await expect(page.locator('.paper [data-key="회사명"]').first()).toHaveText("블루웨이브");
   await expect(page.getByRole("region", { name: "문서 작성 Assistant" })).toBeHidden();
   if (process.env.E2E_SHOTS_DIR) await page.screenshot({ path: `${process.env.E2E_SHOTS_DIR}/10-mobile-doc.png` });
