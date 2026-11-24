@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { EmailDetail, EmailSummary, LeadEmails as LeadEmailsData, Me, StoredEmail } from "@/lib/types";
+import { Alert, Badge, Button, EmptyState } from "./ui";
 
 interface Props {
   leadId: string;
@@ -142,23 +143,25 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
   if (gmailState === "none") {
     return (
       <div className="lead-notes">
-        <div className="empty-state small">
-          <div className="empty-icon">✉️</div>
-          <b>Gmail이 연동되지 않았습니다</b>
-          <p>설정에서 Gmail을 연동하면 이 리드와 주고받은 메일을 볼 수 있습니다.</p>
-          <a className="btn btn-primary" href="/settings">설정으로 이동</a>
-        </div>
+        <EmptyState
+          small
+          icon="✉️"
+          title="Gmail이 연동되지 않았습니다"
+          description="설정에서 Gmail을 연동하면 이 리드와 주고받은 메일을 볼 수 있습니다."
+          action={<Button variant="primary" href="/settings">설정으로 이동</Button>}
+        />
       </div>
     );
   }
   if (!hasEmail) {
     return (
       <div className="lead-notes">
-        <div className="empty-state small">
-          <div className="empty-icon">✉️</div>
-          <b>리드에 이메일 주소가 없습니다</b>
-          <p>리드 정보 탭에서 담당자 이메일을 입력하고 저장하세요.</p>
-        </div>
+        <EmptyState
+          small
+          icon="✉️"
+          title="리드에 이메일 주소가 없습니다"
+          description="리드 정보 탭에서 담당자 이메일을 입력하고 저장하세요."
+        />
       </div>
     );
   }
@@ -181,29 +184,26 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
         <span className="muted email-status">
           {status === "syncing" ? "새 메일 확인 중…" : status === "summarizing" ? `AI 요약 중… (${data?.pending ?? 0}건 남음)` : ""}
         </span>
-        <button
-          type="button"
-          className="btn btn-sm"
+        <Button
+          size="sm"
+          icon="refresh"
           disabled={busy || gmailState !== "connected"}
           title="Gmail에서 새 메일만 가져와 요약합니다"
           onClick={() => refresh(failedCount > 0)}
         >
           새로고침
-        </button>
+        </Button>
       </div>
       {gmailState === "expired" && (
-        <div className="modal-error">⚠ Gmail 연동이 만료되어 저장된 메일만 표시합니다. 설정에서 다시 연동하세요.</div>
+        <Alert tone="warning">Gmail 연동이 만료되어 저장된 메일만 표시합니다. 설정에서 다시 연동하세요.</Alert>
       )}
-      {error && <div className="modal-error">⚠ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {!messages && !error ? (
         <span className="muted">불러오는 중…</span>
       ) : messages && messages.length === 0 && status === "syncing" ? (
         <span className="muted">Gmail에서 불러오는 중…</span>
       ) : messages && messages.length === 0 ? (
-        <div className="empty-state small">
-          <div className="empty-icon">📭</div>
-          <b>주고받은 메일이 없습니다</b>
-        </div>
+        <EmptyState small icon="📭" title="주고받은 메일이 없습니다" />
       ) : (
         messages && (
           <div className="email-list">
@@ -213,8 +213,8 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
               return (
                 <div key={m.id} className={`email-item${open ? " open" : ""}`}>
                   <button type="button" className="email-row" aria-expanded={open} onClick={() => toggle(m.id)}>
-                    <span className={`email-dir ${m.direction}`}>{m.direction === "sent" ? "보냄" : "받음"}</span>
-                    {m.viaDomain && <span className="email-dir domain" title="담당자 외 같은 회사 도메인 메일">회사</span>}
+                    <Badge tone={m.direction === "sent" ? "neutral" : "brand"} shape="pill">{m.direction === "sent" ? "보냄" : "받음"}</Badge>
+                    {m.viaDomain && <Badge tone="warning" shape="pill" title="담당자 외 같은 회사 도메인 메일">회사</Badge>}
                     <span className="email-main">
                       <span className={`email-subject${m.unread ? " unread" : ""}`}>
                         {m.subject}
@@ -232,7 +232,7 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
                       {!d ? (
                         <span className="muted">본문을 불러오는 중…</span>
                       ) : "error" in d ? (
-                        <div className="modal-error">⚠ {d.error}</div>
+                        <Alert tone="danger">{d.error}</Alert>
                       ) : (
                         <>
                           <div className="email-headers muted">
@@ -244,7 +244,7 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
                           {d.attachments.length > 0 && (
                             <div className="muted email-attach">📎 {d.attachments.join(", ")}</div>
                           )}
-                          <a className="btn btn-sm" href={gmailLink(m)} target="_blank" rel="noreferrer">Gmail에서 열기 ↗</a>
+                          <Button size="sm" href={gmailLink(m)} target="_blank" rel="noreferrer">Gmail에서 열기 ↗</Button>
                         </>
                       )}
                     </div>
@@ -253,9 +253,9 @@ export default function LeadEmails({ leadId, leadEmail, gmailState, meEmail, onE
               );
             })}
             {nextPage && (
-              <button type="button" className="btn" onClick={more} disabled={busy}>
+              <Button onClick={more} disabled={busy}>
                 {loadingMore ? "불러오는 중…" : "Gmail에서 이전 메일 더 가져오기"}
-              </button>
+              </Button>
             )}
           </div>
         )
@@ -269,8 +269,8 @@ function SummaryLine({ m, summarizing }: { m: StoredEmail; summarizing: boolean 
   if (m.summaryStatus === "done" && m.summary) return <span className="email-summary">{m.summary}</span>;
   return (
     <span className="email-meta muted">
-      {m.summaryStatus === "pending" && <span className="email-tag">{summarizing ? "요약 중" : "요약 전"}</span>}
-      {m.summaryStatus === "failed" && <span className="email-tag">요약 실패</span>}
+      {m.summaryStatus === "pending" && <Badge shape="pill">{summarizing ? "요약 중" : "요약 전"}</Badge>}
+      {m.summaryStatus === "failed" && <Badge tone="danger" shape="pill">요약 실패</Badge>}
       {m.snippet}
     </span>
   );

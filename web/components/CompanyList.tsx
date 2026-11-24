@@ -5,6 +5,14 @@ import { companyKey, emptyStats, type CompanyStats } from "@/lib/company";
 import { COMPANY_TIERS } from "@/lib/constants";
 import { formatWon } from "@/lib/format";
 import type { Company, CompanyTier, TeamMember } from "@/lib/types";
+import { Badge, Button, EmptyState, Select, type BadgeTone } from "./ui";
+
+/** 등급 배지 색 */
+export const TIER_TONE: Record<CompanyTier, BadgeTone> = { A: "brand", B: "info", C: "neutral" };
+
+export function TierBadge({ tier }: { tier: CompanyTier }) {
+  return <Badge tone={TIER_TONE[tier]} shape="pill" title={`${tier}등급`}>{tier}</Badge>;
+}
 
 interface Props {
   companies: Company[];
@@ -72,35 +80,35 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
 
   return (
     <main className="companies">
-      <div className="meetings-toolbar">
-        <button type="button" className={`btn btn-sm${mine ? " btn-active" : ""}`} aria-pressed={mine} onClick={() => setMine((v) => !v)}>내 담당만</button>
-        <select value={tier} onChange={(e) => setTier(e.target.value as CompanyTier | "")} aria-label="등급 필터">
+      <div className="toolbar">
+        <Button size="sm" active={mine} aria-pressed={mine} onClick={() => setMine((v) => !v)}>내 담당만</Button>
+        <Select value={tier} onChange={(e) => setTier(e.target.value as CompanyTier | "")} aria-label="등급 필터">
           <option value="">등급: 전체</option>
           {COMPANY_TIERS.map((t) => <option key={t} value={t}>{t}등급</option>)}
-        </select>
-        <select value={industry} onChange={(e) => setIndustry(e.target.value)} aria-label="업종 필터">
+        </Select>
+        <Select value={industry} onChange={(e) => setIndustry(e.target.value)} aria-label="업종 필터">
           <option value="">업종: 전체</option>
           {industries.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <button type="button" className={`btn btn-sm${hasOpen ? " btn-active" : ""}`} aria-pressed={hasOpen} onClick={() => setHasOpen((v) => !v)}>진행 리드 있음</button>
+        </Select>
+        <Button size="sm" active={hasOpen} aria-pressed={hasOpen} onClick={() => setHasOpen((v) => !v)}>진행 리드 있음</Button>
         <span className="spacer" />
         <span className="meetings-count">{visible.length}개 회사</span>
-        <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="정렬">
+        <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="정렬">
           <option value="pipeline">파이프라인 금액순</option>
           <option value="name">이름순</option>
           <option value="recent">최근 변경순</option>
-        </select>
+        </Select>
       </div>
 
       {companies.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">🏢</div>
-          <b>등록된 회사가 없어요</b>
-          <p>회사를 등록하거나, 리드를 등록할 때 바로 만들 수 있어요.</p>
-          <button className="btn btn-primary" onClick={onNew}>＋ 회사 등록</button>
-        </div>
+        <EmptyState
+          icon="🏢"
+          title="등록된 회사가 없어요"
+          description="회사를 등록하거나, 리드를 등록할 때 바로 만들 수 있어요."
+          action={<Button variant="primary" icon="plus" onClick={onNew}>회사 등록</Button>}
+        />
       ) : visible.length === 0 ? (
-        <div className="empty-state small"><b>조건에 맞는 회사가 없어요</b></div>
+        <EmptyState icon="🔍" title="조건에 맞는 회사가 없어요" description="검색어나 필터를 바꿔 보세요." />
       ) : (
         <>
           <table className="company-table">
@@ -118,14 +126,14 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
                     <td>
                       <div className="company-name-cell">
                         <b>{c.name}</b>
-                        {isBareCompany(c) && <span className="unassigned-pill">정보 미입력</span>}
+                        {isBareCompany(c) && <Badge tone="warning" shape="pill">정보 미입력</Badge>}
                       </div>
                       {c.emailDomain && <div className="muted">{c.emailDomain}</div>}
                     </td>
                     <td>{[c.industry, c.size && `${c.size}명`].filter(Boolean).join(" · ") || <span className="muted">—</span>}</td>
                     <td>{(c.ownerId && ownerName.get(c.ownerId)) || <span className="muted">—</span>}</td>
-                    <td>{c.tier ? <span className={`tier-badge tier-${c.tier}`}>{c.tier}</span> : <span className="muted">—</span>}</td>
-                    <td>{c.tags.map((t) => <span key={t} className="tag-chip static">{t}</span>)}</td>
+                    <td>{c.tier ? <TierBadge tier={c.tier} /> : <span className="muted">—</span>}</td>
+                    <td><span className="company-tags">{c.tags.map((t) => <Badge key={t}>{t}</Badge>)}</span></td>
                     <td className="num">{s.open}</td>
                     <td className="num">{s.pipelineValue ? formatWon(s.pipelineValue) : "—"}</td>
                     <td className="num">{s.wonValue ? formatWon(s.wonValue) : "—"}</td>
@@ -140,11 +148,12 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
             {visible.map((c) => {
               const s = stats[c.id] ?? emptyStats();
               return (
-                <button key={c.id} type="button" className="company-card" onClick={() => onOpen(c.id)}>
+                <div key={c.id} role="button" tabIndex={0} className="company-card" onClick={() => onOpen(c.id)}
+                  onKeyDown={(e) => e.key === "Enter" && onOpen(c.id)}>
                   <div className="company-name-cell">
                     <b>{c.name}</b>
-                    {c.tier && <span className={`tier-badge tier-${c.tier}`}>{c.tier}</span>}
-                    {isBareCompany(c) && <span className="unassigned-pill">정보 미입력</span>}
+                    {c.tier && <TierBadge tier={c.tier} />}
+                    {isBareCompany(c) && <Badge tone="warning" shape="pill">정보 미입력</Badge>}
                   </div>
                   <div className="muted">
                     {[c.industry, c.size && `${c.size}명`, c.ownerId && ownerName.get(c.ownerId)].filter(Boolean).join(" · ")}
@@ -153,7 +162,7 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
                     <span>진행 {s.open}건</span>
                     <b>{formatWon(s.pipelineValue)}</b>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

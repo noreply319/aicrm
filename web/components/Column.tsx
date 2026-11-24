@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, useRef } from "react";
+import { Fragment, useRef, type CSSProperties } from "react";
 import { formatWon } from "@/lib/format";
 import type { Lead, StageId } from "@/lib/types";
 import LeadCard from "./LeadCard";
+import { Badge } from "./ui";
 
 interface Props {
   stage: { id: StageId; name: string; color: string };
@@ -44,6 +45,7 @@ export default function Column({
   return (
     <section
       className={`column${dropIndex !== null ? " drag-over" : ""}`}
+      style={{ "--stage": stage.color } as CSSProperties}
       onDragOver={(e) => {
         if (!draggingId) return;
         e.preventDefault();
@@ -61,9 +63,9 @@ export default function Column({
     >
       <div className="col-head">
         <div className="col-title">
-          <span className="dot" style={{ background: stage.color }} />
+          <span className="dot" />
           {stage.name}
-          <span className="count">{leads.length}</span>
+          <Badge shape="pill" className="count">{leads.length}</Badge>
         </div>
         <div className="col-sum">{formatWon(total)}</div>
       </div>

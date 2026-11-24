@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { CalendarEvent, Lead, Me, ScheduledMeeting } from "@/lib/types";
+import { Alert, Badge, Button, EmptyState, IconButton, Panel } from "./ui";
 
 interface Props {
   me: Me | null;
@@ -111,16 +112,16 @@ export default function CalendarView({
   if (me && !connected) {
     return (
       <div className="calendar">
-        <div className="empty-state">
-          <div className="empty-icon">📅</div>
-          <b>{me.calendar.state === "expired" ? "구글 캘린더 연동이 만료되었습니다" : "구글 캘린더가 연동되지 않았습니다"}</b>
-          <p className="muted">
-            {me.calendar.state === "expired"
+        <EmptyState
+          icon="📅"
+          title={me.calendar.state === "expired" ? "구글 캘린더 연동이 만료되었습니다" : "구글 캘린더가 연동되지 않았습니다"}
+          description={
+            me.calendar.state === "expired"
               ? "테스트 상태의 구글 앱은 7일마다 다시 연동해야 합니다."
-              : "연동하면 내 캘린더 일정을 보고, 미팅 노트의 다음 미팅을 바로 등록할 수 있습니다."}
-          </p>
-          <a className="btn btn-primary" href="/api/calendar/connect">Google 캘린더 연동</a>
-        </div>
+              : "연동하면 내 캘린더 일정을 보고, 미팅 노트의 다음 미팅을 바로 등록할 수 있습니다."
+          }
+          action={<Button variant="primary" href="/api/calendar/connect">Google 캘린더 연동</Button>}
+        />
         {candidates.length > 0 && (
           <CandidateList candidates={candidates} leadName={leadName} onConfirm={onConfirmCandidate} onDismiss={onDismissCandidate} />
         )}
@@ -131,17 +132,17 @@ export default function CalendarView({
   return (
     <div className="calendar">
       <div className="calendar-toolbar">
-        <button type="button" className="btn icon-btn" onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button>
-        <button type="button" className="btn btn-sm" onClick={goToday}>오늘</button>
-        <button type="button" className="btn icon-btn" onClick={() => moveMonth(1)} aria-label="다음 달">›</button>
+        <IconButton icon="chevronLeft" label="이전 달" variant="secondary" onClick={() => moveMonth(-1)} />
+        <Button size="sm" onClick={goToday}>오늘</Button>
+        <IconButton icon="chevronRight" label="다음 달" variant="secondary" onClick={() => moveMonth(1)} />
         <h2>{month.getFullYear()}년 {month.getMonth() + 1}월</h2>
         {loading && <span className="muted">불러오는 중…</span>}
         <span className="spacer" />
-        <button type="button" className="btn btn-sm" onClick={load} title="새로고침">↻</button>
-        <button type="button" className="btn btn-primary" onClick={() => onNew(selected)}>＋ 일정 추가</button>
+        <IconButton icon="refresh" label="새로고침" onClick={load} />
+        <Button variant="primary" icon="plus" onClick={() => onNew(selected)}>일정 추가</Button>
       </div>
 
-      {error && <div className="calendar-error" role="alert">⚠ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {candidates.length > 0 && (
         <CandidateList candidates={candidates} leadName={leadName} onConfirm={onConfirmCandidate} onDismiss={onDismissCandidate} />
@@ -185,12 +186,11 @@ export default function CalendarView({
         })}
       </div>
 
-      <section className="day-list">
-        <div className="day-list-head">
-          <b>{selected.slice(5).replace("-", "월 ")}일 ({WEEKDAYS[new Date(`${selected}T00:00:00`).getDay()]})</b>
-          <span className="spacer" />
-          <button type="button" className="btn btn-sm" onClick={() => onNew(selected)}>＋ 이 날 일정 추가</button>
-        </div>
+      <Panel
+        className="day-list"
+        title={`${selected.slice(5).replace("-", "월 ")}일 (${WEEKDAYS[new Date(`${selected}T00:00:00`).getDay()]})`}
+        actions={<Button size="sm" icon="plus" onClick={() => onNew(selected)}>이 날 일정 추가</Button>}
+      >
         {selectedEvents.length === 0 ? (
           <p className="muted">일정이 없습니다.</p>
         ) : (
@@ -200,14 +200,14 @@ export default function CalendarView({
                 <button type="button" className="day-event" onClick={() => onOpenEvent(e)}>
                   <span className="event-time">{e.allDay ? "종일" : `${timeLabel(e)}–${formatDateTime(e.end).slice(11)}`}</span>
                   <span className="day-event-title">{e.title}</span>
-                  {e.crm?.company && <span className="crm-pill">{e.crm.company}</span>}
+                  {e.crm?.company && <Badge tone="brand">{e.crm.company}</Badge>}
                   {e.location && <span className="muted">📍 {e.location}</span>}
                 </button>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -221,7 +221,7 @@ function CandidateList({
   onDismiss: (s: ScheduledMeeting) => void;
 }) {
   return (
-    <section className="candidates">
+    <Panel className="candidates">
       <div className="candidates-head">
         <b>🗓 확인이 필요한 다음 미팅 {candidates.length}건</b>
         <span className="muted">미팅 노트에서 찾은 일정입니다. 확정하면 캘린더에 등록됩니다.</span>
@@ -229,7 +229,7 @@ function CandidateList({
       {candidates.map((c) => (
         <CandidateRow key={c.id} candidate={c} company={leadName(c.leadId)} onConfirm={onConfirm} onDismiss={onDismiss} />
       ))}
-    </section>
+    </Panel>
   );
 }
 
@@ -249,7 +249,7 @@ export function CandidateRow({
       <div className="candidate-main">
         <div className="candidate-title">
           {c.title}
-          {c.certainty === "tentative" && <span className="tentative-pill">확인 필요</span>}
+          {c.certainty === "tentative" && <Badge tone="warning">확인 필요</Badge>}
         </div>
         <div className="muted">
           📅 {when}
@@ -259,9 +259,9 @@ export function CandidateRow({
         {c.evidence && <div className="candidate-evidence">“{c.evidence}”</div>}
       </div>
       <div className="candidate-actions">
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => onConfirm(c)}>확인 후 등록</button>
-        {onLater && <button type="button" className="btn btn-sm" onClick={() => onLater(c)}>나중에</button>}
-        <button type="button" className="btn btn-sm" onClick={() => onDismiss(c)}>무시</button>
+        <Button variant="primary" size="sm" onClick={() => onConfirm(c)}>확인 후 등록</Button>
+        {onLater && <Button size="sm" onClick={() => onLater(c)}>나중에</Button>}
+        <Button size="sm" variant="ghost" onClick={() => onDismiss(c)}>무시</Button>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { STAGES } from "@/lib/constants";
+import { PRIORITY_LABEL, STAGES } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import type { CompanyStats } from "@/lib/company";
 import type { Company, Lead, LeadInput, MeetingNoteSummary, Me, Priority, ScheduledMeeting, StageId } from "@/lib/types";
@@ -9,6 +9,7 @@ import { CandidateRow } from "./CalendarView";
 import CompanyCombobox from "./CompanyCombobox";
 import LeadEmails from "./LeadEmails";
 import NoteListItem from "./NoteListItem";
+import { Button, EmptyState, Field, Input, Modal, ModalFooter, ModalHeader, Select, Tabs, Textarea } from "./ui";
 
 export type LeadModalTab = "info" | "notes" | "schedules" | "emails";
 
@@ -80,161 +81,134 @@ export default function LeadModal({
     if (focusOnOpen.current) firstRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const set = <K extends keyof LeadInput>(key: K, value: LeadInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const upcomingCount = schedules.filter((x) => x.status === "scheduled" && x.endsAt >= nowIso()).length;
+
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form
-        className="modal"
-        autoComplete="off"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!form.companyId) {
-            setTab("info");
-            setCompanyError("회사를 선택하거나 새로 만들어 주세요");
-            firstRef.current?.focus();
-            return;
-          }
-          onSave({ ...form, company: form.company.trim(), value: Number(form.value) || 0 });
-        }}
-      >
-        <div className="modal-head">
-          <h2>{lead ? lead.company : "새 리드 등록"}</h2>
-        </div>
-        {lead && (
-          <div className="seg-tabs modal-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === "info"} className={tab === "info" ? "on" : ""} onClick={() => setTab("info")}>
-              리드 정보
-            </button>
-            <button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "on" : ""} onClick={() => setTab("notes")}>
-              미팅 노트 ({notes.length})
-            </button>
-            <button type="button" role="tab" aria-selected={tab === "schedules"} className={tab === "schedules" ? "on" : ""} onClick={() => setTab("schedules")}>
-              다음 미팅 ({schedules.filter((x) => x.status === "scheduled" && x.endsAt >= nowIso()).length})
-            </button>
-            <button type="button" role="tab" aria-selected={tab === "emails"} className={tab === "emails" ? "on" : ""} onClick={() => setTab("emails")}>
-              이메일
-            </button>
+    <Modal
+      label={lead ? lead.company : "새 리드 등록"}
+      onClose={onClose}
+      onSubmit={() => {
+        if (!form.companyId) {
+          setTab("info");
+          setCompanyError("회사를 선택하거나 새로 만들어 주세요");
+          firstRef.current?.focus();
+          return;
+        }
+        onSave({ ...form, company: form.company.trim(), value: Number(form.value) || 0 });
+      }}
+    >
+      <ModalHeader title={lead ? lead.company : "새 리드 등록"} onClose={onClose} />
+      {lead && (
+        <Tabs
+          className="modal-tabs"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { id: "info", label: "리드 정보" },
+            { id: "notes", label: `미팅 노트 (${notes.length})` },
+            { id: "schedules", label: `다음 미팅 (${upcomingCount})` },
+            { id: "emails", label: "이메일" },
+          ]}
+        />
+      )}
+      {tab === "notes" && (
+        <div className="lead-notes">
+          <div className="lead-notes-head">
+            <span className="muted">미팅 일시 최신순</span>
+            <span className="spacer" />
+            <Button variant="primary" size="sm" icon="plus" onClick={onNewNote}>노트 작성</Button>
           </div>
-        )}
-        {tab === "notes" && (
-          <div className="lead-notes">
-            <div className="lead-notes-head">
-              <span className="muted">미팅 일시 최신순</span>
-              <span className="spacer" />
-              <button type="button" className="btn btn-primary btn-sm" onClick={onNewNote}>＋ 노트 작성</button>
+          {notes.length === 0 ? (
+            <EmptyState small icon="🗂" title="이 리드의 미팅 노트가 없습니다" />
+          ) : (
+            <div className="note-list">
+              {notes.map((n) => (
+                <NoteListItem key={n.id} note={n} onClick={() => onOpenNote(n.id)} />
+              ))}
             </div>
-            {notes.length === 0 ? (
-              <div className="empty-state small">
-                <div className="empty-icon">🗂</div>
-                <b>이 리드의 미팅 노트가 없습니다</b>
-              </div>
-            ) : (
-              <div className="note-list">
-                {notes.map((n) => (
-                  <NoteListItem key={n.id} note={n} onClick={() => onOpenNote(n.id)} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {tab === "schedules" && (
-          <LeadSchedules
-            schedules={schedules}
-            meId={meId}
-            onNew={onNewSchedule}
-            onOpen={onOpenSchedule}
-            onDismiss={onDismissSchedule}
-          />
-        )}
-        {tab === "emails" && lead && (
-          <LeadEmails
-            leadId={lead.id}
-            leadEmail={lead.email}
-            gmailState={gmailState}
-            meEmail={meEmail}
-            onExpired={onGmailExpired}
-          />
-        )}
-        <div className="modal-body" hidden={tab !== "info"}>
-          <div className="field full">
-            <label>회사 *</label>
-            <CompanyCombobox
-              inputRef={firstRef}
-              companies={companies}
-              stats={companyStats}
-              value={form.companyId}
-              leadEmail={form.email}
-              onChange={(c) => {
-                setForm((f) => ({ ...f, companyId: c?.id ?? null, company: c?.name ?? "" }));
-                if (c) setCompanyError(null);
-              }}
-              onCreate={onCreateCompany}
-              onOpenCompany={lead ? onOpenCompany : undefined}
-            />
-            {companyError && <div className="field-error" role="alert">{companyError}</div>}
-          </div>
-          <div className="field">
-            <label>담당자</label>
-            <input placeholder="홍길동" value={form.contact} onChange={(e) => set("contact", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>직책</label>
-            <input placeholder="구매팀장" value={form.title} onChange={(e) => set("title", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>이메일</label>
-            <input type="email" placeholder="name@company.com" value={form.email}
-              onChange={(e) => set("email", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>전화번호</label>
-            <input placeholder="010-0000-0000" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>예상 금액 (원)</label>
-            <input type="number" min={0} step={10000} placeholder="10000000"
-              value={form.value || ""} onChange={(e) => set("value", Number(e.target.value))} />
-          </div>
-          <div className="field">
-            <label>예상 마감일</label>
-            <input type="date" value={form.closeDate} onChange={(e) => set("closeDate", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>단계</label>
-            <select value={form.stage} onChange={(e) => set("stage", e.target.value as StageId)}>
-              {STAGES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label>우선순위</label>
-            <select value={form.priority} onChange={(e) => set("priority", e.target.value as Priority)}>
-              <option value="high">높음</option>
-              <option value="mid">보통</option>
-              <option value="low">낮음</option>
-            </select>
-          </div>
-          <div className="field full">
-            <label>메모</label>
-            <textarea placeholder="리드 관련 메모" value={form.notes}
-              onChange={(e) => set("notes", e.target.value)} />
-          </div>
+          )}
         </div>
-        <div className="modal-foot">
-          {onDelete && <button type="button" className="btn btn-danger" onClick={onDelete}>삭제</button>}
-          <div className="spacer" />
-          <button type="button" className="btn" onClick={onClose}>취소</button>
-          <button type="submit" className="btn btn-primary">저장</button>
-        </div>
-      </form>
-    </div>
+      )}
+      {tab === "schedules" && (
+        <LeadSchedules
+          schedules={schedules}
+          meId={meId}
+          onNew={onNewSchedule}
+          onOpen={onOpenSchedule}
+          onDismiss={onDismissSchedule}
+        />
+      )}
+      {tab === "emails" && lead && (
+        <LeadEmails
+          leadId={lead.id}
+          leadEmail={lead.email}
+          gmailState={gmailState}
+          meEmail={meEmail}
+          onExpired={onGmailExpired}
+        />
+      )}
+      <div className="modal-body" hidden={tab !== "info"}>
+        <Field label="회사 *" full>
+          <CompanyCombobox
+            inputRef={firstRef}
+            companies={companies}
+            stats={companyStats}
+            value={form.companyId}
+            leadEmail={form.email}
+            onChange={(c) => {
+              setForm((f) => ({ ...f, companyId: c?.id ?? null, company: c?.name ?? "" }));
+              if (c) setCompanyError(null);
+            }}
+            onCreate={onCreateCompany}
+            onOpenCompany={lead ? onOpenCompany : undefined}
+          />
+          {companyError && <div className="field-error" role="alert">{companyError}</div>}
+        </Field>
+        <Field label="담당자">
+          <Input placeholder="홍길동" value={form.contact} onChange={(e) => set("contact", e.target.value)} />
+        </Field>
+        <Field label="직책">
+          <Input placeholder="구매팀장" value={form.title} onChange={(e) => set("title", e.target.value)} />
+        </Field>
+        <Field label="이메일">
+          <Input type="email" placeholder="name@company.com" value={form.email}
+            onChange={(e) => set("email", e.target.value)} />
+        </Field>
+        <Field label="전화번호">
+          <Input placeholder="010-0000-0000" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+        </Field>
+        <Field label="예상 금액 (원)">
+          <Input type="number" min={0} step={10000} placeholder="10000000"
+            value={form.value || ""} onChange={(e) => set("value", Number(e.target.value))} />
+        </Field>
+        <Field label="예상 마감일">
+          <Input type="date" value={form.closeDate} onChange={(e) => set("closeDate", e.target.value)} />
+        </Field>
+        <Field label="단계">
+          <Select value={form.stage} onChange={(e) => set("stage", e.target.value as StageId)}>
+            {STAGES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="우선순위">
+          <Select value={form.priority} onChange={(e) => set("priority", e.target.value as Priority)}>
+            {(Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => (
+              <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="메모" full>
+          <Textarea placeholder="리드 관련 메모" value={form.notes}
+            onChange={(e) => set("notes", e.target.value)} />
+        </Field>
+      </div>
+      <ModalFooter start={onDelete && <Button variant="danger" onClick={onDelete}>삭제</Button>}>
+        <Button onClick={onClose}>취소</Button>
+        <Button variant="primary" type="submit">저장</Button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -272,7 +246,7 @@ function LeadSchedules({
       <div className="lead-notes-head">
         <span className="muted">구글 캘린더에 등록된 미팅과 미팅 노트에서 찾은 후보</span>
         <span className="spacer" />
-        <button type="button" className="btn btn-primary btn-sm" onClick={onNew}>＋ 일정 추가</button>
+        <Button variant="primary" size="sm" icon="plus" onClick={onNew}>일정 추가</Button>
       </div>
       {candidates.length > 0 && (
         <div className="schedule-group">
@@ -283,10 +257,7 @@ function LeadSchedules({
         </div>
       )}
       {upcoming.length === 0 && candidates.length === 0 ? (
-        <div className="empty-state small">
-          <div className="empty-icon">🗓</div>
-          <b>예정된 미팅이 없습니다</b>
-        </div>
+        <EmptyState small icon="🗓" title="예정된 미팅이 없습니다" />
       ) : (
         upcoming.length > 0 && (
           <div className="schedule-group">

@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { emailDomain, searchCompanies, type CompanyStats } from "@/lib/company";
 import { COMPANY_NAME_MAX, COMPANY_SEARCH_LIMIT } from "@/lib/constants";
 import type { Company } from "@/lib/types";
+import { Badge, Button, Icon, IconButton, Input } from "./ui";
 
 interface Props {
   companies: Company[];
@@ -115,20 +116,20 @@ export default function CompanyCombobox({
     return (
       <div className="company-combo">
         <div className="company-chip" data-testid="company-chip">
-          <span aria-hidden>🏢</span>
+          <Icon name="building" size={16} />
           <b>{selected.name}</b>
-          {createdId === selected.id && <span className="ai-pill">새 회사</span>}
+          {createdId === selected.id && <Badge tone="brand" shape="pill">새 회사</Badge>}
           {(selected.industry || selected.tier) && (
             <span className="muted">{[selected.industry, selected.tier && `${selected.tier}등급`].filter(Boolean).join(" · ")}</span>
           )}
           {s && s.open > 0 && <span className="muted">진행 {s.open}</span>}
           <span className="spacer" />
           {onOpenCompany && createdId !== selected.id && (
-            <button type="button" className="link-btn" onClick={() => onOpenCompany(selected.id)}>회사 정보 →</button>
+            <Button variant="ghost" size="sm" onClick={() => onOpenCompany(selected.id)}>회사 정보 →</Button>
           )}
-          <button type="button" className="company-chip-x" aria-label="회사 선택 해제" title="다른 회사 선택" onClick={clear}>✕</button>
+          <IconButton icon="close" size="sm" label="다른 회사 선택" onClick={clear} />
         </div>
-        {createdId === selected.id && <div className="field-hint">상세 정보는 회사 메뉴에서 입력할 수 있어요</div>}
+        {createdId === selected.id && <div className="field-note">상세 정보는 회사 메뉴에서 입력할 수 있어요</div>}
       </div>
     );
   }
@@ -137,7 +138,7 @@ export default function CompanyCombobox({
 
   return (
     <div className="company-combo" ref={boxRef}>
-      <input
+      <Input
         ref={(el) => {
           localInput.current = el;
           if (typeof inputRef === "function") inputRef(el);
@@ -197,7 +198,7 @@ export default function CompanyCombobox({
                 onClick={() => pick(c)}
               >
                 <span className="combo-name"><Highlight text={c.name} query={query} /></span>
-                {exact?.id === c.id && <span className="ai-pill">일치</span>}
+                {exact?.id === c.id && <Badge tone="brand" shape="pill">일치</Badge>}
                 <span className="spacer" />
                 <span className="muted">{[c.industry, `진행 ${s?.open ?? 0}`].filter(Boolean).join(" · ")}</span>
               </div>
@@ -224,7 +225,7 @@ export default function CompanyCombobox({
           💡 이메일 도메인이 같은 회사: <b>{suggestion.name}</b>
           <span className="muted">({suggestion.emailDomain})</span>
           <span className="spacer" />
-          <button type="button" className="btn btn-sm" onClick={() => pick(suggestion)}>선택</button>
+          <Button size="sm" onClick={() => pick(suggestion)}>선택</Button>
         </div>
       )}
     </div>

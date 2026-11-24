@@ -1,13 +1,14 @@
 import type { CompanySize, CompanyTier, NoteSource, Priority, StageId } from "./types";
 
+// 단계 색: 디자인 시스템 데이터 팔레트 (docs/design-system/design-system.html)
 export const STAGES: { id: StageId; name: string; color: string }[] = [
-  { id: "new", name: "신규 리드", color: "#8a90a2" },
-  { id: "contacted", name: "첫 컨택", color: "#3b9eff" },
-  { id: "qualified", name: "니즈 확인", color: "#00b8a9" },
-  { id: "proposal", name: "제안/견적", color: "#a46bff" },
-  { id: "negotiation", name: "협상", color: "#f5a524" },
-  { id: "won", name: "수주", color: "#2fb164" },
-  { id: "lost", name: "실주", color: "#e5484d" },
+  { id: "new", name: "신규 리드", color: "#7b8a84" },
+  { id: "contacted", name: "첫 컨택", color: "#3574d6" },
+  { id: "qualified", name: "니즈 확인", color: "#24a47f" },
+  { id: "proposal", name: "제안/견적", color: "#7a6fd6" },
+  { id: "negotiation", name: "협상", color: "#e5731f" },
+  { id: "won", name: "수주", color: "#008561" },
+  { id: "lost", name: "실주", color: "#d8372a" },
 ];
 
 export const PRIORITY_LABEL: Record<Priority, string> = {
@@ -16,14 +17,21 @@ export const PRIORITY_LABEL: Record<Priority, string> = {
   low: "낮음",
 };
 
+/** 우선순위 → Badge tone */
+export const PRIORITY_TONE: Record<Priority, "danger" | "warning" | "success"> = {
+  high: "danger",
+  mid: "warning",
+  low: "success",
+};
+
 export const AVATAR_COLORS = [
-  "#5b5bf7",
-  "#00b8a9",
-  "#f5a524",
-  "#e5484d",
-  "#a46bff",
-  "#3b9eff",
-  "#2fb164",
+  "#008561",
+  "#15372c",
+  "#3574d6",
+  "#e5731f",
+  "#7a6fd6",
+  "#24a47f",
+  "#b5482e",
 ];
 
 export const THEME_KEY = "crm.theme";

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { CalendarInfo, Me } from "@/lib/types";
+import { STATE_LABEL, STATE_TONE } from "./Sidebar";
+import { Alert, Avatar, Badge, Button, Field, Panel, Select } from "./ui";
 
 interface Props {
   me: Me | null;
@@ -104,36 +106,22 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
 
   return (
     <div className="settings">
-      <h1>설정</h1>
-      {message && (
-        <div className={message.ok ? "settings-ok" : "modal-error"} role="status">
-          {message.ok ? "✓" : "⚠"} {message.text}
-        </div>
-      )}
+      {message && <Alert tone={message.ok ? "success" : "danger"}>{message.text}</Alert>}
 
-      <section className="settings-card">
-        <h2>계정</h2>
+      <Panel title="계정">
         <div className="account-row">
-          {me.picture ? (
-            <img className="account-avatar" src={me.picture} alt="" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="account-avatar placeholder-avatar">{(me.name || me.email).slice(0, 1)}</div>
-          )}
+          <Avatar name={me.name || me.email} src={me.picture} size="lg" />
           <div>
             <b>{me.name || me.email}</b>
             <div className="muted">{me.email} · Google 계정</div>
           </div>
           <span className="spacer" />
-          <button type="button" className="btn" onClick={onLogout}>로그아웃</button>
+          <Button icon="logout" onClick={onLogout}>로그아웃</Button>
         </div>
-      </section>
+      </Panel>
 
-      <section className="settings-card">
-        <h2>Google 캘린더</h2>
+      <Panel title="Google 캘린더" actions={<Badge tone={STATE_TONE[state]} shape="pill">{STATE_LABEL[state]}</Badge>}>
         <div className="settings-row">
-          <span className={`status-pill ${state}`}>
-            {state === "connected" ? "연동됨" : state === "expired" ? "연동 만료" : "연동 안 됨"}
-          </span>
           <span className="muted">
             {state === "connected"
               ? "미팅 노트를 저장하면 다음 미팅이 캘린더에 자동 등록됩니다(제목 앞 [AI CRM]). AI Assistant도 캘린더를 조회합니다."
@@ -144,44 +132,39 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
         </div>
 
         {state === "connected" && (
-          <div className="field settings-field">
-            <label>일정을 등록·조회할 캘린더</label>
+          <Field label="일정을 등록·조회할 캘린더" className="settings-field">
             {calendarError ? (
-              <div className="modal-error">⚠ {calendarError}</div>
+              <Alert tone="danger">{calendarError}</Alert>
             ) : !calendars ? (
               <span className="muted">캘린더 목록을 불러오는 중…</span>
             ) : (
-              <select value={me.calendar.calendarId} disabled={busy} onChange={(e) => changeCalendar(e.target.value)}>
+              <Select value={me.calendar.calendarId} disabled={busy} onChange={(e) => changeCalendar(e.target.value)}>
                 {/* 'primary'는 기본 캘린더의 별칭 */}
                 {!calendars.some((c) => c.id === me.calendar.calendarId) && <option value={me.calendar.calendarId}>기본 캘린더</option>}
                 {calendars.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}{c.primary ? " (기본)" : ""}</option>
                 ))}
-              </select>
+              </Select>
             )}
-          </div>
+          </Field>
         )}
 
         <div className="settings-actions">
-          <a className={`btn${state === "connected" ? "" : " btn-primary"}`} href="/api/calendar/connect">
+          <Button variant={state === "connected" ? "secondary" : "primary"} href="/api/calendar/connect">
             <GoogleIcon /> {state === "none" ? "Google 연동" : "다시 연동"}
-          </a>
+          </Button>
           {state !== "none" && (
-            <button type="button" className="btn btn-danger" onClick={disconnect} disabled={busy}>연동 해제</button>
+            <Button variant="danger" onClick={disconnect} disabled={busy}>연동 해제</Button>
           )}
         </div>
         <p className="muted settings-note">
           구글 앱이 테스트 상태라 연동은 7일 동안 유지됩니다. 만료되면 이 화면에서 다시 연동하세요.
           캘린더 정보는 AI Assistant 답변을 위해 제목·시간·장소만 OpenAI로 전송됩니다 (참석자·설명 제외).
         </p>
-      </section>
+      </Panel>
 
-      <section className="settings-card">
-        <h2>Gmail</h2>
+      <Panel title="Gmail" actions={<Badge tone={STATE_TONE[gmail]} shape="pill">{STATE_LABEL[gmail]}</Badge>}>
         <div className="settings-row">
-          <span className={`status-pill ${gmail}`}>
-            {gmail === "connected" ? "연동됨" : gmail === "expired" ? "연동 만료" : "연동 안 됨"}
-          </span>
           <span className="muted">
             {gmail === "connected"
               ? "리드 상세의 이메일 탭에서 리드 이메일 주소와 주고받은 메일을 볼 수 있습니다. AI Assistant도 메일을 참고해 답합니다."
@@ -191,18 +174,18 @@ export default function SettingsView({ me, onSetCalendar, onDisconnect, onDiscon
           </span>
         </div>
         <div className="settings-actions">
-          <a className={`btn${gmail === "connected" ? "" : " btn-primary"}`} href="/api/gmail/connect">
+          <Button variant={gmail === "connected" ? "secondary" : "primary"} href="/api/gmail/connect">
             <GoogleIcon /> {gmail === "none" ? "Gmail 연동" : "다시 연동"}
-          </a>
+          </Button>
           {gmail !== "none" && (
-            <button type="button" className="btn btn-danger" onClick={disconnectGmail} disabled={busy}>연동 해제</button>
+            <Button variant="danger" onClick={disconnectGmail} disabled={busy}>연동 해제</Button>
           )}
         </div>
         <p className="muted settings-note">
           읽기 전용 권한만 받습니다 (메일 보내기·삭제 불가). 메일은 CRM에 저장하지 않고 볼 때마다 Gmail에서 읽어옵니다.
           AI Assistant 답변을 위해 메일 제목·이름·본문 일부가 OpenAI로 전송되며, 이메일 주소·전화번호는 가려서 보냅니다.
         </p>
-      </section>
+      </Panel>
     </div>
   );
 }

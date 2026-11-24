@@ -43,7 +43,7 @@ test("회사 메뉴: 등록 → 상세 → 이 회사로 리드 추가 → 목�
 
   await expect(page).toHaveURL(/\/companies\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "블루웨이브" })).toBeVisible();
-  await page.getByRole("button", { name: "＋ 이 회사로 리드 추가" }).click();
+  await page.getByRole("button", { name: "이 회사로 리드 추가" }).click();
   await expect(page.getByTestId("company-chip")).toContainText("블루웨이브");
   await page.getByPlaceholder("홍길동").fill("이지은");
   await page.getByPlaceholder("10000000").fill("21500000");

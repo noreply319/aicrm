@@ -1,7 +1,7 @@
-import type { CSSProperties } from "react";
 import { NOTE_SOURCE_LABEL, STAGES } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import type { Lead, MeetingNoteSummary } from "@/lib/types";
+import { Badge } from "./ui";
 
 interface Props {
   note: MeetingNoteSummary;
@@ -26,13 +26,9 @@ export default function NoteListItem({ note, lead, onClick }: Props) {
       <span className="note-main">
         <span className="note-title-row">
           <span className="note-title">{note.title}</span>
-          {stage && (
-            <span className="stage-pill" style={{ "--stage": stage.color } as CSSProperties}>
-              {stage.name}
-            </span>
-          )}
-          {note.leadId === null && <span className="unassigned-pill">리드 미지정</span>}
-          {note.summary && <span className="ai-pill">AI 요약</span>}
+          {stage && <Badge color={stage.color} shape="pill">{stage.name}</Badge>}
+          {note.leadId === null && <Badge tone="warning" shape="pill" className="unassigned-pill">리드 미지정</Badge>}
+          {note.summary && <Badge tone="brand" shape="pill">AI 요약</Badge>}
         </span>
         {lead && (
           <span className="note-lead">
