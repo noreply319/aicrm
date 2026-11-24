@@ -21,6 +21,9 @@ const PATHS = {
   menu: "M4 7h16M4 12h16M4 17h16",
   mail: "M4 6h16v12H4zM4 7l8 6 8-6",
   building: "M4 21V5l8-2v18M12 8h8v13M4 21h16M7 8h2M7 12h2M7 16h2M15 12h2M15 16h2",
+  panelLeft: "M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2",
+  panelLeftOpen: "M4 4h16v16H4zM9 4v16M13 10l2 2-2 2",
+  panelRight: "M4 4h16v16H4zM15 4v16M9 10l2 2-2 2",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 

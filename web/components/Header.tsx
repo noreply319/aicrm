@@ -61,6 +61,7 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
         <Button
           active={assistantOpen}
           title="AI Assistant 열기/닫기"
+          aria-label="AI Assistant"
           aria-pressed={assistantOpen}
           onClick={onToggleAssistant}
         >

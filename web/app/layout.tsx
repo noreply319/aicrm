@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
-import { THEME_KEY } from "@/lib/constants";
+import { SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY, THEME_KEY } from "@/lib/constants";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
   description: "칸반 보드 기반 세일즈 리드 관리",
 };
 
-// 첫 페인트 전에 저장된 테마를 적용해 깜빡임을 막는다.
-const themeScript = `try{var t=localStorage.getItem('${THEME_KEY}');if(t)document.documentElement.dataset.theme=t;}catch(e){}`;
+// 첫 페인트 전에 저장된 테마·메뉴 접힘을 적용해 깜빡임을 막는다.
+const themeScript = `try{var d=document.documentElement,t=localStorage.getItem('${THEME_KEY}');if(t)d.dataset.theme=t;if(localStorage.getItem('${SIDEBAR_KEY}')==='collapsed'||matchMedia('${SIDEBAR_AUTO_RAIL_QUERY}').matches)d.classList.add('sb-collapsed');}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
