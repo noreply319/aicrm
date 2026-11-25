@@ -957,3 +957,35 @@
 > (선택: OpenAI 이미지 분석 — 명함만 예외 / Agent도 같은 확인 카드 / 같은 이메일은 빈 항목만 채우기 / 기록은 태그·메모만 / 추천 설계안)
 
 - 결과: (진행 중) `main`(`2ebf914`)에서 worktree `worktress/business-card`(브랜치 `feat/business-card`), Jira AIC-10 → In Progress. `lib/businessCard.ts`(비전 분석·정규화·매칭·한 트랜잭션 저장), `POST /api/business-cards/extract`·`/api/business-cards`, `findCompanyMatch`·`findContactByEmail`·`findSamePerson` 공용화(Agent 중복 확인도 사용), `useBusinessCards`·`imageFile.ts`, `BusinessCardAttach`·`BusinessCardConfirm`을 AI Assistant 패널·Sales Agent에 연결, CLAUDE.md 명함 섹션·PII 예외. unit·integration·e2e 테스트 작성(미실행), build 통과. 코드 리뷰 2건(80% 이상 없음) 후 선택한 3건 반영(+82 휴대폰, Safari createImageBitmap 옵션 제거, 카드 위치 보정·중복 채우기에 고친 값 사용). Jira AIC-10 코멘트, 커밋 안 함
+
+## 129. 2026-11-25 — Claude Code 상태 표시줄(context·모델·워크트리) 방법 문의
+
+> claude code에서 아래 context가 얼마나 차있는지 그리고 현재 어떤 모델 쓰는지 그리고 어떤 워크트리에서 작업하는지  보이게 하려면 어떻게 수정해야해?
+
+- 결과: `statusLine` 설정(스크립트 + settings.json)과 `/statusline` 명령 안내
+
+## 130. 2026-11-25 — 상태 표시줄 설정 (워크트리 또는 브랜치)
+
+> 워크트리 또는 브랜치
+
+- 결과: `~/.claude/statusline.sh` 생성 + `~/.claude/settings.json`에 `statusLine` 추가(기존 설정 유지). 표시: `모델 | ctx N% | wt:워크트리 (브랜치)` 또는 원본이면 `브랜치`. 샘플 입력으로 동작 확인
+
+## 131. 2026-11-25 — AIC-9 커밋·main 병합
+
+> commit 하고 merge 진행해줘.
+
+- 결과: AIC-9 커밋(`e5121e6`). main에 다른 세션 커밋(favicon `2ebf914`)과 미커밋 작업이 있어 확인 후 원본에서 `--no-ff` 병합(`f78ffe6`, 미커밋 파일과 겹침 없음). 이후 다른 세션 커밋(AIC-11 `4080806`)까지 포함한 main build 통과. push·운영 DB 반영 안 함. Jira AIC-1 코멘트
+
+## 131. 2026-11-25 — AIC-10 테스트·커밋·병합
+
+> 다음 단계 진행해줘.
+
+> (선택: unit·integration만 실행 / 둘 다 커밋 후 병합)
+
+- 결과: AIC-11은 다른 세션이 이미 `main`에 커밋(`4080806`, AIC-8·9 병합도 포함). AIC-10 커밋 후 `main` 위로 rebase, 충돌(CLAUDE.md·AssistantPanel·CrmApp import) 양쪽 유지로 정리, 별도 DB(`ai_crm_business_card_test`)로 unit·integration 23 files / 193 tests 통과(e2e 미실행), `main` fast-forward(`6c895a2`) 후 build 통과. push 안 함, Jira AIC-10 코멘트
+
+## 132. 2026-11-25 — commit·push
+
+> commit, push 해줘.
+
+- 결과: AIC-10(`6c895a2`)은 이미 origin/main에 push되어 있었음. 남은 `prompts/history.md`만 커밋·push (zip·`docs/practice-prompts/`는 제외)
