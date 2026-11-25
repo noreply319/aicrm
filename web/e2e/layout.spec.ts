@@ -132,7 +132,7 @@ test("AI Assistant 문서 탭: 견적서·계약서 템플릿(견적서 먼저),
   await expect(page.getByRole("dialog", { name: "견적서 미리보기" }).locator(".paper")).toBeVisible();
 });
 
-test("AI Assistant 문서 탭: 계약서 메뉴에서 작성한 문서가 목록에 보이고, 열어서 이어 쓴다", async ({ page, request }) => {
+test("AI Assistant 문서 탭: 작성한 문서는 처음엔 안 보이고, 물어보면 목록 → 열어서 이어 쓴다", async ({ page, request }) => {
   await request.post("/api/templates/defaults");
   const templates = (await (await request.get("/api/templates")).json()) as { id: string; kind: string; name: string }[];
   const contract = templates.find((t) => t.kind === "contract")!;
@@ -142,7 +142,19 @@ test("AI Assistant 문서 탭: 계약서 메뉴에서 작성한 문서가 목록
   await page.goto("/");
   const panel = page.getByRole("complementary", { name: "AI Assistant" });
   await panel.getByRole("tab", { name: "문서" }).click();
+  const docs0 = panel.getByRole("region", { name: "문서 작성" });
+  await expect(docs0.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
   const list = panel.getByRole("region", { name: "작성한 문서" });
+  await expect(list).toHaveCount(0); // 처음에는 목록 없음
+
+  // 견적서를 물으면 계약서는 없다고 답하고, 계약서를 물으면 목록
+  const input = docs0.getByRole("textbox");
+  await input.fill("작성한 견적서 보여줘");
+  await input.press("Enter");
+  await expect(docs0.getByText("작성한 견적서가 없어요.")).toBeVisible();
+  await input.fill("작성한 계약서 보여줘");
+  await input.press("Enter");
+  await expect(docs0.locator(".bubble-user").last()).toHaveText("작성한 계약서 보여줘");
   const item = list.getByRole("button", { name: new RegExp(created.title) });
   await expect(item).toContainText("계약서");
   await item.click();

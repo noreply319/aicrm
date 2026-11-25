@@ -8,7 +8,7 @@ const NEAR_BOTTOM = 80;
 /**
  * 대화 목록 자동 스크롤: 사용자가 맨 아래를 보고 있을 때만 새 내용이 오면 따라 내려간다.
  * 위로 올려 읽는 중에는 스트리밍 답변이 와도 위치를 바꾸지 않는다 (모바일에서 끌어내려 화면이 떨리던 문제).
- * signals(대화 목록·카드 수 등)가 바뀔 때마다 확인한다 (호출마다 개수는 같아야 한다). 돌려주는 함수는 "다음 갱신 때 맨 아래로" (메시지를 보낼 때 호출).
+ * signals(대화 목록·카드 수 등)가 바뀔 때마다, 그리고 목록 높이가 바뀔 때(키보드) 확인한다 (signals 개수는 호출마다 같아야 한다). 돌려주는 함수는 "맨 아래로 (이후 갱신도 따라가기)" — 메시지를 보낼 때·모바일 입력칸을 누를 때 호출.
  */
 export function useStickToBottom(ref: RefObject<HTMLElement | null>, ...signals: unknown[]) {
   const atBottom = useRef(true);
@@ -20,7 +20,15 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, ...signals:
       atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    // 목록 높이가 줄어도(모바일 키보드가 올라옴) 맨 아래를 보던 중이면 마지막 대화가 계속 보이게
+    const resize = new ResizeObserver(() => {
+      if (atBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    resize.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      resize.disconnect();
+    };
   }, [ref]);
 
   useEffect(() => {
@@ -32,5 +40,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, ...signals:
 
   return useCallback(() => {
     atBottom.current = true;
-  }, []);
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [ref]);
 }

@@ -167,6 +167,8 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
             rows={1}
             maxLength={2000}
             onChange={(e) => setInput(e.target.value)}
+            // 모바일: 입력칸을 누르면 키보드 위로 마지막 대화가 보이게 맨 아래로
+            onFocus={() => mobile && stickToBottom()}
             onKeyDown={(e) => {
               // 한글 조합 중 Enter는 무시 (마지막 글자 중복 전송 방지)
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

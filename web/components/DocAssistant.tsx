@@ -26,8 +26,12 @@ interface Props {
   title?: string;
   /** 머리말 오른쪽 버튼 (문서 보기 등) */
   headActions?: ReactNode;
-  /** 문서를 고르기 전 템플릿 선택 아래에 보여줄 내용 (AI Assistant 문서 탭: 작성한 문서 목록) */
+  /** 문서를 고르기 전 템플릿 선택 아래에 보여줄 내용 (AI Assistant 문서 탭: 물어본 작성한 문서 목록) */
   startExtra?: ReactNode;
+  /** 템플릿 선택 인사 아래 안내 한 줄 */
+  greetingNote?: ReactNode;
+  /** 문서를 고르기 전 입력한 말을 먼저 처리 (처리했으면 true → 템플릿 찾기는 하지 않는다) */
+  onStartText?: (text: string) => boolean;
   /** 입력칸을 한 줄로 시작해 내용에 맞춰 늘린다 (Assistant 견적서 탭) */
   singleLine?: boolean;
 }
@@ -58,6 +62,7 @@ export default function DocAssistant(p: Props) {
     if (!text || busy) return;
     setInput("");
     if (doc) return p.onSend(text);
+    if (p.onStartText?.(text)) return setStartReply(null);
     // 템플릿 선택 단계: 이름·종류로 찾는다
     const list = p.templates ?? [];
     const norm = text.replace(/\s/g, "");
@@ -125,6 +130,7 @@ export default function DocAssistant(p: Props) {
                   )}
                   {p.onNewTemplate && <button type="button" className="quick-btn" onClick={p.onNewTemplate}>+ 새 템플릿 등록</button>}
                 </div>
+                {p.greetingNote && <p className="doc-greeting-note">{p.greetingNote}</p>}
               </>
             )}
           </div>

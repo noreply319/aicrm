@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createCompany, createContact, createLead, hideDevIndicator, resetDb } from "./helpers";
+import { createCompany, createContact, createConversation, createLead, hideDevIndicator, resetDb } from "./helpers";
 
 test.beforeEach(resetDb);
 test.beforeEach(({ page }) => hideDevIndicator(page));
@@ -144,14 +144,20 @@ test("모바일: 키보드가 열려 보이는 영역이 줄어도 입력창은 
     return box.y + box.height;
   };
 
-  // 첫 화면 (/)
+  // 첫 화면 (/): 긴 대화 — 입력칸을 누르면 키보드 위로 마지막 답변이 보이고, 대화 공간을 넓히려고 상단 바는 숨긴다
+  await createConversation("assistant", "긴 대화", Array.from({ length: 12 }, (_, i) => [`질문 ${i + 1}`, `답변 ${i + 1}`] as [string, string]));
   await page.goto("/");
   await expect(page.locator(".composer")).toBeVisible();
+  await expect(page.getByText("답변 12", { exact: true })).toBeVisible();
+  await page.locator(".assistant-messages").evaluate((el) => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
+  await page.getByRole("textbox", { name: "AI Assistant에게 질문·요청" }).focus();
   await keyboard(400);
   await expect.poll(composerBottom).toBeLessThanOrEqual(400);
-  await expect(page.locator(".page-title")).toBeInViewport(); // 상단 바는 그대로
-  await keyboard(undefined); // 키보드 닫힘 → 원래 높이
+  await expect(page.locator(".topbar")).toBeHidden();
+  await expect(page.getByText("답변 12", { exact: true })).toBeInViewport();
+  await keyboard(undefined); // 키보드 닫힘 → 원래 높이, 상단 바 다시
   await expect.poll(composerBottom).toBeGreaterThan(600);
+  await expect(page.locator(".topbar")).toBeVisible();
 
   // 다른 화면의 전체 화면 채팅
   await page.goto("/pipeline");

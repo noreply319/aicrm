@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { contextOf, KIND_LABEL } from "@/lib/docTemplate";
+import { docListQuery, type DocListQuery } from "@/lib/docQuery";
 import { useDocDraft } from "@/lib/useDocDraft";
 import type { Me } from "@/lib/types";
 import DocAssistant from "./DocAssistant";
@@ -26,6 +27,8 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
   const draft = useDocDraft({ onLeadsChanged });
   const { templates, loadTemplates, doc, busy } = draft;
   const [preview, setPreview] = useState(false);
+  /** "작성한 문서 보여줘"처럼 물었을 때: 물은 말 + 찾을 조건 (처음에는 목록을 보여주지 않는다) */
+  const [asked, setAsked] = useState<{ text: string; query: DocListQuery } | null>(null);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -57,7 +60,7 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
         singleLine
         headActions={doc && (
           <div className="quote-head-actions">
-            <Button size="sm" variant="ghost" icon="plus" onClick={draft.reset}>새 문서</Button>
+            <Button size="sm" variant="ghost" icon="plus" onClick={() => { draft.reset(); setAsked(null); }}>새 문서</Button>
             <Button size="sm" onClick={() => setPreview(true)}>문서 보기</Button>
           </div>
         )}
@@ -67,7 +70,18 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
         onDownload={draft.download}
         onEmail={() => setSending(true)}
         onLoadDefaults={loadDefaults}
-        startExtra={<RecentDocs onOpen={draft.openDoc} disabled={busy} />}
+        greetingNote="작성한 문서는 ‘작성한 견적서 보여줘’, ‘엔에스 계약서 찾아줘’처럼 물어보세요."
+        onStartText={(text) => {
+          const query = docListQuery(text);
+          if (query) setAsked({ text, query });
+          return !!query;
+        }}
+        startExtra={asked && (
+          <>
+            <div className="bubble bubble-user">{asked.text}</div>
+            <RecentDocs query={asked.query} onOpen={draft.openDoc} disabled={busy} />
+          </>
+        )}
       />
 
       {/* 패널(sticky)이 쌓임 맥락을 만들어 메뉴·상단 바 아래에 깔리지 않도록 모달은 body에 그린다 */}

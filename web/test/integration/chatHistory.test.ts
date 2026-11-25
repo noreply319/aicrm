@@ -167,6 +167,15 @@ describe("대화 기록", () => {
     expect((await getConv(conv.id)).status).toBe(404);
   });
 
+  it("메시지가 10개를 넘어도 저장 순서대로 불러온다 (id를 글자로 정렬하지 않음)", async () => {
+    const conv = await createConversation(ME, "assistant", "긴 대화");
+    for (let i = 1; i <= 6; i++) await saveTurn(conv.id, `질문 ${i}`, { content: `답변 ${i}`, steps: [], plans: [] });
+    const detail = (await (await getConv(conv.id)).json()) as ConversationDetail;
+    expect(detail.messages.map((m) => m.content)).toEqual(
+      Array.from({ length: 6 }, (_, i) => [`질문 ${i + 1}`, `답변 ${i + 1}`]).flat()
+    );
+  });
+
   it("Sales Agent 대화를 AI Assistant 요청으로 이어 쓸 수 없다", async () => {
     const conv = await createConversation(ME, "agent", "에이전트 대화");
     fakeOpenAi([{ content: "x" }]);

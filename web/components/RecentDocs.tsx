@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { KIND_LABEL } from "@/lib/docTemplate";
+import type { DocListQuery } from "@/lib/docQuery";
 import { api } from "@/lib/api";
 import type { DocumentSummary } from "@/lib/types";
 import DocBadge from "./DocBadge";
@@ -16,31 +18,38 @@ function when(iso: string): string {
 }
 
 /**
- * 작성한 문서(견적서·계약서) 최근 목록 — AI Assistant 문서 탭에서 이어 쓰기·PDF·메일하려고 연다.
- * 계약서 메뉴의 "작성한 문서"와 같은 데이터(/api/documents, 최근 수정 순).
+ * 작성한 문서(견적서·계약서) 목록 — AI Assistant 문서 탭에서 "작성한 문서 보여줘"처럼 물으면 답으로 보여준다.
+ * 열어서 이어 쓰기·PDF·메일. 계약서 메뉴의 "작성한 문서"와 같은 데이터(/api/documents, 최근 수정 순).
  */
-export default function RecentDocs({ onOpen, disabled }: { onOpen: (id: string) => void; disabled?: boolean }) {
+export default function RecentDocs({ query, onOpen, disabled }: { query: DocListQuery; onOpen: (id: string) => void; disabled?: boolean }) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    api<DocumentSummary[]>("/api/documents")
+    setDocs(null);
+    setAll(false);
+    const sp = new URLSearchParams();
+    if (query.kind) sp.set("kind", query.kind);
+    if (query.q) sp.set("q", query.q);
+    api<DocumentSummary[]>(`/api/documents?${sp}`)
       .then((d) => alive && setDocs(d))
       .catch((e: unknown) => alive && setError((e as Error).message));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [query.kind, query.q]);
 
+  const what = `${query.q ? `‘${query.q}’ ` : ""}${query.kind ? KIND_LABEL[query.kind] : "문서"}`;
   if (error) return <div className="bubble bubble-assistant">작성한 문서를 불러오지 못했어요: {error}</div>;
-  if (!docs || docs.length === 0) return null;
+  if (!docs) return <div className="bubble bubble-assistant bubble-loading">작성한 {what}를 찾는 중…</div>;
+  if (docs.length === 0) return <div className="bubble bubble-assistant">작성한 {what}가 없어요.</div>;
   const shown = all ? docs : docs.slice(0, SHOW);
   return (
     <section className="recent-docs" aria-label="작성한 문서">
       <div className="recent-docs-head">
-        <b>작성한 문서</b>
+        <b>작성한 {what} {docs.length}건</b>
         <span className="muted">이어서 작성하거나 PDF·메일로 보내려면 여세요</span>
       </div>
       <ul>

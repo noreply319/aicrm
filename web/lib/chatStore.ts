@@ -66,7 +66,7 @@ export async function getConversation(userId: string, id: string): Promise<Conve
   const conv = await findConversation(userId, id);
   if (!conv) return null;
   const { rows } = await pool.query<{ id: string; role: "user" | "assistant"; content: string; steps: AgentStep[]; plans: StoredPlanRef[]; error: string | null }>(
-    "SELECT id::text, role, content, steps, plans, error FROM chat_messages WHERE conversation_id = $1 ORDER BY id",
+    "SELECT m.id::text AS id, m.role, m.content, m.steps, m.plans, m.error FROM chat_messages m WHERE m.conversation_id = $1 ORDER BY m.id",
     [id]
   );
   const ids = rows.flatMap((r) => r.plans.filter((p) => !("status" in p)).map((p) => p.id));
