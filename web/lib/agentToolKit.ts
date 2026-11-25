@@ -54,13 +54,22 @@ export interface WriteTool {
   prepare: (args: Args, userId: string) => Promise<PreparedPlan | { error: string }>;
   /** 메일·문서를 보내는 도구 (시간당 발송 수 제한 대상) */
   sends?: boolean;
-  /** 승인 때 실행. 초안만 보여주는 도구(prepare가 draft)는 없다 */
-  execute?: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
+  /** 승인 때 실행. 초안만 보여주는 도구(prepare가 draft)는 없다. ctx.meta: 이력에 남길 출처 (via) */
+  execute?: (client: PoolClient, userId: string, args: Args, ctx: ExecContext) => Promise<ExecResult>;
 }
 
 export type AgentTool = ReadTool | WriteTool;
 
-/** 변경 이력에 남기는 표시 */
+/** 계획을 만든 화면: Sales Agent(/agent) / AI Assistant (agent_actions.source, 이력의 via) */
+export type AgentSource = "agent" | "assistant";
+
+/** 승인 실행 때 넘기는 값 */
+export interface ExecContext {
+  /** 변경 이력 changes에 함께 남길 출처 표시 */
+  meta: { via: AgentSource };
+}
+
+/** 변경 이력에 남기는 표시 (Sales Agent) */
 export const VIA = { via: "agent" } as const;
 
 /** 계획 이후 대상이 바뀌었을 때 (subject: 조사까지, 예: "리드가") */

@@ -68,7 +68,7 @@ AI CRM/                      # git 저장소 루트
     │       ├── route.ts             # GET 목록, POST 생성
     │       ├── [id]/route.ts        # PATCH 수정, DELETE 삭제
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
-    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → OpenAI 답변
+    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → NDJSON 스트림 (Sales Agent 엔진, 리드 도구만)
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
     ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel(일반 대화·견적서 탭), QuoteChat, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서), CompanyList, CompanyDetail, CompanyModal, CompanyCombobox, ContactList, ContactDetail, ContactModal, ContactCombobox
     │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
@@ -122,7 +122,7 @@ AI CRM/                      # git 저장소 루트
 - 새 색상 토큰은 라이트(`:root`)와 다크(`[data-theme="dark"]`) 모두에 정의. 다크는 테마 버튼으로만 켜짐(기기 다크 모드 안 따름).
 - 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일(640px 이하) 다른 화면에서는 상단 바 `AI` 버튼 → 상단 바·메인을 숨기고 채팅이 화면 전체를 쓰는 별도 화면(`.app-shell.ai-open`, 팝업·시트 아님), 상단 왼쪽 뒤로 가기로 닫음.
 - 첫 화면 `/`(view `assistant`, 메뉴 `AI Assistant`)는 같은 `AssistantPanel`이 메인 영역 전체를 쓰는 대화 화면(`.app-shell.home`, 숨기기·뒤로 가기 없음, 상단 바 유지, 대화 내용은 가운데 880px). 파이프라인은 `/pipeline`. 패널은 언마운트하지 않으므로 첫 화면과 다른 화면 패널의 대화가 이어진다.
-- Assistant 패널 상단 탭 `일반 대화`(조회형, `/api/assistant`) / `견적서`(`QuoteChat` — 계약서 메뉴의 `DocAssistant`를 견적서 템플릿만으로 재사용, `문서 보기` 모달로 미리보기·직접 수정, PDF·메일). 견적서 탭은 처음 누를 때 만들고 이후 탭을 바꿔도 유지.
+- Assistant 패널 상단 탭 `일반 대화`(`/api/assistant` — 조회 + 리드 생성·수정·단계 이동·삭제는 실행 계획 카드로 승인, Sales Agent와 대화는 따로) / `견적서`(`QuoteChat` — 계약서 메뉴의 `DocAssistant`를 견적서 템플릿만으로 재사용, `문서 보기` 모달로 미리보기·직접 수정, PDF·메일). 견적서 탭은 처음 누를 때 만들고 이후 탭을 바꿔도 유지.
 
 ### 데이터 / API
 - 모든 API 입력은 `lib/validate.ts`로 검증. id는 `UUID_RE`로 확인.
@@ -131,7 +131,7 @@ AI CRM/                      # git 저장소 루트
 - 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
 - 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
 - 리드를 변경하는 API는 같은 트랜잭션에서 `lead_events`에 이력을 남김 (`lib/events.ts`의 `withTransaction` + `recordEvent`). 새 변경 API도 동일하게.
-- AI Assistant는 조회 전용. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음.
+- AI Assistant의 데이터 변경은 리드만, 실행 계획 승인 후 반영(아래 Sales Agent). OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음.
 
 ## 환경 변수 / DB 연결
 
@@ -270,6 +270,7 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 화면: 사이드바 `Sales Agent`(`/agent`, `AgentView`·`useAgentChat`) — NDJSON 스트림(진행 단계·답변·실행 계획 카드), 승인·취소·수정 요청, 초안 카드, 발송 후 단계 이동 같은 후속 계획 카드.
 - 엔진 `lib/agent.ts`: 조회 도구는 바로, 변경 도구는 `agent_actions`에 `pending`으로 저장 → `decideAction`(본인만·한 번만·1시간 만료·`expect` 충돌 확인·같은 트랜잭션 실행, 커밋 후 `after`·`next`). 도구는 `lib/agentToolKit.ts` 형식(prepare/execute)으로 `agentTools.ts`(리드)·`agentCrmTools.ts`(회사·연락처)·`agentMeetingTools.ts`(노트·캘린더)·`agentMailTools.ts`(메일·문서)에 추가.
 - 변경 로직은 Route Handler와 공용(`leadOps`·`companyOps`·`contactOps`·`noteOps`·`scheduleOps`·`docOps`) — 이력은 `via: "agent"`.
+- AI Assistant(`/api/assistant`)도 같은 엔진(`runAgent(..., "assistant")`): 도구는 `ASSISTANT_TOOL_NAMES`(리드·회사·연락처 조회 + 리드 생성·수정·단계 이동·삭제)만, 프롬프트는 `ASSISTANT_RULES`. 계획에 출처 `agent_actions.source`(agent/assistant)를 저장하고 승인 때도 출처의 허용 도구인지 다시 확인, 이력은 `via: "assistant"`. 화면 공용 카드는 `AgentTurn`, 대화는 `useAgentChat({ endpoint: "/api/assistant" })`(CrmApp).
 - 새 도구 규칙: 개인정보(이메일·전화 등)는 인자로 받지도 결과로 보내지도 않는다, 메일 받는 사람은 서버가 정한다, 되돌릴 수 없는 작업은 `danger`, 발송 도구는 `sends`(시간당 제한). 한도는 `lib/agentLimits.ts`.
 
 ## 참고 문서

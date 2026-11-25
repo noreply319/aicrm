@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
-import type { ChatMessage, Me } from "@/lib/types";
+import type { AgentTarget, Me } from "@/lib/types";
+import type { AgentChat } from "@/lib/useAgentChat";
 import { useAutoGrow } from "@/lib/useAutoGrow";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { useReviseInput } from "@/lib/useReviseInput";
+import AgentTurn from "./AgentTurn";
 import QuoteChat from "./QuoteChat";
-import { Alert, Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
+import { Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
 interface Props {
   open: boolean;
@@ -15,6 +18,10 @@ interface Props {
   /** 첫 화면(/): 메인 영역 전체를 쓰는 대화 화면 (숨기기 없음) */
   home: boolean;
   me: Me | null;
+  /** 일반 대화 상태 (CrmApp이 가짐 — /api/assistant, 리드 변경은 실행 계획 카드로 승인) */
+  chat: AgentChat;
+  /** 계획 카드의 리드 열기 등 */
+  onOpenTarget: (target: AgentTarget) => void;
   /** 견적서 탭: 발송 후 단계 이동 등으로 리드가 바뀌었을 때 */
   onLeadsChanged: () => void;
   onNotice: (msg: string) => void;
@@ -27,17 +34,16 @@ const SUGGESTIONS = [
   "최근 단계가 바뀐 리드는?",
   "오션핀테크 리드 변경 이력 보여줘",
   "현재 파이프라인 금액 합계는?",
+  "오션핀테크 리드를 협상 단계로 옮겨줘",
 ];
 
-export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, onLeadsChanged, onNotice }: Props) {
+export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, chat, onOpenTarget, onLeadsChanged, onNotice }: Props) {
   const open = home || openProp;
   const [mode, setMode] = useState<Mode>("chat");
   /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
   const [quoteSeen, setQuoteSeen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, busy, send, approve, approveAll, cancel, reset } = chat;
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // 입력칸: 기본 한 줄, 내용에 맞춰 최대 5줄까지 늘어남
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -48,37 +54,15 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   // 새 메시지가 오면 맨 아래로 스크롤
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages]);
 
-  const send = async (text: string) => {
-    const question = text.trim();
-    if (!question || loading) return;
-    const next: ChatMessage[] = [...messages, { role: "user", content: question }];
-    setMessages(next);
+  const submit = async (text: string) => {
+    if (busy || !text.trim()) return;
     setInput("");
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
-      });
-      const body: unknown = await res.json().catch(() => ({}));
-      const data = (body && typeof body === "object" ? body : {}) as { reply?: unknown; error?: unknown };
-      if (!res.ok || typeof data.reply !== "string") {
-        throw new Error(typeof data.error === "string" ? data.error : `요청 실패 (${res.status})`);
-      }
-      setMessages([...next, { role: "assistant", content: data.reply }]);
-    } catch (e) {
-      // 실패한 질문은 입력창으로 되돌려 다시 보낼 수 있게 한다
-      setMessages(messages);
-      setInput(question);
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    await send(text);
   };
+
+  const revise = useReviseInput(inputRef, setInput, cancel);
 
   // 닫아도 대화가 유지되도록 언마운트하지 않고 오른쪽으로 밀어 숨긴다 (inert: 숨긴 동안 포커스 불가)
   return (
@@ -100,7 +84,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
         />
         <span className="spacer" />
         {mode === "chat" && messages.length > 0 && (
-          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { setMessages([]); setError(null); }}>
+          <Button size="sm" variant="ghost" icon="refresh" onClick={reset}>
             새 대화
           </Button>
         )}
@@ -117,37 +101,45 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       <div className="assistant-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="assistant-empty">
-            <p>리드가 언제 생성되고 어떻게 바뀌었는지 물어보세요.</p>
+            <p>리드에 대해 물어보거나, 리드 추가·수정·단계 이동을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다.</p>
             <div className="assistant-suggestions">
               {SUGGESTIONS.map((s) => (
-                <button key={s} className="assistant-chip" onClick={() => send(s)}>
+                <button key={s} className="assistant-chip" onClick={() => submit(s)}>
                   {s}
                 </button>
               ))}
             </div>
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble bubble-${m.role}`}>
-            {m.content}
-          </div>
-        ))}
-        {loading && <div className="bubble bubble-assistant bubble-loading">답변 작성 중…</div>}
+        {messages.map((m) =>
+          m.role === "user" ? (
+            <div key={m.id} className="bubble bubble-user">{m.content}</div>
+          ) : (
+            <AgentTurn
+              key={m.id}
+              message={m}
+              onApprove={(p) => approve(m.id, p)}
+              onCancel={(p) => cancel(m.id, p)}
+              onApproveAll={() => approveAll(m.id)}
+              onRevise={(p) => revise(m.id, p)}
+              onOpenTarget={onOpenTarget}
+            />
+          )
+        )}
       </div>
-
-      {error && <Alert tone="danger">{error}</Alert>}
 
       <form
         className="assistant-input"
         onSubmit={(e) => {
           e.preventDefault();
-          send(input);
+          submit(input);
         }}
       >
         <Textarea
           ref={inputRef}
           value={input}
-          placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
+          aria-label="AI Assistant에게 질문·요청"
+          placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하거나 추가·변경을 요청하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
           rows={1}
           maxLength={2000}
           onChange={(e) => setInput(e.target.value)}
@@ -155,11 +147,11 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
             // 한글 조합 중 Enter는 무시 (마지막 글자 중복 전송 방지)
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              send(input);
+              submit(input);
             }
           }}
         />
-        <Button variant="primary" type="submit" disabled={loading || !input.trim()}>
+        <Button variant="primary" type="submit" disabled={busy || !input.trim()}>
           전송
         </Button>
       </form>

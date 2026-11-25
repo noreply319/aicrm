@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { PreparedPlan } from "./agentToolKit";
+import type { AgentSource, AgentTool, PreparedPlan } from "./agentToolKit";
 import { planQuotaError, redactOldActions, sendLimitError } from "./agentLimits";
 import { AGENT_TOOLS } from "./agentTools";
 import { ASSISTANT_TOOL_LABELS, prepareAssistant, toolDetail } from "./assistant";
@@ -18,6 +18,18 @@ import { UUID_RE } from "./validate";
  * 2) decideAction: 요청한 본인만 승인/취소. 행을 잠그고 상태·만료·변경 충돌을 확인한 뒤 같은 트랜잭션에서 실행한다.
  */
 
+/** AI Assistant에서 쓸 수 있는 도구: 리드·회사·연락처 조회 + 리드 생성·수정·단계 이동·삭제 */
+export const ASSISTANT_TOOL_NAMES = [
+  "search_leads", "get_lead", "pipeline_summary", "search_companies", "get_company", "search_contacts", "get_contact",
+  "create_lead", "update_lead", "move_lead_stage", "delete_lead",
+] as const;
+
+/** 화면(출처)별로 쓸 수 있는 도구. 승인할 때도 계획의 출처로 다시 확인한다 */
+const TOOLSETS: Record<AgentSource, Record<string, AgentTool>> = {
+  agent: AGENT_TOOLS,
+  assistant: Object.fromEntries(ASSISTANT_TOOL_NAMES.map((n) => [n, AGENT_TOOLS[n]])),
+};
+
 /** 발송 도구 이름 (시간당 발송 수 제한) */
 const SEND_TOOLS = Object.values(AGENT_TOOLS).filter((t) => t.kind === "write" && t.sends).map((t) => t.def.name);
 
@@ -31,6 +43,7 @@ type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "a
 interface ActionRow {
   id: string;
   tool: string;
+  source: AgentSource;
   args: Record<string, unknown>;
   plan: StoredPlan;
   status: Exclude<AgentPlanStatus, "running">;
@@ -38,7 +51,7 @@ interface ActionRow {
   expired: boolean;
 }
 
-const ACTION_COLUMNS = `id, tool, args, plan, status, message, created_at < now() - interval '${PLAN_TTL_HOURS} hours' AS expired`;
+const ACTION_COLUMNS = `id, tool, source, args, plan, status, message, created_at < now() - interval '${PLAN_TTL_HOURS} hours' AS expired`;
 
 const toPlan = (r: Pick<ActionRow, "id" | "plan" | "status" | "message">): AgentPlan => ({
   id: r.id,
@@ -52,23 +65,29 @@ const storedPlan = (p: PreparedPlan): StoredPlan => ({
 });
 
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
-export async function savePlan(userId: string, tool: string, p: PreparedPlan): Promise<AgentPlan> {
+export async function savePlan(userId: string, tool: string, p: PreparedPlan, source: AgentSource = "agent"): Promise<AgentPlan> {
   await redactOldActions().catch((e: unknown) => console.error("[agent] redact", e));
   const plan = storedPlan(p);
   const { rows } = await pool.query<{ id: string }>(
-    "INSERT INTO agent_actions (user_id, tool, args, plan) VALUES ($1, $2, $3, $4) RETURNING id",
-    [userId, tool, JSON.stringify(p.args), JSON.stringify(plan)]
+    "INSERT INTO agent_actions (user_id, tool, args, plan, source) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+    [userId, tool, JSON.stringify(p.args), JSON.stringify(plan), source]
   );
   return toPlan({ id: rows[0].id, plan, status: "pending", message: "" });
 }
 
 const PENDING_NOTE = "사용자 승인 대기 중입니다. 아직 실행되지 않았습니다. 계획 카드를 확인하고 승인하도록 안내하세요.";
 
-/** 대화 → 진행 단계·답변·실행 계획 이벤트 */
-export async function runAgent(messages: ChatMessage[], user: SessionUser, emit: (e: AgentEvent) => void): Promise<void> {
+/**
+ * 대화 → 진행 단계·답변·실행 계획 이벤트.
+ * source: agent = Sales Agent(전체 도구), assistant = AI Assistant(ASSISTANT_TOOL_NAMES만, Assistant 프롬프트)
+ */
+export async function runAgent(
+  messages: ChatMessage[], user: SessionUser, emit: (e: AgentEvent) => void, source: AgentSource = "agent"
+): Promise<void> {
+  const toolset = TOOLSETS[source];
   const context: AgentStep = { id: "context", label: "CRM 데이터 확인", status: "running" };
   emit({ type: "step", step: context });
-  const session = await prepareAssistant(messages, user, "agent").catch((e: unknown) => {
+  const session = await prepareAssistant(messages, user, source).catch((e: unknown) => {
     emit({ type: "step", step: { ...context, status: "failed" } });
     throw e;
   });
@@ -78,8 +97,9 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
   const planned = new Map<string, string>();
 
   const runTool = async (name: string, args: unknown): Promise<unknown> => {
-    const tool = AGENT_TOOLS[name];
-    if (!tool) return session.runTool(name, args);
+    const tool = toolset[name];
+    // 이 화면에 없는 Sales Agent 도구는 모델이 이름을 지어내도 실행하지 않는다
+    if (!tool) return AGENT_TOOLS[name] ? { error: "이 화면에서는 할 수 없는 작업입니다. Sales Agent 메뉴를 이용하세요" } : session.runTool(name, args);
     const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
     if (tool.kind === "read") return tool.run(a, user.id);
 
@@ -95,7 +115,7 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
     if (existing) return { status: "pending_approval", planId: existing, note: "이미 같은 계획을 만들었습니다. " + PENDING_NOTE };
     const quota = await planQuotaError(user.id, planned.size);
     if (quota) return { error: quota };
-    const plan = await savePlan(user.id, name, prepared);
+    const plan = await savePlan(user.id, name, prepared, source);
     planned.set(key, plan.id);
     emit({ type: "plan", plan });
     return { status: "pending_approval", planId: plan.id, note: PENDING_NOTE };
@@ -104,7 +124,7 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
   // 도구 호출마다 진행 단계 표시
   let stepNo = 0;
   const label = (name: string) => {
-    const t = AGENT_TOOLS[name];
+    const t = toolset[name];
     return t ? (t.kind === "write" ? `실행 계획 작성: ${t.label}` : t.label) : (ASSISTANT_TOOL_LABELS[name] ?? name);
   };
   const tracked = async (name: string, args: unknown) => {
@@ -120,7 +140,7 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
     }
   };
 
-  const tools = [...session.tools, ...Object.values(AGENT_TOOLS).map((t) => t.def)];
+  const tools = [...session.tools, ...Object.values(toolset).map((t) => t.def)];
   const reply = await chatWithTools(session.chat, tools, tracked, { maxTokens: 1500, maxRounds: MAX_ROUNDS, timeoutMs: 30_000 });
   emit({ type: "reply", content: reply });
 }
@@ -133,6 +153,7 @@ export async function decideAction(id: string, userId: string, action: "approve"
 
   let after: (() => Promise<string | undefined>) | undefined;
   let next: { tool: string; args: Record<string, unknown> }[] = [];
+  let source: AgentSource = "agent";
   const result = await withTransaction(async (client): Promise<DecideResult> => {
     // 동시에 두 번 승인해도 한 번만 실행되도록 행을 잠근다
     const row = (
@@ -157,14 +178,16 @@ export async function decideAction(id: string, userId: string, action: "approve"
     if (action === "cancel") return finish("canceled", "취소했습니다");
     if (row.expired) return finish("failed", `계획이 만료되었습니다 (${PLAN_TTL_HOURS}시간). 다시 요청하세요`);
 
-    const tool = AGENT_TOOLS[row.tool];
+    // 출처 화면에서 허용된 도구만 실행 (Assistant 계획으로 다른 도구를 실행하지 못하게)
+    const tool = TOOLSETS[row.source]?.[row.tool];
     if (!tool || tool.kind !== "write" || !tool.execute) return finish("failed", "지원하지 않는 작업입니다");
     // 발송 한도: 넘으면 실행하지 않고 승인 대기로 둔다 (나중에 다시 승인)
     const sendLimit = tool.sends ? await sendLimitError(client, userId, SEND_TOOLS) : null;
     if (sendLimit) return { ok: false, status: 429, error: sendLimit };
-    const r = await tool.execute(client, userId, row.args);
+    const r = await tool.execute(client, userId, row.args, { meta: { via: row.source } });
     if (!r.ok) return finish("failed", r.message, row.plan, true);
     after = r.after;
+    source = row.source;
     next = r.next ?? [];
     // 실행에 성공하면 대상 링크를 결과로 바꾼다 (삭제는 링크 없음)
     return finish("done", r.message, { ...row.plan, target: r.target }, true);
@@ -186,12 +209,12 @@ export async function decideAction(id: string, userId: string, action: "approve"
   // 이어서 제안할 계획: 지금 값으로 다시 prepare (해당 없으면 만들지 않음)
   const followUps: AgentPlan[] = [];
   for (const n of next) {
-    const t = AGENT_TOOLS[n.tool];
+    const t = TOOLSETS[source][n.tool];
     if (t?.kind !== "write") continue;
     // 후속 계획은 제안일 뿐이라 만들지 못해도 실행 결과(done)는 그대로 돌려준다
     try {
       const p = await t.prepare(n.args, userId);
-      if (!("error" in p)) followUps.push(await savePlan(userId, n.tool, p));
+      if (!("error" in p)) followUps.push(await savePlan(userId, n.tool, p, source));
     } catch (e) {
       console.error("[agent] follow-up", e);
     }

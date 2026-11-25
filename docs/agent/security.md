@@ -7,10 +7,11 @@ Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 
 
 | 단계 | 하는 일 |
 |---|---|
-| 대화 (`POST /api/agent`) | 조회 도구는 바로 실행. 변경 도구는 **실행하지 않고** `prepare`만 해 `agent_actions`에 `pending` 계획으로 저장 → 화면에 계획 카드 |
+| 대화 (`POST /api/agent`, AI Assistant는 `POST /api/assistant`) | 조회 도구는 바로 실행. 변경 도구는 **실행하지 않고** `prepare`만 해 `agent_actions`에 `pending` 계획으로 저장 → 화면에 계획 카드 |
 | 승인 (`POST /api/agent/actions/[id]/approve`) | `decideAction`: 계획 행을 `FOR UPDATE`로 잠그고 → **요청한 본인 것만**(다른 사람 계획은 404) → `pending`이 아니면 409(두 번 실행 안 함) → 1시간 지나면 만료 → 인자를 다시 검증하고 계획 이후 대상이 바뀌었으면(`expect`) 실행 안 함 → 같은 트랜잭션에서 실행·이력 기록 |
 | 취소 (`.../cancel`) | 본인 `pending` 계획만 `canceled` |
 
+- **AI Assistant**(`/api/assistant`)는 같은 엔진이지만 도구를 `ASSISTANT_TOOL_NAMES`(리드·회사·연락처 조회 + 리드 생성·수정·단계 이동·삭제)로 제한한다. 모델이 다른 Sales Agent 도구 이름을 불러도 실행·계획하지 않고, 계획에 저장한 출처(`agent_actions.source = 'assistant'`)로 **승인 때도** 허용 도구인지 다시 확인한다. 이력은 `via: "assistant"`.
 - 모델은 계획 카드·도구 인자를 보지 못한다. 계획 도구는 모델에 `{ status: "pending_approval", planId, note }`만 돌려준다.
 - 실행 후 이어서 제안하는 작업(예: 견적서 발송 → 리드 단계 이동)도 **새 `pending` 계획**으로만 만든다. 미팅 노트 후속 작업은 요약·후보 저장만 하고 캘린더에 자동 등록하지 않는다.
 - 메일 초안(`draft_email`)은 저장·실행하지 않는 카드다.
@@ -52,7 +53,7 @@ Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 
 
 | 항목 | 한도 | 넘으면 |
 |---|---|---|
-| `/api/agent` 요청 | 사용자별 1분 20회 (`agent_requests`, 1시간 지난 기록 삭제) | 429 |
+| `/api/agent`·`/api/assistant` 요청 (합계) | 사용자별 1분 20회 (`agent_requests`, 1시간 지난 기록 삭제) | 429 |
 | 요청 한 번에 만드는 계획 | 5개 | 모델에 오류 → "나눠서 요청" 안내 |
 | 승인 대기 계획 | 사용자별 20개 (최근 1시간) | 모델에 오류 → "먼저 처리" 안내 |
 | 메일·문서 발송 | 사용자별 1시간 30건 (실행된 발송 시도, 실패 포함) | 승인 API 429, 계획은 승인 대기로 남음 |

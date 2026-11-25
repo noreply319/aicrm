@@ -534,6 +534,8 @@ ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS executed_at timestamptz;
 ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS result jsonb;
 ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS redacted_at timestamptz;
 CREATE INDEX IF NOT EXISTS agent_actions_created_idx ON agent_actions (created_at) WHERE redacted_at IS NULL;
+-- 계획을 만든 화면: agent(Sales Agent) / assistant(AI Assistant — 리드 도구만 허용, 승인 때도 다시 확인)
+ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'agent' CHECK (source IN ('agent','assistant'));
 
 -- Sales Agent 요청 기록 (사용자별 분당 요청 수 제한용, 1시간 지난 행은 지운다)
 CREATE TABLE IF NOT EXISTS agent_requests (

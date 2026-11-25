@@ -914,6 +914,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .plan-card { padding: 10px 12px; }
   .plan-actions .spacer { flex-basis: 100%; }
 }
+/* 오른쪽 Assistant 패널은 폭이 좁아 계획 카드 버튼을 대상 링크 아래 줄로 (첫 화면은 넓어서 그대로) */
+.assistant:not(.assistant-home) .plan-actions .spacer { flex-basis: 100%; }
 
 /* ───────── 계약서·견적서 ───────── */
 /* 조회형 Assistant 감싸기: 평소엔 레이아웃에 영향 없음, 계약서 화면에서만 [hidden]으로 숨김 */

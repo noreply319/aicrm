@@ -7,7 +7,7 @@ import { pool } from "./db";
  * 숫자를 바꾸면 docs/agent/security.md도 함께 고친다.
  */
 export const AGENT_LIMITS = {
-  /** 사용자별 /api/agent 요청 (1분) */
+  /** 사용자별 /api/agent·/api/assistant 요청 합계 (1분) */
   requestsPerMinute: 20,
   /** 요청 한 번에 만들 수 있는 실행 계획 */
   plansPerRequest: 5,

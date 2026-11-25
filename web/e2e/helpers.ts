@@ -102,10 +102,12 @@ export async function hideDevIndicator(page: Page) {
 }
 
 /**
- * Sales Agent 실행 계획을 테스트 DB에 직접 만든다 (OpenAI 없이 승인 흐름 확인용).
+ * Sales Agent·AI Assistant 실행 계획을 테스트 DB에 직접 만든다 (OpenAI 없이 승인 흐름 확인용).
  * 테스트 사용자(global-setup) 소유의 "리드 단계 이동" 계획을 저장하고 화면에 보낼 plan을 돌려준다.
  */
-export async function createMovePlan(lead: { id: string; company: string }, from: string, to: string) {
+export async function createMovePlan(
+  lead: { id: string; company: string }, from: string, to: string, source: "agent" | "assistant" = "agent"
+) {
   assertSafeTestDb(TEST_DATABASE_URL);
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
   await c.connect();
@@ -116,9 +118,9 @@ export async function createMovePlan(lead: { id: string; company: string }, from
       target: { kind: "lead", id: lead.id, label: lead.company },
     };
     const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO agent_actions (user_id, tool, args, plan)
-       SELECT id, 'move_lead_stage', $1, $2 FROM users WHERE google_sub = 'e2e-test-user' RETURNING id`,
-      [JSON.stringify({ leadId: lead.id, stage: to, expect: { stage: from } }), JSON.stringify(plan)]
+      `INSERT INTO agent_actions (user_id, tool, args, plan, source)
+       SELECT id, 'move_lead_stage', $1, $2, $3 FROM users WHERE google_sub = 'e2e-test-user' RETURNING id`,
+      [JSON.stringify({ leadId: lead.id, stage: to, expect: { stage: from } }), JSON.stringify(plan), source]
     );
     return { id: rows[0].id, ...plan, status: "pending" as const };
   } finally {

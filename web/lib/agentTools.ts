@@ -2,7 +2,7 @@ import "server-only";
 import { AGENT_CRM_TOOLS } from "./agentCrmTools";
 import { AGENT_MAIL_TOOLS } from "./agentMailTools";
 import { AGENT_MEETING_TOOLS } from "./agentMeetingTools";
-import { diffFields, has, idArg, leadTarget, stale, str, text, unchanged, VIA, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
+import { diffFields, has, idArg, leadTarget, stale, str, text, unchanged, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import { formatWon } from "./format";
@@ -196,10 +196,10 @@ const createLeadTool: WriteTool = {
       args: { company, contact, title, value, closeDate, stage, priority, notes },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, { meta }) {
     const p = parseCreate(a);
     if (!p.ok) return { ok: false, message: p.error };
-    const r = await createLead(client, userId, p.data, VIA);
+    const r = await createLead(client, userId, p.data, meta);
     return r.ok ? { ok: true, message: "리드를 만들었습니다", target: leadTarget(r.lead) } : { ok: false, message: r.error };
   },
 };
@@ -255,14 +255,14 @@ const updateLeadTool: WriteTool = {
       args: { leadId: lead.id, ...set, expect },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, { meta }) {
     const p = parseUpdate(a);
     if (!p.ok) return { ok: false, message: p.error };
     const lead = await findLead(client, p.id, { lock: true });
     if (!lead) return { ok: false, message: GONE };
     if (!unchanged(lead, a.expect)) return { ok: false, message: STALE };
     // 지금 값에 바꿀 항목만 덮어써 다른 필드는 그대로 둔다
-    const r = await updateLead(client, userId, p.id, { ...leadInputOf(lead), ...p.set }, VIA);
+    const r = await updateLead(client, userId, p.id, { ...leadInputOf(lead), ...p.set }, meta);
     return r.ok ? { ok: true, message: "리드를 수정했습니다", target: leadTarget(r.lead) } : { ok: false, message: r.error };
   },
 };
@@ -302,13 +302,13 @@ const moveLeadTool: WriteTool = {
       args: { leadId: lead.id, stage: p.stage, expect: { stage: lead.stage } },
     };
   },
-  async execute(client, _userId, a) {
+  async execute(client, _userId, a, { meta }) {
     const p = parseMove(a);
     if (!p.ok) return { ok: false, message: p.error };
     const lead = await findLead(client, p.id, { lock: true });
     if (!lead) return { ok: false, message: GONE };
     if (!unchanged(lead, a.expect)) return { ok: false, message: STALE };
-    const r = await moveLead(client, p.id, p.stage, null, VIA);
+    const r = await moveLead(client, p.id, p.stage, null, meta);
     return r.ok
       ? { ok: true, message: `${stageName(p.stage)} 단계로 옮겼습니다`, target: leadTarget(r.lead) }
       : { ok: false, message: r.error };
@@ -344,13 +344,13 @@ const deleteLeadTool: WriteTool = {
       args: { leadId: lead.id, expect: Object.fromEntries(DELETE_FIELDS.map((f) => [f, lead[f]])) },
     };
   },
-  async execute(client, _userId, a) {
+  async execute(client, _userId, a, { meta }) {
     const id = leadIdArg(a);
     if (!id) return { ok: false, message: "리드 id가 올바르지 않습니다" };
     const lead = await findLead(client, id, { lock: true });
     if (!lead) return { ok: false, message: GONE };
     if (!unchanged(lead, a.expect)) return { ok: false, message: STALE };
-    const r = await deleteLead(client, id, VIA);
+    const r = await deleteLead(client, id, meta);
     return r.ok ? { ok: true, message: "리드를 삭제했습니다" } : { ok: false, message: r.error };
   },
 };

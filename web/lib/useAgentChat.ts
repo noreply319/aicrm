@@ -40,10 +40,11 @@ function applyEvent(m: AgentMessage, e: AgentEvent): AgentMessage {
 }
 
 /**
- * Sales Agent 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다 (새로고침 시 초기화).
- * 답변은 /api/agent의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
+ * Sales Agent·AI Assistant 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다 (새로고침 시 초기화).
+ * 답변은 endpoint(/api/agent, /api/assistant)의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
+ * 승인·취소는 둘 다 /api/agent/actions (계획의 출처는 서버가 저장해 둔다).
  */
-export function useAgentChat({ onChanged }: { onChanged: () => void }) {
+export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged: () => void; endpoint?: "/api/agent" | "/api/assistant" }) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -75,7 +76,7 @@ export function useAgentChat({ onChanged }: { onChanged: () => void }) {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
-        const res = await fetch("/api/agent", {
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: [...history, { role: "user", content }] }),
@@ -121,7 +122,7 @@ export function useAgentChat({ onChanged }: { onChanged: () => void }) {
       }
       return true;
     },
-    [patchMessage]
+    [patchMessage, endpoint]
   );
 
   /** 계획 승인/취소: 서버가 돌려준 계획으로 카드를 바꾼다. 실패하면 카드에 사유를 보여주고 다시 누를 수 있게 둔다 */

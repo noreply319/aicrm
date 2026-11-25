@@ -332,8 +332,10 @@ export default function CrmApp() {
 
   /** Sales Agent 대화: 화면을 옮겨도 유지되도록 여기서 가진다. 계획이 실행되면 바뀌었을 수 있는 데이터를 모두 새로 불러온다 */
   const agent = useAgentChat({ onChanged: reloadAll });
+  /** AI Assistant 일반 대화 (Sales Agent와 따로): 리드 변경 계획이 승인되면 보드·통계를 바로 새로 불러온다 */
+  const assistantChat = useAgentChat({ onChanged: reloadAll, endpoint: "/api/assistant" });
 
-  /** Sales Agent 실행 결과의 대상으로 이동 */
+  /** Sales Agent·AI Assistant 실행 계획 카드의 대상으로 이동 */
   const openAgentTarget = useCallback(
     (t: AgentTarget) => {
       if (t.kind === "lead") openLead(t.id);
@@ -790,6 +792,8 @@ export default function CrmApp() {
                 open={assistantOpen}
                 home={view === "assistant"}
                 me={auth.me}
+                chat={assistantChat}
+                onOpenTarget={openAgentTarget}
                 onOpen={() => changeAssistant(true)}
                 onClose={() => changeAssistant(false)}
                 onLeadsChanged={reload}
