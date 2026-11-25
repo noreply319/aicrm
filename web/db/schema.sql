@@ -505,3 +505,26 @@ BEGIN
     INSERT INTO crm_migrations (name) VALUES ('contacts_from_leads');
   END IF;
 END $$;
+
+-- Sales Agent 실행 계획: 변경 도구 호출을 바로 실행하지 않고 저장 → 요청한 사용자가 승인하면 실행
+-- args: 검증된 도구 인자(실행 시 다시 검증), plan: 화면에 보여준 카드(제목·변경 전/후·대상)
+CREATE TABLE IF NOT EXISTS agent_actions (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tool        text NOT NULL,
+  args        jsonb NOT NULL,
+  plan        jsonb NOT NULL,
+  status      text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','failed','canceled')),
+  message     text NOT NULL DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  decided_at  timestamptz
+);
+CREATE INDEX IF NOT EXISTS agent_actions_user_idx ON agent_actions (user_id, created_at DESC);
+ALTER TABLE agent_actions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app')
+     AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_actions' AND policyname = 'agent_actions_crm_app') THEN
+    CREATE POLICY agent_actions_crm_app ON agent_actions FOR ALL TO crm_app USING (true) WITH CHECK (true);
+  END IF;
+END $$;

@@ -47,6 +47,20 @@ export function maskPii(text: string): string {
   return text.replace(EMAIL_RE, "[이메일]").replace(PHONE_RE, "[전화번호]");
 }
 
+// 변경 이력에서 값 자체가 개인정보인 필드 (diffLead·연락처 전파가 { from, to }로 남긴다)
+const PII_FIELDS = new Set(["email", "phone"]);
+
+const maskValue = (v: unknown): unknown =>
+  typeof v === "string" ? maskPii(v)
+  : Array.isArray(v) ? v.map(maskValue)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, maskValue(x)]))
+  : v;
+
+/** 리드 변경 이력(lead_events.changes) → 외부 API용: 이메일·전화번호 필드는 빼고, 나머지 문자열(메모 등)은 마스킹 */
+export function maskChanges(changes: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(changes).filter(([k]) => !PII_FIELDS.has(k)).map(([k, v]) => [k, maskValue(v)]));
+}
+
 function apiKey(): string {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new AiError("OPENAI_API_KEY가 설정되지 않았습니다", 503);

@@ -101,7 +101,7 @@ export interface ChatMessage {
 /* ───────── Sales Agent (/agent) ─────────
  * POST /api/agent { messages: ChatMessage[] } → NDJSON 스트림 (한 줄에 AgentEvent 하나)
  * 변경 작업은 바로 실행하지 않고 AgentPlan(승인 대기)으로 보내고, 승인/취소는
- * POST /api/agent/actions/[id]/approve · /cancel → AgentPlan (실행 엔진은 AIC-3) */
+ * POST /api/agent/actions/[id]/approve · /cancel → AgentPlan (실행 결과 done/failed/canceled) */
 
 /** 도구 호출 등 진행 단계 */
 export interface AgentStep {
@@ -139,6 +139,8 @@ export interface AgentPlan {
   message?: string;
   /** 실행되면 리드가 바뀌는 작업 (보드 새로고침용) */
   affectsLeads?: boolean;
+  /** 되돌릴 수 없는 작업 (삭제) — 승인 버튼을 위험 색으로 */
+  danger?: boolean;
 }
 
 export type AgentEvent =

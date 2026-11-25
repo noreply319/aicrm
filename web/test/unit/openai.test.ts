@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { summarizeNote } from "@/lib/meetings";
-import { AiError, chatCompletion, maskPii, transcribeAudio } from "@/lib/openai";
+import { AiError, chatCompletion, maskPii, transcribeAudio, maskChanges } from "@/lib/openai";
 
 /** OpenAI 응답 흉내 */
 const respond = (status: number, body: unknown) =>
@@ -104,5 +104,22 @@ describe("transcribeAudio (화자 구분 전사)", () => {
     const r = await transcribeAudio(audio());
     expect(r).toEqual({ text: "안녕하세요", utterances: null });
     expect((fetchMock.mock.calls[0][1]?.body as FormData).get("response_format")).toBe("json");
+  });
+});
+
+describe("maskChanges (변경 이력 → OpenAI)", () => {
+  it("이메일·전화번호 필드는 빼고, 다른 문자열의 이메일·전화번호는 마스킹", () => {
+    const changes = {
+      email: { from: "a@x.com", to: "b@x.com" },
+      phone: { from: "010-1111-2222", to: "010-3333-4444" },
+      notes: { from: "", to: "연락처 kim@ace.co.kr / 010-1234-5678" },
+      stage: { from: "new", to: "contacted" },
+      via: "contact",
+    };
+    expect(maskChanges(changes)).toEqual({
+      notes: { from: "", to: "연락처 [이메일] / [전화번호]" },
+      stage: { from: "new", to: "contacted" },
+      via: "contact",
+    });
   });
 });

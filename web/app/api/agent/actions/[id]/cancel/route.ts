@@ -1,9 +1,14 @@
-import { agentActionNotReady } from "@/lib/agent";
+import { NextResponse } from "next/server";
+import { decideAction } from "@/lib/agent";
+import { requestUserId } from "@/lib/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** 실행 계획 취소 → AgentPlan(canceled). 실행 엔진(AIC-3) 전까지는 501 */
+/** 실행 계획 취소 → AgentPlan. 요청한 본인만, 한 번만 (이미 처리됐으면 409) */
 export async function POST(_req: Request, { params }: Ctx) {
   const { id } = await params;
-  return agentActionNotReady(id);
+  const userId = await requestUserId();
+  if (!userId) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
+  const r = await decideAction(id, userId, "cancel");
+  return r.ok ? NextResponse.json(r.plan) : NextResponse.json({ error: r.error }, { status: r.status });
 }

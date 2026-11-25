@@ -143,6 +143,15 @@ export function useAgentChat({ onLeadsChanged }: { onLeadsChanged: () => void })
   const approve = useCallback((messageId: string, plan: AgentPlan) => decide(messageId, plan, "approve"), [decide]);
   const cancel = useCallback((messageId: string, plan: AgentPlan) => decide(messageId, plan, "cancel"), [decide]);
 
+  /** 한 답변의 승인 대기 계획을 차례로 모두 승인 (각각 따로 실행되고, 실패는 카드마다 표시) */
+  const approveAll = useCallback(
+    async (messageId: string) => {
+      const pending = messagesRef.current.find((m) => m.id === messageId)?.plans?.filter((p) => p.status === "pending") ?? [];
+      for (const p of pending) await decide(messageId, p, "approve");
+    },
+    [decide]
+  );
+
   /** 새 대화: 받는 중인 답변은 중단 */
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -151,7 +160,7 @@ export function useAgentChat({ onLeadsChanged }: { onLeadsChanged: () => void })
     setMessages([]);
   }, []);
 
-  return { messages, busy, send, approve, cancel, reset };
+  return { messages, busy, send, approve, approveAll, cancel, reset };
 }
 
 export type AgentChat = ReturnType<typeof useAgentChat>;

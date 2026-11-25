@@ -13,6 +13,7 @@ import type {
 
 const STAGE_IDS = new Set<string>(STAGES.map((s) => s.id));
 const PRIORITIES = new Set<string>(["high", "mid", "low"]);
+export const isPriority = (v: unknown): v is Priority => typeof v === "string" && PRIORITIES.has(v);
 
 export const isStage = (v: unknown): v is StageId => typeof v === "string" && STAGE_IDS.has(v);
 

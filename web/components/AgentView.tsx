@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
-import type { AgentPlan, AgentPlanStatus, AgentStep, AgentTarget } from "@/lib/types";
+import type { AgentMessage, AgentPlan, AgentPlanStatus, AgentStep, AgentTarget } from "@/lib/types";
 import type { AgentChat } from "@/lib/useAgentChat";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { Alert, Badge, Button, EmptyState, Icon, Textarea, type BadgeTone } from "./ui";
@@ -13,12 +13,11 @@ interface Props {
   onOpenTarget: (target: AgentTarget) => void;
 }
 
-// 실행 엔진(AIC-3) 전까지는 조회형 예시만 (변경 요청 예시는 승인 실행이 생기면 추가)
 const SUGGESTIONS = [
   "오늘 할 일 정리해줘",
   "이번 주 미팅 일정 알려줘",
   "협상 단계 리드 중 금액이 큰 순서로 보여줘",
-  "최근 단계가 바뀐 리드는?",
+  "오션핀테크 리드를 협상 단계로 옮겨줘",
 ];
 
 const STEP_BADGE: Record<AgentStep["status"], { tone: BadgeTone; label: string }> = {
@@ -42,6 +41,9 @@ const TARGET_LABEL: Record<AgentTarget["kind"], string> = {
   document: "문서 보기",
   event: "일정 보기",
 };
+
+/** 승인 대기 중인 계획 수 (2개 이상이면 "모두 승인") */
+const pendingCount = (m: AgentMessage) => m.plans?.filter((p) => p.status === "pending").length ?? 0;
 
 /** 진행 단계 목록 (도구 호출 상태) */
 function StepList({ steps }: { steps: AgentStep[] }) {
@@ -115,8 +117,8 @@ function PlanCard({
               <span className="spacer" />
               <Button size="sm" variant="ghost" disabled={running} onClick={onCancel}>취소</Button>
               <Button size="sm" variant="secondary" icon="edit" disabled={running} onClick={onRevise}>수정 요청</Button>
-              <Button size="sm" variant="primary" disabled={running} onClick={onApprove}>
-                {running ? "처리 중…" : "승인"}
+              <Button size="sm" variant={plan.danger ? "danger" : "primary"} disabled={running} onClick={onApprove}>
+                {running ? "처리 중…" : plan.danger ? "삭제 승인" : "승인"}
               </Button>
             </>
           )}
@@ -128,7 +130,7 @@ function PlanCard({
 
 /** Sales Agent: 대화로 요청하면 조회는 바로, 변경은 실행 계획 카드로 승인받아 처리한다 */
 export default function AgentView({ chat, onOpenTarget }: Props) {
-  const { messages, busy, send, approve, cancel, reset } = chat;
+  const { messages, busy, send, approve, approveAll, cancel, reset } = chat;
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -161,7 +163,7 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
     <section className="agent" aria-label="Sales Agent">
       <div className="agent-head">
         <Badge tone="brand">Agent</Badge>
-        <span className="agent-desc muted">지금은 조회만 할 수 있어요. 데이터 변경(실행 계획 승인)은 곧 지원됩니다.</span>
+        <span className="agent-desc muted">조회는 바로 답하고, 리드 변경은 실행 계획을 보여드린 뒤 승인하면 처리합니다.</span>
         {messages.length > 0 && (
           <Button size="sm" variant="ghost" icon="refresh" onClick={reset}>
             새 대화
@@ -174,7 +176,7 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
           <EmptyState
             icon={<Icon name="agent" size={28} />}
             title="무엇을 도와드릴까요?"
-            description="리드·회사·연락처·미팅·메일·일정에 대해 물어보세요."
+            description="리드 조회·생성·수정·단계 이동·삭제를 말로 요청하세요."
             action={
               <div className="agent-suggestions">
                 {SUGGESTIONS.map((s) => (
@@ -204,6 +206,13 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
                   onOpenTarget={onOpenTarget}
                 />
               ))}
+              {pendingCount(m) >= 2 && (
+                <div className="plan-all">
+                  <Button size="sm" variant="primary" onClick={() => approveAll(m.id)}>
+                    모두 승인 ({pendingCount(m)})
+                  </Button>
+                </div>
+              )}
               {m.error && <Alert tone="danger">{m.error}</Alert>}
             </div>
           )

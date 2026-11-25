@@ -6,8 +6,8 @@ import { featureState, getSessionUser, type ConnectionState, type SessionUser } 
 import { findRelevantEmails, searchStoredEmails, summarizePending, syncLeadEmails, type EmailContext } from "./emailStore";
 import { leadTarget } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
-import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
-import type { AgentStep, ChatMessage, ContactRole } from "./types";
+import { chatCompletion, chatWithTools, maskChanges, maskPii, type ChatMessageParam, type ToolDef } from "./openai";
+import type { ChatMessage, ContactRole } from "./types";
 import { parseDateRange, UUID_RE } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
@@ -166,7 +166,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     leadId: e.leadId,
     company: e.company,
     type: e.type,
-    changes: readableChanges(e.changes),
+    changes: readableChanges(maskChanges(e.changes)),
     ...(e.by ? { by: e.by } : {}),
   }));
 
@@ -265,8 +265,27 @@ function calendarRules(state: CalendarState, userName: string): string {
   도구 결과의 crmCompany가 있으면 CRM 리드와 연결된 일정입니다. 제목이 "[AI CRM]"으로 시작하면 CRM에서 등록한 일정입니다.`;
 }
 
-function systemPrompt(context: string, state: CalendarState = "none", userName = "", gmail: ConnectionState = "none"): string {
-  return `당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 리드 관련 질문에 한국어로 간결하게 답합니다.
+const READ_ONLY_RULES = `- 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
+  일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.`;
+
+const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, 캘린더·이메일 조회)는 바로 실행됩니다. 최신 값이 필요하면 먼저 조회하세요.
+- 리드 생성·수정·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead 도구를 호출하세요.
+  이 도구는 바로 실행되지 않고 "실행 계획" 카드로 사용자에게 보여지며, 사용자가 승인해야 실행됩니다.
+  절대 "변경했습니다/옮겼습니다"라고 말하지 마세요. "아래 계획을 확인하고 승인하면 반영됩니다"처럼 안내하세요.
+- 리드는 CRM 데이터의 leads.id로 지정하세요. 같은 회사의 리드가 여럿이거나 대상이 불분명하면 도구를 호출하지 말고 어느 리드인지 되물으세요.
+- 금액은 원 단위 정수, 날짜는 YYYY-MM-DD, 단계는 id(${STAGES.map((s) => `${s.id}=${s.name}`).join(", ")})로 넘기세요.
+- 도구가 error를 돌려주면 그 이유를 사용자에게 알리세요.
+- 회사·담당자·이메일·전화번호 변경, 회사·연락처 등록, 일정 등록, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
+
+/** assistant: 조회 전용 AI Assistant, agent: 변경은 실행 계획으로만 만드는 Sales Agent */
+export type PromptMode = "assistant" | "agent";
+
+function systemPrompt(
+  context: string, state: CalendarState = "none", userName = "", gmail: ConnectionState = "none", mode: PromptMode = "assistant"
+): string {
+  return `${mode === "agent"
+    ? "당신은 Pipeline CRM의 Sales Agent입니다. 영업 담당자의 요청을 받아 조회하고, 데이터 변경은 실행 계획으로 제안합니다. 한국어로 간결하게 답합니다."
+    : "당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 리드 관련 질문에 한국어로 간결하게 답합니다."}
 
 규칙:
 - 아래 CRM 데이터만 근거로 답하세요. 데이터에 없는 내용은 추측하지 말고 "기록이 없습니다"라고 답하세요.
@@ -292,8 +311,7 @@ function systemPrompt(context: string, state: CalendarState = "none", userName =
   candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
 ${calendarRules(state, userName)}
 ${gmailRules(gmail, userName)}
-- 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
-  일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.
+${mode === "agent" ? AGENT_RULES : READ_ONLY_RULES}
 - 답변은 짧은 문장이나 "- " 목록으로 작성하고, 마크다운 강조(**, #)는 쓰지 마세요 (일반 텍스트로 표시됩니다).
 
 CRM 데이터(JSON):
@@ -396,69 +414,64 @@ async function runEmailTool(user: SessionUser, args: unknown): Promise<unknown> 
   return { count: emails.length, ...(days ? { days } : {}), ...(note ? { note } : {}), emails };
 }
 
-/**
- * 대화 내역을 받아 OpenAI로 답변을 생성한다.
- * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 쓸 수 있다.
- */
-export async function askAssistant(
-  messages: ChatMessage[],
-  /** 진행 알림 (Sales Agent 스트림용): onContext는 CRM 데이터를 다 읽었을 때, onStep은 도구 호출마다 */
-  opts: { onContext?: () => void; onStep?: (step: AgentStep) => void } = {}
-): Promise<string> {
-  const question = messages.at(-1)?.content ?? "";
-  const user = await getSessionUser();
-  const emails = user ? await findRelevantEmails(user, question) : [];
-  const context = await buildContext(question, emails);
-  opts.onContext?.();
-  const state = featureState(user, "calendar");
-  const gmail = featureState(user, "gmail");
-  const chat = [
-    { role: "system" as const, content: systemPrompt(context, state, user?.name ?? "", gmail) },
-    ...messages.map((m) => ({ ...m, content: maskPii(m.content) })),
-  ];
-  const tools = [...(state === "connected" ? [CALENDAR_TOOL] : []), ...(gmail === "connected" ? [EMAIL_TOOL] : [])];
-  if (!user || tools.length === 0) return chatCompletion(chat, { maxTokens: 1200 });
-
-  const runTool = (name: string, args: unknown): Promise<unknown> =>
-    name === CALENDAR_TOOL.name && state === "connected"
-      ? runCalendarTool(user, args)
-      : name === EMAIL_TOOL.name && gmail === "connected"
-        ? runEmailTool(user, args)
-        : Promise.resolve({ error: "알 수 없는 도구" });
-
-  let stepNo = 0;
-  return chatWithTools(
-    chat,
-    tools,
-    async (name, args) => {
-      const { onStep } = opts;
-      if (!onStep) return runTool(name, args);
-      const step: AgentStep = { id: `tool-${++stepNo}`, label: TOOL_LABELS[name] ?? name, status: "running" };
-      onStep(step);
-      try {
-        const result = await runTool(name, args);
-        onStep({ ...step, status: "done", detail: toolDetail(result) });
-        return result;
-      } catch (e) {
-        onStep({ ...step, status: "failed" });
-        throw e;
-      }
-    },
-    { maxTokens: 1200, maxRounds: 3, timeoutMs: 40_000 }
-  );
+export interface AssistantSession {
+  /** 시스템 프롬프트(CRM 컨텍스트 포함) + 대화 (이메일·전화번호 마스킹) */
+  chat: ChatMessageParam[];
+  /** 연동된 조회 도구 (캘린더·Gmail) */
+  tools: ToolDef[];
+  runTool: (name: string, args: unknown) => Promise<unknown>;
 }
 
-const TOOL_LABELS: Record<string, string> = {
+/**
+ * 대화 준비: 질문과 관련된 CRM 컨텍스트를 모아 시스템 프롬프트를 만들고,
+ * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 붙인다. (AI Assistant·Sales Agent 공용)
+ */
+export async function prepareAssistant(
+  messages: ChatMessage[], user: SessionUser | null, mode: PromptMode = "assistant"
+): Promise<AssistantSession> {
+  const question = messages.at(-1)?.content ?? "";
+  const emails = user ? await findRelevantEmails(user, question) : [];
+  const context = await buildContext(question, emails);
+  const state = featureState(user, "calendar");
+  const gmail = featureState(user, "gmail");
+  const chat: ChatMessageParam[] = [
+    { role: "system", content: systemPrompt(context, state, user?.name ?? "", gmail, mode) },
+    ...messages.map((m) => ({ ...m, content: maskPii(m.content) })),
+  ];
+  const calendarOn = !!user && state === "connected";
+  const gmailOn = !!user && gmail === "connected";
+  const tools = [...(calendarOn ? [CALENDAR_TOOL] : []), ...(gmailOn ? [EMAIL_TOOL] : [])];
+  const runTool = (name: string, args: unknown): Promise<unknown> =>
+    user && name === CALENDAR_TOOL.name && calendarOn
+      ? runCalendarTool(user, args)
+      : user && name === EMAIL_TOOL.name && gmailOn
+        ? runEmailTool(user, args)
+        : Promise.resolve({ error: "알 수 없는 도구" });
+  return { chat, tools, runTool };
+}
+
+/** 대화 내역을 받아 OpenAI로 답변을 생성한다 (조회 전용) */
+export async function askAssistant(messages: ChatMessage[]): Promise<string> {
+  const user = await getSessionUser();
+  const { chat, tools, runTool } = await prepareAssistant(messages, user);
+  if (tools.length === 0) return chatCompletion(chat, { maxTokens: 1200 });
+  return chatWithTools(chat, tools, runTool, { maxTokens: 1200, maxRounds: 3, timeoutMs: 40_000 });
+}
+
+/** 조회 도구의 진행 단계 이름 */
+export const ASSISTANT_TOOL_LABELS: Record<string, string> = {
   [CALENDAR_TOOL.name]: "캘린더 일정 조회",
   [EMAIL_TOOL.name]: "리드 이메일 검색",
 };
 
 /** 도구 결과 → 진행 단계에 보여줄 한 줄 (개수만, 내용은 화면에 내보내지 않음) */
-function toolDetail(result: unknown): string | undefined {
+export function toolDetail(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const r = result as Record<string, unknown>;
   if (typeof r.error === "string") return r.error;
+  if (r.status === "pending_approval") return "승인 대기";
   if (Array.isArray(r.events)) return `일정 ${r.events.length}건`;
-  if (typeof r.count === "number") return `메일 ${r.count}건`;
+  if (Array.isArray(r.emails)) return `메일 ${r.emails.length}건`;
+  if (Array.isArray(r.leads)) return `리드 ${typeof r.count === "number" ? r.count : r.leads.length}건`;
   return undefined;
 }
