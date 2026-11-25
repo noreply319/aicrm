@@ -8,7 +8,7 @@ import { closeDb, events, leadInput, req, resetDb } from "./helpers";
 
 /** AI Assistant(/api/assistant): 같은 실행 엔진을 리드 도구만으로 — 계획 출처 assistant, 이력 via: assistant (AIC-12) */
 
-const ME = "00000000-0000-4000-8000-0000000000e1";
+const ME = "00000000-0000-4000-8000-0000000000e3";
 
 /** OpenAI 응답을 차례로 흉내 (마지막 응답은 계속 반복) */
 function fakeOpenAi(replies: unknown[]) {

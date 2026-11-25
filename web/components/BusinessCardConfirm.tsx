@@ -193,22 +193,22 @@ function CardForm({ card, draft, match, cards, host }: { card: CardItem; draft: 
         {mode === "new" && (
           <div className="form-grid">
             <Field label="회사명" full>
-              <Input value={company.name} onChange={setC("name")} maxLength={100} required />
+              <Input aria-label="회사명" value={company.name} onChange={setC("name")} maxLength={100} required />
             </Field>
             <Field label="웹사이트">
-              <Input value={company.website} onChange={setC("website")} />
+              <Input aria-label="웹사이트" value={company.website} onChange={setC("website")} />
             </Field>
             <Field label="이메일 도메인">
-              <Input value={company.emailDomain} onChange={setC("emailDomain")} placeholder="acme.co.kr" />
+              <Input aria-label="이메일 도메인" value={company.emailDomain} onChange={setC("emailDomain")} placeholder="acme.co.kr" />
             </Field>
             <Field label="대표 전화">
-              <Input value={company.phone} onChange={setC("phone")} />
+              <Input aria-label="대표 전화" value={company.phone} onChange={setC("phone")} />
             </Field>
             <Field label="사업자번호">
-              <Input value={company.businessNumber} onChange={setC("businessNumber")} inputMode="numeric" />
+              <Input aria-label="사업자번호" value={company.businessNumber} onChange={setC("businessNumber")} inputMode="numeric" />
             </Field>
             <Field label="주소" full>
-              <Input value={company.address} onChange={setC("address")} />
+              <Input aria-label="주소" value={company.address} onChange={setC("address")} />
             </Field>
           </div>
         )}
@@ -223,26 +223,26 @@ function CardForm({ card, draft, match, cards, host }: { card: CardItem; draft: 
         )}
         <div className="form-grid">
           <Field label="이름">
-            <Input value={contact.name} onChange={setP("name")} maxLength={50} required />
+            <Input aria-label="이름" value={contact.name} onChange={setP("name")} maxLength={50} required />
           </Field>
           <Field label="직함">
-            <Input value={contact.title} onChange={setP("title")} maxLength={50} />
+            <Input aria-label="직함" value={contact.title} onChange={setP("title")} maxLength={50} />
           </Field>
           <Field label="부서" full>
-            <Input value={contact.department} onChange={setP("department")} maxLength={50} />
+            <Input aria-label="부서" value={contact.department} onChange={setP("department")} maxLength={50} />
           </Field>
           <Field label="이메일" full>
-            <Input type="email" value={contact.email} onChange={setP("email")} />
+            <Input aria-label="이메일" type="email" value={contact.email} onChange={setP("email")} />
           </Field>
           <Field label="휴대폰">
-            <Input type="tel" value={contact.mobile} onChange={setP("mobile")} />
+            <Input aria-label="휴대폰" type="tel" value={contact.mobile} onChange={setP("mobile")} />
           </Field>
           <Field label="유선 전화">
-            <Input type="tel" value={contact.officePhone} onChange={setP("officePhone")} />
+            <Input aria-label="유선 전화" type="tel" value={contact.officePhone} onChange={setP("officePhone")} />
           </Field>
           {contact.linkedinUrl && (
             <Field label="LinkedIn" full>
-              <Input value={contact.linkedinUrl} onChange={setP("linkedinUrl")} />
+              <Input aria-label="LinkedIn" value={contact.linkedinUrl} onChange={setP("linkedinUrl")} />
             </Field>
           )}
         </div>

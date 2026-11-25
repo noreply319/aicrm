@@ -29,7 +29,8 @@ test("Sales Agent: 메뉴 이동 → 요청 → 진행 단계·답변·실행 �
 
   await page.goto("/pipeline");
   await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "Sales Agent" }).click();
-  await expect(page).toHaveURL(/\/agent$/);
+  // 처음 여는 /agent는 dev 서버가 컴파일하느라 오래 걸릴 수 있다
+  await expect(page).toHaveURL(/\/agent$/, { timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Sales Agent" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("무엇을 도와드릴까요?")).toBeVisible();
   // 이 화면에서는 조회형 Assistant(헤더 버튼·다시 열기 탭)를 숨긴다

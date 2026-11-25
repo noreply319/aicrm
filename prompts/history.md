@@ -997,3 +997,15 @@
 > (선택: 없는 회사 연락처는 카드 하나 / 기능 브랜치만 push / 회사·연락처 삭제 포함)
 
 - 결과: 브랜치 `feat/assistant-lead-write` → `feat/assistant-crm-write`로 변경, AIC-12 커밋. AIC-13: Assistant 허용 도구에 회사·연락처 등록·수정·담당 지정 추가, 새 도구 `delete_company`(연결 리드 있으면 거부)·`delete_contact`(연결만 끊음, Sales Agent에도), 삭제 로직 `deleteCompany`·`deleteContact`로 API와 공용, `create_contact` `newCompany`(회사+연락처 한 트랜잭션), 전파 이력 출처(`via`/`by`), 프롬프트 `CRM_RULES`·`PLAN_RULES` 공용. build·tsc 통과, integration 테스트 작성·미실행. 리뷰 반영(카운트 헬퍼·삭제 안내 공용, 프롬프트 순서). main(AIC-10 명함) 병합 충돌 해결(AgentView·AssistantPanel 명함+AgentTurn, agentCrmTools import, CLAUDE.md). `feat/assistant-crm-write` push → Vercel 미리보기 빌드 성공. main 병합·운영 DB 스키마 적용은 안 함
+
+## 134. 2026-11-25 — DB 반영·테스트·운영 스키마·main 병합·Jira 진행
+
+> 위에 다 진행해줘.
+
+- 결과: 로컬 `ai_crm` 문서 테이블 3개 소유자를 crm_app으로 바꾼 뒤 `db:init`(source 컬럼 추가). 운영 Supabase에 `schema.sql` 적용(`agent_actions.source` 확인). Jira AIC-12·13 → In Progress + 구현 코멘트. integration 테스트 실행은 auto mode 권한 검사로 막혀 미실행 → main 병합(운영 배포)은 테스트 확인 후로 보류
+
+## 135. 2026-11-25 — 테스트 실행 후 main 병합·배포
+
+> 위에 명령어도 진행해줘.
+
+- 결과: 메모리 skip-tests에 "명시 요청 시 실행" 예외 추가. integration 119·unit 89·e2e 43 통과. 수정: assistantPlan 테스트 사용자 id가 agentLimits와 겹쳐 Gmail 권한 테스트 실패 → id 변경, 명함 확인 카드 입력에 aria-label(AIC-10 e2e가 main에서도 실패하던 원인), e2e 첫 화면 컴파일 대기(global-setup 예열 + /agent URL 대기 30초)

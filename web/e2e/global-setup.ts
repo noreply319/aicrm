@@ -26,4 +26,17 @@ export default async function setup() {
   } finally {
     await c.end();
   }
+  await warmUp();
+}
+
+/**
+ * dev 서버는 화면을 처음 열 때 컴파일해 첫 테스트가 시간 초과로 실패할 수 있다 → 주요 화면을 미리 한 번씩 연다.
+ * 서버가 아직 안 떠 있거나 실패해도 테스트는 그대로 진행한다.
+ */
+async function warmUp() {
+  const port = process.env.E2E_PORT ?? "3100";
+  const headers = { cookie: `crm_session=${E2E_SESSION_TOKEN}` };
+  for (const path of ["/", "/pipeline", "/agent", "/companies", "/contacts", "/meetings", "/contracts", "/calendar"]) {
+    await fetch(`http://localhost:${port}${path}`, { headers, signal: AbortSignal.timeout(120_000) }).catch(() => undefined);
+  }
 }
