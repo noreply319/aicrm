@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { ChatMessage, Me } from "@/lib/types";
 import { useAutoGrow } from "@/lib/useAutoGrow";
+import { useBusinessCards } from "@/lib/useBusinessCards";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import BusinessCardAttach, { cardDropProps } from "./BusinessCardAttach";
+import BusinessCardConfirm, { type CardHost } from "./BusinessCardConfirm";
 import QuoteChat from "./QuoteChat";
 import { Alert, Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
@@ -18,6 +21,8 @@ interface Props {
   /** 견적서 탭: 발송 후 단계 이동 등으로 리드가 바뀌었을 때 */
   onLeadsChanged: () => void;
   onNotice: (msg: string) => void;
+  /** 명함 → 회사·연락처 등록 */
+  cardHost: CardHost;
 }
 
 type Mode = "chat" | "quote";
@@ -29,7 +34,7 @@ const SUGGESTIONS = [
   "현재 파이프라인 금액 합계는?",
 ];
 
-export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, onLeadsChanged, onNotice }: Props) {
+export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, onLeadsChanged, onNotice, cardHost }: Props) {
   const open = home || openProp;
   const [mode, setMode] = useState<Mode>("chat");
   /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
@@ -45,10 +50,19 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
   const mobile = useMediaQuery(MOBILE_QUERY);
 
-  // 새 메시지가 오면 맨 아래로 스크롤
+  /** 명함 카드: 화면 전용 (OpenAI로 보내는 대화에는 넣지 않는다) */
+  const cards = useBusinessCards();
+  const addCards = (files: File[]) => {
+    const warn = cards.addFiles(files, messages.length);
+    if (warn) onNotice(warn);
+  };
+  const cardsAt = (index: number) =>
+    cards.cards.filter((c) => Math.min(c.afterIndex, messages.length) === index).map((c) => <BusinessCardConfirm key={c.id} card={c} cards={cards} host={cardHost} />);
+
+  // 새 메시지·명함 카드가 오면 맨 아래로 스크롤
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, cards.cards.length]);
 
   const send = async (text: string) => {
     const question = text.trim();
@@ -99,8 +113,8 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
           }}
         />
         <span className="spacer" />
-        {mode === "chat" && messages.length > 0 && (
-          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { setMessages([]); setError(null); }}>
+        {mode === "chat" && (messages.length > 0 || cards.cards.length > 0) && (
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { setMessages([]); setError(null); cards.clear(); }}>
             새 대화
           </Button>
         )}
@@ -114,10 +128,10 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       )}
 
       <div className="assistant-chat" hidden={mode !== "chat"}>
-      <div className="assistant-messages" ref={listRef}>
-        {messages.length === 0 && (
+      <div className="assistant-messages" ref={listRef} {...cardDropProps(addCards)}>
+        {messages.length === 0 && cards.cards.length === 0 && (
           <div className="assistant-empty">
-            <p>리드가 언제 생성되고 어떻게 바뀌었는지 물어보세요.</p>
+            <p>리드가 언제 생성되고 어떻게 바뀌었는지 물어보세요. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
             <div className="assistant-suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} className="assistant-chip" onClick={() => send(s)}>
@@ -127,10 +141,12 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
             </div>
           </div>
         )}
+        {cardsAt(0)}
         {messages.map((m, i) => (
-          <div key={i} className={`bubble bubble-${m.role}`}>
-            {m.content}
-          </div>
+          <Fragment key={i}>
+            <div className={`bubble bubble-${m.role}`}>{m.content}</div>
+            {cardsAt(i + 1)}
+          </Fragment>
         ))}
         {loading && <div className="bubble bubble-assistant bubble-loading">답변 작성 중…</div>}
       </div>
@@ -144,6 +160,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
           send(input);
         }}
       >
+        <BusinessCardAttach onFiles={addCards} />
         <Textarea
           ref={inputRef}
           value={input}

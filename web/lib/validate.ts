@@ -484,3 +484,39 @@ export function parseSendInput(body: unknown):
   if (!/\.pdf$/i.test(fileName)) fileName += ".pdf";
   return { ok: true, data: { to, cc, subject, body: text, fileName } };
 }
+
+/* ───────── 명함 (AIC-10) ───────── */
+
+/** 이미지 형식은 확장자·Content-Type이 아니라 파일 앞부분(매직 바이트)으로 판단한다. 지원: JPEG·PNG·WebP */
+export function sniffImage(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
+  const at = (i: number, ...v: number[]) => v.every((x, k) => bytes[i + k] === x);
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  return null;
+}
+
+/**
+ * 명함 저장 요청: { companyId } 또는 { company: 새 회사 } (둘 다 없으면 회사 없이), { contact }.
+ * 회사·연락처 값은 기존 회사·연락처 검증을 그대로 쓴다. 연락처의 companyId는 서버가 정한다.
+ */
+export function parseBusinessCardSave(
+  body: unknown
+): { ok: true; data: { companyId: string | null; company: CompanyInput | null; contact: ContactInput } } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "잘못된 요청입니다" };
+  const b = body as Record<string, unknown>;
+
+  const companyId = optionalId(b.companyId);
+  if (companyId === false) return { ok: false, error: "회사가 올바르지 않습니다" };
+  let company: CompanyInput | null = null;
+  if (!companyId && b.company !== null && b.company !== undefined) {
+    const c = parseCompanyInput(b.company);
+    if (!c.ok) return c;
+    company = c.data;
+  }
+
+  if (!b.contact || typeof b.contact !== "object") return { ok: false, error: "연락처 정보가 없습니다" };
+  const contact = parseContactInput({ ...(b.contact as Record<string, unknown>), companyId: null });
+  if (!contact.ok) return contact;
+  return { ok: true, data: { companyId, company, contact: contact.data } };
+}

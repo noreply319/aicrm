@@ -31,6 +31,8 @@ const PATHS = {
   panelLeft: "M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2",
   panelLeftOpen: "M4 4h16v16H4zM9 4v16M13 10l2 2-2 2",
   panelRight: "M4 4h16v16H4zM15 4v16M9 10l2 2-2 2",
+  /** 명함 촬영·업로드 */
+  camera: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 

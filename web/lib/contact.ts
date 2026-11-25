@@ -26,7 +26,8 @@ export function normalizeUrl(v: string): string | null {
 }
 
 /** 휴대폰 번호인지 (숫자만 남겼을 때 01로 시작) — schema.sql 마이그레이션과 같은 규칙 */
-export const isMobileNumber = (v: string) => v.replace(/\D/g, "").startsWith("01");
+// 국가 번호 표기(+82 10-…)도 국내 표기(010-…)로 바꿔 판단
+export const isMobileNumber = (v: string) => v.replace(/\D/g, "").replace(/^82(?=1)/, "0").startsWith("01");
 
 /** 리드에 저장할 담당자 사본: 이름·직함·이메일·전화(휴대폰, 없으면 유선 전화) */
 export const leadCopyOf = (c: Pick<Contact, "name" | "title" | "email" | "mobile" | "officePhone">) => ({

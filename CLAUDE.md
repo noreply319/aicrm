@@ -88,6 +88,7 @@ AI CRM/                      # git 저장소 루트
     │   ├── company.ts       # 공용 순수 함수: 회사명 정규화, 사업자번호·도메인, 검색, 회사별 집계 · useCompanies.ts: 클라이언트 훅
     │   ├── contacts.ts      # 서버 전용: 연락처 컬럼/매핑, 리드 담당자 사본 채움·전파, 중복(409) 처리
     │   ├── contact.ts       # 공용 순수 함수: 이름 키, 담당자 사본, 검색, 연락처별 집계 · useContacts.ts: 클라이언트 훅
+    │   ├── businessCard.ts  # 서버 전용: 명함 이미지 분석(OpenAI 비전)·기존 회사/연락처 찾기·한 트랜잭션 저장 · useBusinessCards.ts·imageFile.ts: 클라이언트
     │   ├── types.ts · constants.ts · format.ts
     └── db/
         ├── schema.sql       # 테이블/인덱스/RLS (IF NOT EXISTS로 재실행 안전)
@@ -131,7 +132,7 @@ AI CRM/                      # git 저장소 루트
 - 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
 - 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
 - 리드를 변경하는 API는 같은 트랜잭션에서 `lead_events`에 이력을 남김 (`lib/events.ts`의 `withTransaction` + `recordEvent`). 새 변경 API도 동일하게.
-- AI Assistant는 조회 전용. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음.
+- AI Assistant는 조회 전용(예외: 명함 확인 카드에서 사용자가 `생성`을 누를 때 회사·연락처 저장). OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음 — **유일한 예외는 명함 이미지 분석**(아래 "명함").
 
 ## 환경 변수 / DB 연결
 
@@ -271,6 +272,15 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 엔진 `lib/agent.ts`: 조회 도구는 바로, 변경 도구는 `agent_actions`에 `pending`으로 저장 → `decideAction`(본인만·한 번만·1시간 만료·`expect` 충돌 확인·같은 트랜잭션 실행, 커밋 후 `after`·`next`). 도구는 `lib/agentToolKit.ts` 형식(prepare/execute)으로 `agentTools.ts`(리드)·`agentCrmTools.ts`(회사·연락처)·`agentMeetingTools.ts`(노트·캘린더)·`agentMailTools.ts`(메일·문서)에 추가.
 - 변경 로직은 Route Handler와 공용(`leadOps`·`companyOps`·`contactOps`·`noteOps`·`scheduleOps`·`docOps`) — 이력은 `via: "agent"`.
 - 새 도구 규칙: 개인정보(이메일·전화 등)는 인자로 받지도 결과로 보내지도 않는다, 메일 받는 사람은 서버가 정한다, 되돌릴 수 없는 작업은 `danger`, 발송 도구는 `sends`(시간당 제한). 한도는 `lib/agentLimits.ts`.
+
+## 명함 → 회사·연락처 (AIC-10)
+
+- 화면: AI Assistant 패널(`일반 대화`)·Sales Agent 입력창 왼쪽 카메라 버튼(`BusinessCardAttach`, `capture` 속성 없이 사진 찍기/보관함 선택, 여러 장 → 장마다 카드), 대화 영역 드래그 앤 드롭. 대화 안 확인 카드 `BusinessCardConfirm`(읽는 중 → 확인·수정 → 생성 → 연락처·회사 보기·`이 담당자로 리드 만들기`, `뒷면 추가`로 2장 함께 다시 분석). 카드는 **화면 전용**(`useBusinessCards`, `afterIndex`로 메시지 사이에 표시) — OpenAI 대화·Agent 도구로 보내지 않는다. Agent 화면 카드는 CrmApp이 가짐(화면 이동 후에도 유지).
+- 클라이언트: `lib/imageFile.ts` `shrinkImage`(긴 변 2000px JPEG, 1장 2MB 이하 — Vercel 요청 4.5MB 한도).
+- API: `POST /api/business-cards/extract`(multipart `image` 1~2장, 매직 바이트 `sniffImage`로 JPEG·PNG·WebP만, DB 저장·이미지 보관 없음 → `{ draft, match }`, 이름·회사명을 못 읽으면 422), `POST /api/business-cards`(`{ companyId | company, contact }` → `withTransaction`으로 회사 생성(같은 이름·도메인 회사가 있으면 연결) + 연락처 생성, 같은 이메일이면 409 + `{ error, contact }`이고 회사 생성도 되돌림).
+- 서버 `lib/businessCard.ts`: 비전 호출(`ChatContentPart` `image_url` data URL), `parseCardJson`(전화 표시 제거·휴대폰/유선 정리, 회사 도메인 = 회사 메일 → 웹사이트, 무료 메일 제외), `findCardMatch`(`findCompanyMatch`·`findContactByEmail`·`findSamePerson` — Agent 중복 확인과 공용), `saveBusinessCard`(연락처 태그 `명함`·메모 `명함으로 등록 (날짜)`, 별도 이력 테이블 없음).
+- 같은 이메일 연락처: 덮어쓰지 않고 `빈 항목만 채우기`(부서·직함·휴대폰·유선·LinkedIn·회사, 기존 `PATCH /api/contacts/[id]`).
+- 개인정보: 명함 이미지에는 이메일·전화가 있어 OpenAI 전송 원칙의 예외 — 카드에 "AI(OpenAI)로 분석, 저장 안 함" 안내. 분석 결과·이미지는 로그에 남기지 않는다.
 
 ## 참고 문서
 

@@ -86,6 +86,48 @@ export interface Contact {
 
 export type ContactInput = Omit<Contact, "id" | "createdAt" | "updatedAt">;
 
+/* ───────── 명함 → 회사·연락처 (AIC-10) ─────────
+ * POST /api/business-cards/extract (multipart image 1~2장: 앞·뒷면) → BusinessCardExtract (저장 안 함)
+ * POST /api/business-cards BusinessCardSaveInput → BusinessCardSaved (회사·연락처를 한 트랜잭션으로 생성)
+ *   같은 이메일 연락처가 있으면 409 + { error, contact: 기존 연락처 } (회사 생성도 되돌림) */
+
+/** 명함에서 읽은 값 (읽지 못한 항목은 빈 문자열) */
+export interface BusinessCardDraft {
+  company: { name: string; website: string; emailDomain: string; phone: string; address: string; businessNumber: string };
+  contact: { name: string; department: string; title: string; email: string; mobile: string; officePhone: string; linkedinUrl: string };
+}
+
+/** 명함과 같은 기존 회사·연락처 */
+export interface BusinessCardMatch {
+  /** 이름(정규화) 또는 이메일 도메인이 같은 회사 */
+  company: Company | null;
+  companyByDomain: boolean;
+  /** 같은 이메일의 연락처 → 새로 만들지 않고 빈 항목 채우기 제안 */
+  contactByEmail: Contact | null;
+  /** 같은 회사에 같은 이름의 연락처 (이메일이 다르거나 없을 때 참고) */
+  sameName: Contact | null;
+}
+
+export interface BusinessCardExtract {
+  draft: BusinessCardDraft;
+  match: BusinessCardMatch;
+}
+
+export interface BusinessCardSaveInput {
+  /** 기존 회사에 연결 (company보다 우선) */
+  companyId: string | null;
+  /** 새 회사 (같은 이름·도메인 회사가 있으면 그 회사에 연결) */
+  company: Partial<CompanyInput> | null;
+  contact: Partial<ContactInput> & { name: string };
+}
+
+export interface BusinessCardSaved {
+  company: Company | null;
+  /** 이번에 새로 만든 회사인지 */
+  companyCreated: boolean;
+  contact: Contact;
+}
+
 /** 담당 영업 선택용 팀원 */
 export interface TeamMember {
   id: string;

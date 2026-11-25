@@ -1,5 +1,5 @@
 import "server-only";
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { Company, CompanyInput } from "./types";
 
 export const COMPANY_COLUMNS = `
@@ -41,6 +41,26 @@ async function findBy(client: PoolClient, where: string, value: unknown, selfId:
     [value, selfId]
   );
   return rows[0] ? toCompany(rows[0]) : null;
+}
+
+/**
+ * 같은 회사 찾기: 정규화 이름(name_key)이나 이메일 도메인이 같은 회사 (도메인 일치 우선).
+ * Sales Agent 중복 확인·명함 등록이 같이 쓴다.
+ */
+export async function findCompanyMatch(
+  db: Pool | PoolClient, d: { name: string; emailDomain: string | null }, selfId: string | null = null
+): Promise<{ company: Company; byDomain: boolean } | null> {
+  const { rows } = await db.query<CompanyRow & { byDomain: boolean }>(
+    `SELECT ${COMPANY_COLUMNS}, coalesce(email_domain = $2, false) AS "byDomain" FROM companies
+     WHERE ((length($1) > 0 AND name_key = crm_company_key($1)) OR ($2::text IS NOT NULL AND email_domain = $2))
+       AND ($3::uuid IS NULL OR id <> $3)
+     ORDER BY "byDomain" DESC
+     LIMIT 1`,
+    [d.name, d.emailDomain, selfId]
+  );
+  if (!rows[0]) return null;
+  const { byDomain, ...row } = rows[0];
+  return { company: toCompany(row), byDomain };
 }
 
 /** 담당 영업이 실제 사용자인지 확인 (없는 id면 false) */
