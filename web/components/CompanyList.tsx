@@ -111,6 +111,7 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
         <EmptyState icon="🔍" title="조건에 맞는 회사가 없어요" description="검색어나 필터를 바꿔 보세요." />
       ) : (
         <>
+          <div className="table-wrap">
           <table className="company-table">
             <thead>
               <tr>
@@ -143,6 +144,7 @@ export default function CompanyList({ companies, stats, team, meId, query, ready
               })}
             </tbody>
           </table>
+          </div>
           {/* 모바일: 카드 목록 */}
           <div className="company-cards">
             {visible.map((c) => {

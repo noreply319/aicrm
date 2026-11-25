@@ -1058,7 +1058,9 @@ textarea.control.tpl-source { min-height: 520px; padding: 14px; font-family: ui-
 .company-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 
 /* 회사 목록 */
-.companies { flex: 1; padding: 16px 24px 24px; max-width: 1200px; width: 100%; }
+/* 목록(회사·연락처)은 다른 메뉴처럼 메인 영역 전체 폭. 상세(2단 카드)만 읽기 좋은 폭으로 제한 */
+.companies { flex: 1; padding: 16px 24px 24px; width: 100%; min-width: 0; }
+.companies.company-detail { max-width: 1200px; }
 .company-table {
   width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; font-size: 13.5px;
@@ -1109,7 +1111,7 @@ textarea.control.tpl-source { min-height: 520px; padding: 14px; font-family: ui-
 }
 @media (max-width: 640px) {
   .companies { padding: 12px 12px 88px; }
-  .company-table { display: none; }
+  .table-wrap, .company-table { display: none; }
   .company-cards { display: flex; flex-direction: column; gap: 8px; }
   .company-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .company-lead { flex-wrap: wrap; }
@@ -1138,8 +1140,9 @@ textarea.control.tpl-source { min-height: 520px; padding: 14px; font-family: ui-
 .company-side { display: flex; flex-direction: column; gap: 14px; }
 .contact-title-text { display: flex; flex-direction: column; gap: 2px; }
 .contact-lead-summary { font-size: 12.5px; margin-top: 4px; }
-/* Assistant 패널이 열려 좁아져도 이름·회사·직함이 글자 단위로 줄바꿈되지 않게: 줄바꿈 없이 가로 스크롤 */
-.contact-table-wrap { overflow-x: auto; border-radius: var(--radius); }
+/* 메뉴 접힘·Assistant 패널로 좁아져도 표가 메인 밖으로 넘치지 않게: 표만 가로 스크롤
+   (연락처는 이름·회사·직함이 글자 단위로 줄바꿈되지 않게 nowrap) */
+.table-wrap { overflow-x: auto; border-radius: var(--radius-lg); }
 .contact-table td:nth-child(-n+5), .contact-table th { white-space: nowrap; }
 .contact-table .nowrap { white-space: nowrap; }
 .contact-table a, .company-card a { color: var(--primary-text); text-decoration: none; }
