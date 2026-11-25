@@ -996,4 +996,4 @@
 
 > (선택: 없는 회사 연락처는 카드 하나 / 기능 브랜치만 push / 회사·연락처 삭제 포함)
 
-- 결과: 브랜치 `feat/assistant-lead-write` → `feat/assistant-crm-write`로 변경, AIC-12 커밋. AIC-13: Assistant 허용 도구에 회사·연락처 등록·수정·담당 지정 추가, 새 도구 `delete_company`(연결 리드 있으면 거부)·`delete_contact`(연결만 끊음, Sales Agent에도), 삭제 로직 `deleteCompany`·`deleteContact`로 API와 공용, `create_contact` `newCompany`(회사+연락처 한 트랜잭션), 전파 이력 출처(`via`/`by`), 프롬프트 `CRM_RULES`·`PLAN_RULES` 공용. build·tsc 통과, integration 테스트 작성·미실행
+- 결과: 브랜치 `feat/assistant-lead-write` → `feat/assistant-crm-write`로 변경, AIC-12 커밋. AIC-13: Assistant 허용 도구에 회사·연락처 등록·수정·담당 지정 추가, 새 도구 `delete_company`(연결 리드 있으면 거부)·`delete_contact`(연결만 끊음, Sales Agent에도), 삭제 로직 `deleteCompany`·`deleteContact`로 API와 공용, `create_contact` `newCompany`(회사+연락처 한 트랜잭션), 전파 이력 출처(`via`/`by`), 프롬프트 `CRM_RULES`·`PLAN_RULES` 공용. build·tsc 통과, integration 테스트 작성·미실행. 리뷰 반영(카운트 헬퍼·삭제 안내 공용, 프롬프트 순서). main(AIC-10 명함) 병합 충돌 해결(AgentView·AssistantPanel 명함+AgentTurn, agentCrmTools import, CLAUDE.md). `feat/assistant-crm-write` push → Vercel 미리보기 빌드 성공. main 병합·운영 DB 스키마 적용은 안 함
