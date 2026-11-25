@@ -42,7 +42,7 @@ test("리드 모달: 회사의 연락처를 고르면 담당자 정보가 채워
   const acme = await createCompany(request, { name: "에이스상사" });
   await createContact(request, { name: "김민수", companyId: acme.id, title: "팀장", email: "minsu@acme.co.kr", mobile: "010-1111-2222" });
   await createContact(request, { name: "김태희", title: "PM" });
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.getByRole("button", { name: "새 리드" }).click();
 
   // 회사 없이 담당자 검색 → 선택하면 회사 자동 채움
@@ -65,7 +65,7 @@ test("리드 모달 위에서 연락처를 수정하면 리드 담당자 정보�
   const acme = await createCompany(request, { name: "에이스상사" });
   const c = await createContact(request, { name: "김민수", companyId: acme.id, title: "팀장", email: "minsu@acme.co.kr" });
   await request.post("/api/leads", { data: { companyId: acme.id, contactId: c.id, value: 1000 } });
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.locator(".card").filter({ hasText: "에이스상사" }).click();
   await page.getByRole("button", { name: "연락처 수정" }).click();
   const contactDialog = page.getByRole("dialog", { name: "김민수 수정" });

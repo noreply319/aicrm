@@ -1,14 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@/lib/types";
-import { Alert, Badge, Button, Icon, IconButton, Textarea } from "./ui";
+import type { ChatMessage, Me } from "@/lib/types";
+import QuoteChat from "./QuoteChat";
+import { Alert, Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
 interface Props {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  /** 첫 화면(/): 메인 영역 전체를 쓰는 대화 화면 (숨기기 없음) */
+  home: boolean;
+  me: Me | null;
+  /** 견적서 탭: 발송 후 단계 이동 등으로 리드가 바뀌었을 때 */
+  onLeadsChanged: () => void;
+  onNotice: (msg: string) => void;
 }
+
+type Mode = "chat" | "quote";
 
 const SUGGESTIONS = [
   "이번 주에 생성된 리드 알려줘",
@@ -17,7 +26,11 @@ const SUGGESTIONS = [
   "현재 파이프라인 금액 합계는?",
 ];
 
-export default function AssistantPanel({ open, onOpen, onClose }: Props) {
+export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, onLeadsChanged, onNotice }: Props) {
+  const open = home || openProp;
+  const [mode, setMode] = useState<Mode>("chat");
+  /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
+  const [quoteSeen, setQuoteSeen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,21 +75,35 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
   // 닫아도 대화가 유지되도록 언마운트하지 않고 오른쪽으로 밀어 숨긴다 (inert: 숨긴 동안 포커스 불가)
   return (
     <>
-    <aside className={`assistant${open ? "" : " closed"}`} aria-label="AI Assistant" aria-hidden={!open} inert={!open}>
+    <aside className={`assistant${open ? "" : " closed"}${home ? " assistant-home" : ""}`} aria-label="AI Assistant" aria-hidden={!open} inert={!open}>
       <div className="assistant-head">
-        {/* 모바일 전체 화면 채팅: 왼쪽 뒤로 가기로 원래 화면 복귀 */}
-        <IconButton className="assistant-back" icon="chevronLeft" label="채팅 닫기" size="sm" onClick={onClose} />
-        <div className="assistant-title">
-          <Badge tone="brand">AI</Badge> Assistant
-        </div>
-        {messages.length > 0 && (
+        <Badge tone="brand">AI</Badge>
+        <Tabs
+          className="assistant-tabs"
+          label="대화 종류"
+          items={[{ id: "chat", label: "일반 대화" }, { id: "quote", label: "견적서" }]}
+          value={mode}
+          onChange={(m) => {
+            setMode(m);
+            if (m === "quote") setQuoteSeen(true);
+          }}
+        />
+        <span className="spacer" />
+        {mode === "chat" && messages.length > 0 && (
           <Button size="sm" variant="ghost" icon="refresh" onClick={() => { setMessages([]); setError(null); }}>
             새 대화
           </Button>
         )}
-        <IconButton className="assistant-hide" icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />
+        {!home && <IconButton className="assistant-hide" icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />}
       </div>
 
+      {quoteSeen && (
+        <div className="assistant-quote" hidden={mode !== "quote"}>
+          <QuoteChat me={me} onLeadsChanged={onLeadsChanged} onNotice={onNotice} />
+        </div>
+      )}
+
+      <div className="assistant-chat" hidden={mode !== "chat"}>
       <div className="assistant-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="assistant-empty">
@@ -125,11 +152,13 @@ export default function AssistantPanel({ open, onOpen, onClose }: Props) {
           전송
         </Button>
       </form>
+      </div>
     </aside>
     {/* 숨긴 동안 오른쪽 가장자리 탭으로 다시 열기 (데스크톱) */}
     <button
       type="button"
       className={`assistant-handle${open ? "" : " show"}`}
+      hidden={home}
       title="AI Assistant 보이기"
       aria-label="AI Assistant 보이기"
       tabIndex={open ? -1 : 0}

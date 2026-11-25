@@ -13,6 +13,9 @@ interface Props {
   onAdd: () => void;
   assistantOpen: boolean;
   onToggleAssistant: () => void;
+  /** 모바일: 상단 왼쪽 햄버거 → 전체 화면 메뉴 */
+  menuOpen: boolean;
+  onOpenMenu: () => void;
 }
 
 function toggleTheme() {
@@ -34,13 +37,21 @@ const SEARCH_PLACEHOLDER: Partial<Record<View, string>> = {
   calendar: "일정 제목, 장소, 회사명 검색…",
 };
 
-/** 상단 바: 화면 제목 · 검색 · 테마 · AI Assistant · 추가 버튼 (메뉴는 왼쪽 Sidebar) */
-export default function Header({ view, query, onQuery, onAdd, assistantOpen, onToggleAssistant }: Props) {
+/** 상단 바: (모바일 햄버거) · 화면 제목 · 검색 · 테마 · AI Assistant · 추가 버튼 (메뉴는 왼쪽 Sidebar) */
+export default function Header({ view, query, onQuery, onAdd, assistantOpen, onToggleAssistant, menuOpen, onOpenMenu }: Props) {
   const addLabel = ADD_LABEL[view];
   const searchPlaceholder = SEARCH_PLACEHOLDER[view];
   const title = NAV.find((n) => n.view === view)?.label;
   return (
     <header className="topbar">
+      <IconButton
+        className="menu-btn"
+        icon="menu"
+        label="메뉴 열기"
+        aria-expanded={menuOpen}
+        aria-controls="app-menu"
+        onClick={onOpenMenu}
+      />
       <h1 className="page-title">{title}</h1>
       {searchPlaceholder && (
         <div className="search">
@@ -57,8 +68,8 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
       <div className="spacer" />
       <div className="header-actions">
         <IconButton icon="moon" label="테마 전환" onClick={toggleTheme} />
-        {/* 모바일은 하단 탭의 AI 메뉴로 연다 */}
-        {view !== "contracts" && <Button
+        {/* 첫 화면(AI Assistant)은 대화가 메인이고, 계약서는 문서 작성 Assistant가 따로 있어 숨긴다. 모바일은 메뉴의 AI Assistant로 */}
+        {view !== "contracts" && view !== "assistant" && <Button
           className="hide-mobile"
           active={assistantOpen}
           title="AI Assistant 열기/닫기"

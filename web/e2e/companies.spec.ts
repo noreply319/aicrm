@@ -6,7 +6,7 @@ test.beforeEach(resetDb);
 test("리드 등록: 회사를 검색해 드롭다운에서 키보드로 선택한다", async ({ page, request }) => {
   await createCompany(request, { name: "(주)에이스상사", industry: "제조" });
   await createCompany(request, { name: "에이아이랩스" });
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.getByRole("button", { name: "새 리드" }).click();
 
   const combo = page.getByRole("combobox", { name: "회사" });
@@ -24,7 +24,7 @@ test("리드 등록: 회사를 검색해 드롭다운에서 키보드로 선택�
 });
 
 test("리드 등록: 회사를 선택하지 않으면 저장되지 않는다", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.getByRole("button", { name: "새 리드" }).click();
   await createContactInLead(page, "김민수");
   await page.getByRole("button", { name: "저장", exact: true }).click();

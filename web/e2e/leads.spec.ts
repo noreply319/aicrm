@@ -4,7 +4,7 @@ import { createContactInLead, createLead, resetDb } from "./helpers";
 test.beforeEach(resetDb);
 
 test("새 리드를 등록하면 신규 리드 컬럼에 카드가 생긴다", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.getByRole("button", { name: "새 리드" }).click();
   // 없는 회사는 콤보박스에서 바로 생성
   await page.getByRole("combobox", { name: "회사" }).fill("이투이테스트");
@@ -21,7 +21,7 @@ test("새 리드를 등록하면 신규 리드 컬럼에 카드가 생긴다", a
 
 test("왼쪽 사이드바 메뉴로 파이프라인 ↔ 미팅 노트 이동 (URL 유지)", async ({ page, request }) => {
   await createLead(request, "메뉴테스트");
-  await page.goto("/");
+  await page.goto("/pipeline");
   const sidebar = page.locator(".sidebar");
   await expect(page.locator(".page-title")).toHaveText("파이프라인");
   await sidebar.getByRole("link", { name: "미팅 노트" }).click();

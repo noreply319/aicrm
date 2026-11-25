@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { useDocDraft } from "@/lib/useDocDraft";
 import { contextOf, KIND_LABEL } from "@/lib/docTemplate";
 import type {
-  DocAction, DocChatResult, DocKind, DocStatus, DocTemplate, DocumentRecord, DocumentSummary, Me,
+  DocKind, DocStatus, DocTemplate, DocumentRecord, DocumentSummary, Me,
 } from "@/lib/types";
 import DocAssistant from "./DocAssistant";
 import DocBadge from "./DocBadge";
@@ -29,10 +30,6 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZon
 /** 계약서 메뉴: 새 문서(왼쪽 Assistant + 오른쪽 문서) / 작성한 문서 / 템플릿 */
 export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotice }: Props) {
   const [tab, setTab] = useState<Tab>("new");
-  const [templates, setTemplates] = useState<DocTemplate[] | null>(null);
-  const [doc, setDoc] = useState<DocumentRecord | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [editing, setEditing] = useState<DocTemplate | "new" | null>(null);
@@ -41,24 +38,29 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
   const [docDot, setDocDot] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const loadTemplates = useCallback(async () => {
-    try {
-      setTemplates(await api<DocTemplate[]>("/api/templates"));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
+  const draft = useDocDraft({
+    onLeadsChanged,
+    onResult: (r) => {
+      if (!r.changed.length) return;
+      setFlash(r.changed);
+      clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setFlash([]), 1600);
+      // 모바일: 대화 화면에 있으면 "문서에 반영됨" 알림
+      if (window.matchMedia("(max-width: 760px)").matches && pane === "chat") {
+        setDocDot(true);
+        onNotice(`${r.changed.filter((k) => k !== "품목표").join(", ") || "품목"} 반영됨`);
+      }
+    },
+  });
+  const { templates, loadTemplates, doc, busy, error, chat, editValue, download, applyResult } = draft;
+  const { openDoc: loadDoc, pickTemplate: createDoc } = draft;
 
   const openDoc = useCallback(async (id: string) => {
-    setError(null);
-    try {
-      setDoc(await api<DocumentRecord>(`/api/documents/${id}`));
+    if (await loadDoc(id)) {
       setTab("new");
       setPane("chat");
-    } catch (e) {
-      setError((e as Error).message);
     }
-  }, []);
+  }, [loadDoc]);
 
   useEffect(() => {
     loadTemplates();
@@ -74,70 +76,13 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
     if (sp.toString()) window.history.replaceState(null, "", "/contracts");
   }, [loadTemplates, openDoc, onMeChanged, onNotice]);
 
-  const applyResult = (r: DocChatResult) => {
-    setDoc(r.document);
-    if (r.changed.length) {
-      setFlash(r.changed);
-      clearTimeout(flashTimer.current);
-      flashTimer.current = setTimeout(() => setFlash([]), 1600);
-      // 모바일: 대화 화면에 있으면 "문서에 반영됨" 알림
-      if (window.matchMedia("(max-width: 760px)").matches && pane === "chat") {
-        setDocDot(true);
-        onNotice(`${r.changed.filter((k) => k !== "품목표").join(", ") || "품목"} 반영됨`);
-      }
-    }
-    if (r.leadChanged) onLeadsChanged();
-  };
-
   const pickTemplate = async (t: DocTemplate) => {
-    setBusy(true);
-    setError(null);
-    try {
-      setDoc(await api<DocumentRecord>("/api/documents", { method: "POST", body: JSON.stringify({ templateId: t.id }) }));
-      setTab("new");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const chat = async (payload: { message?: string; action?: DocAction; value?: string }) => {
-    if (!doc) return;
-    setBusy(true);
-    setError(null);
-    // 보낸 말은 바로 보이게 (응답이 오면 서버 기록으로 바뀐다)
-    const optimistic = payload.message ?? null;
-    if (optimistic) setDoc({ ...doc, messages: [...doc.messages, { role: "user", text: optimistic, at: new Date().toISOString() }] });
-    try {
-      applyResult(await api<DocChatResult>(`/api/documents/${doc.id}/chat`, { method: "POST", body: JSON.stringify(payload) }));
-    } catch (e) {
-      setError((e as Error).message);
-      setDoc(doc);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const editValue = async (key: string, value: string) => {
-    if (!doc) return;
-    const r = await api<DocChatResult>(`/api/documents/${doc.id}`, { method: "PATCH", body: JSON.stringify({ values: { [key]: value } }) });
-    applyResult(r);
-  };
-
-  const download = () => {
-    if (!doc) return;
-    window.location.href = `/api/documents/${doc.id}/pdf`;
+    if (await createDoc(t)) setTab("new");
   };
 
   const loadDefaults = async () => {
-    try {
-      const added = await api<DocTemplate[]>("/api/templates/defaults", { method: "POST" });
-      onNotice(added.length ? `기본 템플릿 ${added.length}개를 불러왔습니다` : "이미 기본 템플릿이 있습니다");
-      await loadTemplates();
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    const n = await draft.loadDefaults();
+    if (n !== null) onNotice(n ? `기본 템플릿 ${n}개를 불러왔습니다` : "이미 기본 템플릿이 있습니다");
   };
 
   const ctx = useMemo(() => (doc ? contextOf(doc) : null), [doc]);
@@ -168,7 +113,7 @@ export default function ContractsView({ me, onLeadsChanged, onMeChanged, onNotic
           onChange={setTab}
         />
         {tab === "new" && doc && (
-          <Button size="sm" icon="plus" className="sub-tabs-action" onClick={() => { setDoc(null); setError(null); }}>새 문서</Button>
+          <Button size="sm" icon="plus" className="sub-tabs-action" onClick={draft.reset}>새 문서</Button>
         )}
       </div>
 

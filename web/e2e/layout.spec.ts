@@ -5,7 +5,7 @@ test.beforeEach(resetDb);
 
 test("왼쪽 메뉴 접기/펼치기는 아이콘 레일로 바뀌고 새로고침 후에도 유지된다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await page.goto("/pipeline");
   const sidebar = page.locator(".sidebar");
   await expect(sidebar).toHaveCSS("width", "232px");
 
@@ -23,7 +23,7 @@ test("왼쪽 메뉴 접기/펼치기는 아이콘 레일로 바뀌고 새로고�
 
 test("AI Assistant는 오른쪽으로 숨기고 가장자리 탭으로 다시 연다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await page.goto("/pipeline");
   const panel = page.getByRole("complementary", { name: "AI Assistant" });
   await expect(panel).toBeVisible();
 
@@ -55,7 +55,7 @@ test("설정은 사이드 메뉴에 없고, 프로필 메뉴의 설정을 누르
   await expect(dialog).toBeHidden();
 });
 
-test("구글 연동 후 돌아오는 /settings 주소는 설정 모달로 열리고, 닫으면 파이프라인으로 간다", async ({ page }) => {
+test("구글 연동 후 돌아오는 /settings 주소는 설정 모달로 열리고, 닫으면 첫 화면(AI Assistant)으로 간다", async ({ page }) => {
   await page.goto("/settings");
   const dialog = page.getByRole("dialog", { name: "설정" });
   await expect(dialog).toBeVisible();
@@ -67,7 +67,7 @@ test("구글 연동 후 돌아오는 /settings 주소는 설정 모달로 열리
 for (const width of [1440, 800]) {
   test(`메인 화면은 AI 창과 겹치지 않고, AI 창을 숨기거나 메뉴를 접으면 남은 폭만큼 넓어진다 (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/pipeline");
     const main = page.locator(".workspace-main");
     const panel = page.locator(".assistant");
     const sidebar = page.locator(".sidebar");
@@ -92,15 +92,49 @@ for (const width of [1440, 800]) {
 
 test("데스크톱 파이프라인은 단계 탭 없이 모든 단계 칸반", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await page.goto("/pipeline");
   await expect(page.getByRole("tablist", { name: "단계" })).toBeHidden();
   await expect(page.locator(".column")).toHaveCount(7);
   for (const c of await page.locator(".column").all()) await expect(c).toBeVisible();
 });
 
-test("데스크톱에는 사이드바 AI 메뉴가 없다 (상단 바 버튼·오른쪽 패널 사용)", async ({ page }) => {
+test("첫 화면(/)은 메인 영역 전체를 쓰는 AI Assistant 대화 (숨기기 버튼 없음)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "메뉴" }).getByRole("button", { name: "AI" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "AI Assistant" })).toBeVisible();
+  await expect(page.locator(".page-title")).toHaveText("AI Assistant");
+  const panel = page.getByRole("complementary", { name: "AI Assistant" });
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assistant 숨기기" })).toHaveCount(0);
+  const sidebar = (await page.locator(".sidebar").boundingBox())!;
+  const box = (await panel.boundingBox())!;
+  expect(Math.round(box.x - (sidebar.x + sidebar.width))).toBe(0);
+  expect(Math.round(box.x + box.width)).toBe(1440);
+});
+
+test("AI Assistant 견적서 탭: 견적서 템플릿만 보여주고, 탭을 바꿔도 대화가 남는다", async ({ page, request }) => {
+  await request.post("/api/templates/defaults");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const panel = page.getByRole("complementary", { name: "AI Assistant" });
+  await panel.getByRole("tab", { name: "견적서" }).click();
+  const quote = panel.getByRole("region", { name: "견적서 작성" });
+  await expect(quote.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
+  await expect(quote.locator(".tpl-btn").first()).toBeVisible();
+  for (const b of await quote.locator(".tpl-btn").all()) await expect(b).toContainText("견적서");
+
+  await quote.locator(".tpl-btn").first().click();
+  await expect(quote.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
+  await panel.getByRole("tab", { name: "일반 대화" }).click();
+  await expect(quote).toBeHidden();
+  await panel.getByRole("tab", { name: "견적서" }).click();
+  await expect(quote.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
+  await quote.getByRole("button", { name: "문서 보기" }).click();
+  await expect(page.getByRole("dialog", { name: "견적서 미리보기" }).locator(".paper")).toBeVisible();
+});
+
+test("데스크톱에는 햄버거 메뉴가 없고, 파이프라인에서는 상단 바 AI Assistant 버튼을 쓴다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pipeline");
+  await expect(page.getByRole("button", { name: "메뉴 열기" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "AI Assistant", exact: true })).toBeVisible();
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DocAction, DocMessage, DocTemplate, DocumentRecord } from "@/lib/types";
 import DocBadge from "./DocBadge";
 import { Alert, Badge, Button, Input, Textarea } from "./ui";
@@ -17,7 +17,12 @@ interface Props {
   onDownload: () => void;
   onEmail: () => void;
   onLoadDefaults: () => void;
-  onNewTemplate: () => void;
+  /** 없으면 "새 템플릿 등록" 버튼을 숨긴다 (Assistant 견적서 탭) */
+  onNewTemplate?: () => void;
+  /** 머리말 제목 (기본: 문서 작성 Assistant) */
+  title?: string;
+  /** 머리말 오른쪽 버튼 (문서 보기 등) */
+  headActions?: ReactNode;
 }
 
 const MAX_TEMPLATE_BUTTONS = 6;
@@ -61,11 +66,14 @@ export default function DocAssistant(p: Props) {
   const progress = doc?.progress;
 
   return (
-    <section className="doc-chat" aria-label="문서 작성 Assistant">
+    <section className="doc-chat" aria-label={p.title ?? "문서 작성 Assistant"}>
       <div className="doc-chat-head">
-        <div className="assistant-title">
-          <Badge tone="brand">AI</Badge> 문서 작성 Assistant
-          {doc && <span className="muted">· {doc.title}</span>}
+        <div className="doc-chat-title-row">
+          <div className="assistant-title">
+            <Badge tone="brand">AI</Badge> {p.title ?? "문서 작성 Assistant"}
+            {doc && <span className="muted">· {doc.title}</span>}
+          </div>
+          {p.headActions}
         </div>
         {doc && progress && progress.total > 0 && (
           <>
@@ -88,10 +96,10 @@ export default function DocAssistant(p: Props) {
               "템플릿을 불러오는 중…"
             ) : p.templates.length === 0 ? (
               <>
-                등록된 템플릿이 없어요. 기본 템플릿(계약서·견적서)을 불러오거나 새로 등록해 주세요.
+                등록된 템플릿이 없어요. 기본 템플릿(계약서·견적서)을 불러오{p.onNewTemplate ? "거나 새로 등록해 주세요" : "세요"}.
                 <div className="quick-row">
                   <button type="button" className="quick-btn primary" onClick={p.onLoadDefaults}>기본 템플릿 불러오기</button>
-                  <button type="button" className="quick-btn" onClick={p.onNewTemplate}>+ 새 템플릿 등록</button>
+                  {p.onNewTemplate && <button type="button" className="quick-btn" onClick={p.onNewTemplate}>+ 새 템플릿 등록</button>}
                 </div>
               </>
             ) : (
@@ -104,7 +112,7 @@ export default function DocAssistant(p: Props) {
                   {!showAll && p.templates.length > MAX_TEMPLATE_BUTTONS && (
                     <button type="button" className="quick-btn" onClick={() => setShowAll(true)}>더 보기 ({p.templates.length - MAX_TEMPLATE_BUTTONS})</button>
                   )}
-                  <button type="button" className="quick-btn" onClick={p.onNewTemplate}>+ 새 템플릿 등록</button>
+                  {p.onNewTemplate && <button type="button" className="quick-btn" onClick={p.onNewTemplate}>+ 새 템플릿 등록</button>}
                 </div>
               </>
             )}

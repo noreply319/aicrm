@@ -77,13 +77,15 @@ type EventModalState =
       returnToLead: string | null;
     };
 
+/** 첫 화면(/)은 AI Assistant 대화, 파이프라인은 /pipeline */
 const viewOf = (pathname: string): View =>
-  pathname.startsWith("/companies") ? "companies"
+  pathname.startsWith("/pipeline") ? "pipeline"
+  : pathname.startsWith("/companies") ? "companies"
   : pathname.startsWith("/contacts") ? "contacts"
   : pathname.startsWith("/meetings") ? "meetings"
     : pathname.startsWith("/contracts") ? "contracts"
     : pathname.startsWith("/calendar") ? "calendar"
-        : "pipeline";
+        : "assistant";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const localYmd = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -135,19 +137,22 @@ export default function CrmApp() {
   const [suggestReason, setSuggestReason] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(true);
+  /** 모바일 전체 화면 메뉴 */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [noteModal, setNoteModal] = useState<NoteModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 처음 상태: 모바일(640px 이하)에서는 Assistant가 화면을 덮으므로 닫고, 아니면 마지막으로 고른 상태.
+  // 처음 상태: 마지막으로 고른 상태 (모바일은 첫 화면에서만 대화를 보여주므로 상관없음).
   // 그 뒤 다음 프레임부터 열기/닫기·메뉴 접기 애니메이션을 켠다 (첫 화면에서 움직이지 않게).
   useEffect(() => {
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(ASSISTANT_KEY);
     } catch {}
-    if (window.matchMedia("(max-width: 640px)").matches || saved === "closed") setAssistantOpen(false);
+    if (saved === "closed") setAssistantOpen(false);
     let id = requestAnimationFrame(() => {
       id = requestAnimationFrame(() => document.documentElement.classList.add("ui-anim"));
     });
@@ -577,19 +582,9 @@ export default function CrmApp() {
 
   return (
     <SettingsModalContext value={openSettings}>
-      {/* ai-open: 모바일에서 AI 채팅이 메뉴·상단 바·메인 대신 화면 전체를 쓰는 별도 화면이 된다 */}
-      <div className={`app-shell${assistantOpen && view !== "contracts" ? " ai-open" : ""}`}>
-        <Sidebar
-          view={view}
-          me={auth.me}
-          onLogout={auth.logout}
-          assistantOpen={assistantOpen}
-          onToggleAssistant={() => changeAssistant(!assistantOpen)}
-          onNavigate={() => {
-            // 모바일: AI 채팅이 화면을 덮고 있으므로 다른 메뉴로 가면 닫는다
-            if (assistantOpen && window.matchMedia("(max-width: 640px)").matches) changeAssistant(false);
-          }}
-        />
+      {/* home: 첫 화면(/) — AI Assistant 대화가 메인 영역 전체를 쓴다 */}
+      <div className={`app-shell${view === "assistant" ? " home" : ""}${menuOpen ? " menu-open" : ""}`}>
+        <Sidebar view={view} me={auth.me} onLogout={auth.logout} menuOpen={menuOpen} onCloseMenu={closeMenu} />
         <div className="app-main">
           <Header
             view={view}
@@ -598,6 +593,8 @@ export default function CrmApp() {
             onAdd={onAdd}
             assistantOpen={assistantOpen}
             onToggleAssistant={() => changeAssistant(!assistantOpen)}
+            menuOpen={menuOpen}
+            onOpenMenu={() => setMenuOpen(true)}
           />
           {/* 왼쪽: 배너·지표·화면 / 오른쪽: AI Assistant (상단 바 아래부터 화면 끝까지 고정) */}
           <div className="workspace">
@@ -722,7 +719,7 @@ export default function CrmApp() {
                 />
               ) : view === "contracts" ? (
                 <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
-              ) : (
+              ) : view === "meetings" ? (
                 <MeetingList
                   notes={meetings.notes}
                   leads={leads}
@@ -731,12 +728,20 @@ export default function CrmApp() {
                   onOpen={(id) => openNote(id)}
                   onNew={() => openNewNote()}
                 />
-              )}
+              ) : null}
             </div>
             {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
             {/* 계약서 화면은 왼쪽에 문서 작성 Assistant가 따로 있어 조회형 Assistant(다시 열기 탭 포함)를 숨긴다 */}
             <div className="assistant-slot" hidden={view === "contracts"}>
-              <AssistantPanel open={assistantOpen} onOpen={() => changeAssistant(true)} onClose={() => changeAssistant(false)} />
+              <AssistantPanel
+                open={assistantOpen}
+                home={view === "assistant"}
+                me={auth.me}
+                onOpen={() => changeAssistant(true)}
+                onClose={() => changeAssistant(false)}
+                onLeadsChanged={reload}
+                onNotice={showToast}
+              />
             </div>
           </div>
         </div>

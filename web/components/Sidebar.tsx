@@ -5,12 +5,13 @@ import Link from "next/link";
 import { SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY } from "@/lib/constants";
 import { useOpenSettings } from "@/lib/settingsModal";
 import type { Me } from "@/lib/types";
-import { Avatar, Badge, Icon, type IconName } from "./ui";
+import { Avatar, Badge, Icon, IconButton, type IconName } from "./ui";
 
-export type View = "pipeline" | "companies" | "contacts" | "meetings" | "contracts" | "calendar";
+export type View = "assistant" | "pipeline" | "companies" | "contacts" | "meetings" | "contracts" | "calendar";
 
 export const NAV: { view: View; href: string; label: string; icon: IconName }[] = [
-  { view: "pipeline", href: "/", label: "파이프라인", icon: "pipeline" },
+  { view: "assistant", href: "/", label: "AI Assistant", icon: "sparkle" },
+  { view: "pipeline", href: "/pipeline", label: "파이프라인", icon: "pipeline" },
   { view: "companies", href: "/companies", label: "회사", icon: "building" },
   { view: "contacts", href: "/contacts", label: "연락처", icon: "users" },
   { view: "meetings", href: "/meetings", label: "미팅 노트", icon: "notes" },
@@ -22,10 +23,9 @@ interface Props {
   view: View;
   me: Me | null;
   onLogout: () => void;
-  /** 모바일 하단 탭의 AI 메뉴: Assistant 열림 상태·토글, 다른 메뉴로 가면 닫기 */
-  assistantOpen: boolean;
-  onToggleAssistant: () => void;
-  onNavigate: () => void;
+  /** 모바일(640px 이하): 상단 햄버거로 여는 전체 화면 메뉴 */
+  menuOpen: boolean;
+  onCloseMenu: () => void;
 }
 
 /**
@@ -61,29 +61,31 @@ function useSidebarCollapse() {
   return { collapsed, toggle };
 }
 
-/** 왼쪽 메뉴: 브랜드 · 메뉴 · 접기 · 프로필. 1024px 이하 자동 아이콘 레일, 640px 이하 하단 탭 바 */
-export default function Sidebar({ view, me, onLogout, assistantOpen, onToggleAssistant, onNavigate }: Props) {
+/**
+ * 왼쪽 메뉴: 브랜드 · 메뉴 · 접기 · 프로필. 1024px 이하 자동 아이콘 레일.
+ * 640px 이하는 평소 숨기고, 상단 바 햄버거를 누르면 화면 전체를 덮는 메뉴(.menu-open)로 연다.
+ */
+export default function Sidebar({ view, me, onLogout, menuOpen, onCloseMenu }: Props) {
   const { collapsed, toggle } = useSidebarCollapse();
   const toggleLabel = collapsed ? "메뉴 펼치기" : "메뉴 접기";
+
+  // 전체 화면 메뉴: Esc로 닫기
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseMenu();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen, onCloseMenu]);
+
   return (
-    <aside className={`sidebar${assistantOpen ? " ai-open" : ""}`}>
+    <aside id="app-menu" className={`sidebar${menuOpen ? " menu-open" : ""}`}>
       <div className="brand">
         <div className="logo" aria-hidden>◆</div>
         <span className="brand-text">Pipeline CRM</span>
+        <IconButton className="menu-close" icon="close" label="메뉴 닫기" onClick={onCloseMenu} />
       </div>
       <div className="side-section">메뉴</div>
       <nav className="side-nav" aria-label="메뉴">
-        {/* 모바일 하단 탭 맨 왼쪽: AI Assistant 채팅 (데스크톱은 상단 바 버튼·오른쪽 패널). 계약서 화면은 문서 작성 Assistant가 따로 있어 숨김 */}
-        {view !== "contracts" && <button
-          type="button"
-          className={`side-link side-ai${assistantOpen ? " on" : ""}`}
-          aria-pressed={assistantOpen}
-          title="AI Assistant"
-          onClick={onToggleAssistant}
-        >
-          <Icon name="sparkle" size={18} />
-          <span className="side-label">AI</span>
-        </button>}
         {NAV.map((n) => (
           <Link
             key={n.view}
@@ -91,7 +93,7 @@ export default function Sidebar({ view, me, onLogout, assistantOpen, onToggleAss
             className={`side-link${view === n.view ? " on" : ""}`}
             aria-current={view === n.view ? "page" : undefined}
             title={n.label}
-            onClick={onNavigate}
+            onClick={onCloseMenu}
           >
             <Icon name={n.icon} size={18} />
             <span className="side-label">{n.label}</span>

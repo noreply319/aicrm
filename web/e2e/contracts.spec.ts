@@ -32,7 +32,7 @@ test("계약서: 템플릿 버튼 → 리드 선택(자동 채움) → 하나씩
   await fakeGmailSend(page);
 
   // 왼쪽 메뉴의 계약서로 이동
-  await page.goto("/");
+  await page.goto("/pipeline");
   await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "계약서" }).click();
   await expect(page).toHaveURL(/\/contracts$/);
   await expect(page.getByRole("link", { name: "계약서" })).toHaveAttribute("aria-current", "page");
