@@ -44,8 +44,9 @@ const TARGET_LABEL: Record<AgentTarget["kind"], string> = {
   event: "일정 보기",
 };
 
-/** 승인 대기 중인 계획 수 (2개 이상이면 "모두 승인") */
-const pendingCount = (m: AgentMessage) => m.plans?.filter((p) => p.status === "pending").length ?? 0;
+/** "모두 승인"으로 함께 승인할 수 있는 계획 수 (되돌릴 수 없는 danger 계획은 하나씩) / 빠지는 danger 계획 수 */
+const bulkCount = (m: AgentMessage) => m.plans?.filter((p) => p.status === "pending" && !p.danger).length ?? 0;
+const dangerPending = (m: AgentMessage) => m.plans?.filter((p) => p.status === "pending" && p.danger).length ?? 0;
 
 /** 진행 단계 목록 (도구 호출 상태) */
 function StepList({ steps }: { steps: AgentStep[] }) {
@@ -224,10 +225,10 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
                   onOpenTarget={onOpenTarget}
                 />
               ))}
-              {pendingCount(m) >= 2 && (
+              {bulkCount(m) >= 2 && (
                 <div className="plan-all">
                   <Button size="sm" variant="primary" onClick={() => approveAll(m.id)}>
-                    모두 승인 ({pendingCount(m)})
+                    모두 승인 ({bulkCount(m)}){dangerPending(m) > 0 ? " · 발송·삭제 제외" : ""}
                   </Button>
                 </div>
               )}

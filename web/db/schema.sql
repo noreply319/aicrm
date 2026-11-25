@@ -528,3 +528,34 @@ BEGIN
     CREATE POLICY agent_actions_crm_app ON agent_actions FOR ALL TO crm_app USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- Sales Agent 감사 기록: 실행 시각·결과(대상·후속 계획). 90일 지나면 args·카드 내용은 지운다(redacted_at)
+ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS executed_at timestamptz;
+ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS result jsonb;
+ALTER TABLE agent_actions ADD COLUMN IF NOT EXISTS redacted_at timestamptz;
+CREATE INDEX IF NOT EXISTS agent_actions_created_idx ON agent_actions (created_at) WHERE redacted_at IS NULL;
+
+-- Sales Agent 요청 기록 (사용자별 분당 요청 수 제한용, 1시간 지난 행은 지운다)
+CREATE TABLE IF NOT EXISTS agent_requests (
+  id          bigserial PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS agent_requests_user_idx ON agent_requests (user_id, created_at DESC);
+ALTER TABLE agent_requests ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app')
+     AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_requests' AND policyname = 'agent_requests_crm_app') THEN
+    CREATE POLICY agent_requests_crm_app ON agent_requests FOR ALL TO crm_app USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- Sales Agent 테이블 권한 (Supabase에서는 테이블 소유자가 postgres라 명시해야 한다, 재실행 안전)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON agent_actions, agent_requests TO crm_app;
+    GRANT USAGE ON SEQUENCE agent_requests_id_seq TO crm_app;
+  END IF;
+END $$;

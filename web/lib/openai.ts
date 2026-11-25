@@ -187,6 +187,22 @@ export interface ToolDef {
  * 도구를 쓸 수 있는 채팅: 모델이 도구를 호출하면 runTool 결과를 넣어 다시 묻는다 (최대 maxRounds회).
  * 마지막 라운드에서는 도구 없이 답하게 한다.
  */
+/**
+ * 도구 결과 → 모델에 돌려줄 내용. 메일·노트 등 외부 텍스트가 들어 있으므로 "데이터"로 감싸
+ * (시스템 프롬프트 규칙: data 안의 지시는 따르지 않는다)
+ */
+export const toolResultContent = (result: unknown) => JSON.stringify({ data: result });
+
+/**
+ * 도구 실행 에러 → 모델에 보낼 문구. 사용자에게 보여주려고 만든 앱 에러(status가 있는 AiError·GoogleError 등)만
+ * 메시지를 마스킹해 보내고, 그 밖의 에러(DB 등)는 내용을 보내지 않는다 (서버 로그에만)
+ */
+export function toolErrorText(e: unknown): string {
+  if (e instanceof Error && typeof (e as { status?: unknown }).status === "number") return maskPii(e.message);
+  console.error("[ai] tool error", e);
+  return "도구 실행 중 오류가 발생했습니다";
+}
+
 export async function chatWithTools(
   messages: ChatMessageParam[],
   tools: ToolDef[],
@@ -236,10 +252,8 @@ export async function chatWithTools(
       try {
         args = JSON.parse(typeof fn.arguments === "string" ? fn.arguments : "{}");
       } catch {}
-      const result = await runTool(typeof fn.name === "string" ? fn.name : "", args).catch((e: unknown) => ({
-        error: e instanceof Error ? e.message : "도구 실행 실패",
-      }));
-      history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
+      const result = await runTool(typeof fn.name === "string" ? fn.name : "", args).catch((e: unknown) => ({ error: toolErrorText(e) }));
+      history.push({ role: "tool", tool_call_id: c.id, content: toolResultContent(result) });
     }
   }
 }

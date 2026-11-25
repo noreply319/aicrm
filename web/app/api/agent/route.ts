@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
+import { requestLimitError } from "@/lib/agentLimits";
 import { AssistantError } from "@/lib/assistant";
 import { getSessionUser } from "@/lib/auth";
 import type { AgentEvent } from "@/lib/types";
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
   // 계획은 요청한 사용자 것으로 저장한다
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
+  const limited = await requestLimitError(user.id);
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 });
   const messages = parsed.data;
 
   const encoder = new TextEncoder();

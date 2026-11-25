@@ -100,6 +100,8 @@ function sendFailure(e: unknown): ExecResult {
   return { ok: false, message: `메일을 보내지 못했습니다: ${e.message}` };
 }
 
+const SEND_NOTICE = "승인하면 내 Gmail로 바로 발송되며 되돌릴 수 없습니다. 받는 사람과 본문에 보내면 안 되는 정보가 없는지 확인하세요";
+
 const RECORD_FAILED = "메일은 발송됐지만 기록하지 못했습니다. 다시 보내지 말고 Gmail 보낸편지함을 확인하세요";
 
 /* ───────── 조회 도구 ───────── */
@@ -300,6 +302,7 @@ async function verifyPlannedDocument(
 
 const sendDocTool: WriteTool = {
   kind: "write",
+  sends: true,
   label: "견적서·계약서 발송",
   def: {
     name: "send_document",
@@ -347,7 +350,7 @@ const sendDocTool: WriteTool = {
       target: { kind: "document", id: doc.id, label: doc.title },
       danger: true,
       approveLabel: "발송 승인",
-      notice: { tone: "warning", text: "승인하면 내 Gmail로 바로 발송되며 되돌릴 수 없습니다" },
+      notice: { tone: "warning", text: SEND_NOTICE },
       args: { documentId: doc.id, ccContactIds: ccArg(a), ...m.data, expect: { rev: doc.rev, status: doc.status } satisfies DocExpect },
     };
   },
@@ -434,6 +437,7 @@ const draftMailTool: WriteTool = {
 
 const sendMailTool: WriteTool = {
   kind: "write",
+  sends: true,
   label: "메일 발송",
   def: {
     name: "send_email",
@@ -452,7 +456,7 @@ const sendMailTool: WriteTool = {
       changes: mailChanges(p.r, p.subject, p.body),
       danger: true,
       approveLabel: "발송 승인",
-      notice: { tone: "warning", text: "승인하면 내 Gmail로 바로 발송되며 되돌릴 수 없습니다" },
+      notice: { tone: "warning", text: SEND_NOTICE },
       args: { leadId: p.leadId, ccContactIds: ccArg(a), to: p.r.to, cc: p.r.cc, subject: p.subject, body: p.body },
     };
   },

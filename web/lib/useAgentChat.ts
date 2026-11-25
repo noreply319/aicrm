@@ -146,10 +146,13 @@ export function useAgentChat({ onChanged }: { onChanged: () => void }) {
   const approve = useCallback((messageId: string, plan: AgentPlan) => decide(messageId, plan, "approve"), [decide]);
   const cancel = useCallback((messageId: string, plan: AgentPlan) => decide(messageId, plan, "cancel"), [decide]);
 
-  /** 한 답변의 승인 대기 계획을 차례로 모두 승인 (각각 따로 실행되고, 실패는 카드마다 표시) */
+  /**
+   * 한 답변의 승인 대기 계획을 차례로 모두 승인 (각각 따로 실행되고, 실패는 카드마다 표시).
+   * 발송·삭제 같은 되돌릴 수 없는 계획(danger)은 빼고 카드에서 하나씩 승인하게 한다
+   */
   const approveAll = useCallback(
     async (messageId: string) => {
-      const pending = messagesRef.current.find((m) => m.id === messageId)?.plans?.filter((p) => p.status === "pending") ?? [];
+      const pending = messagesRef.current.find((m) => m.id === messageId)?.plans?.filter((p) => p.status === "pending" && !p.danger) ?? [];
       for (const p of pending) await decide(messageId, p, "approve");
     },
     [decide]
