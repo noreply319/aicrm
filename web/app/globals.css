@@ -446,6 +446,9 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 .assistant .alert { margin: 0 12px 8px; }
 .assistant-input { display: flex; gap: 8px; align-items: flex-end; padding: 12px; border-top: 1px solid var(--border); }
 .assistant-input .control { flex: 1; resize: none; min-height: 0; font-size: 13.5px; }
+/* AI Assistant 패널 입력칸: 한 줄로 시작해 내용에 맞춰 늘어난다(useAutoGrow). 전송 버튼과 높이를 맞춘다 */
+.assistant .assistant-input .control { min-height: 38px; padding: 8px 12px; line-height: 1.45; }
+.assistant .assistant-input .btn { min-height: 38px; }
 /* 숨김: 오른쪽으로 밀려 나가며 폭이 0이 된다 (내용은 폭을 유지한 채 잘림) */
 .assistant.closed { flex-basis: 0; border-left-width: 0; opacity: 0; transform: translateX(40px); visibility: hidden; }
 .assistant-handle {
@@ -752,6 +755,13 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .assistant.closed { display: none; }
   .ui-anim .assistant, .ui-anim .assistant.closed { transition: none; }
   .assistant-input { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .assistant .assistant-input .btn { min-height: 42px; }
+  /* 키보드가 열려도 상단은 그대로: 채팅 화면을 보이는 영역(visualViewport)에 맞춘다 (useKeyboardViewport).
+     대화 목록만 줄어들고 입력창은 키보드 바로 위에 붙는다 */
+  .app-shell.home .app-main, .app-shell.ai-open .assistant {
+    height: var(--vv-h, 100dvh); transform: translateY(var(--vv-top, 0px));
+  }
+  .kb-open .assistant-input { padding-bottom: 12px; }
   .assistant-head .assistant-hide { display: none; }
   .assistant-head .assistant-back { display: inline-flex; }
   .assistant-head { padding-left: 6px; }

@@ -48,6 +48,7 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
         busy={busy}
         error={draft.error}
         title="견적서 작성"
+        singleLine
         headActions={doc && (
           <div className="quote-head-actions">
             <Button size="sm" variant="ghost" icon="plus" onClick={draft.reset}>새 견적서</Button>

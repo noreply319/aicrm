@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import { SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY, THEME_KEY } from "@/lib/constants";
 import "./globals.css";
@@ -19,6 +19,13 @@ export const metadata: Metadata = {
     description: "리드부터 수주까지, 세일즈 파이프라인을 한눈에",
   },
   twitter: { card: "summary_large_image" },
+};
+
+// Android Chrome: 키보드가 열리면 화면(dvh) 자체가 줄어들게 해 상단은 그대로, 입력창만 키보드 위로 (iOS는 useKeyboardViewport)
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
 };
 
 // 첫 페인트 전에 저장된 테마·메뉴 접힘을 적용해 깜빡임을 막는다.

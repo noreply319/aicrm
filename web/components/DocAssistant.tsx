@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { DocAction, DocMessage, DocTemplate, DocumentRecord } from "@/lib/types";
+import { useAutoGrow } from "@/lib/useAutoGrow";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import DocBadge from "./DocBadge";
 import { Alert, Badge, Button, Input, Textarea } from "./ui";
@@ -25,6 +26,8 @@ interface Props {
   title?: string;
   /** 머리말 오른쪽 버튼 (문서 보기 등) */
   headActions?: ReactNode;
+  /** 입력칸을 한 줄로 시작해 내용에 맞춰 늘린다 (Assistant 견적서 탭) */
+  singleLine?: boolean;
 }
 
 const MAX_TEMPLATE_BUTTONS = 6;
@@ -37,6 +40,8 @@ export default function DocAssistant(p: Props) {
   /** 템플릿 선택 단계에서 이름으로 찾은 결과 */
   const [startReply, setStartReply] = useState<{ text: string; matches: DocTemplate[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(inputRef, input, 5, !!p.singleLine);
   // 모바일: 좁은 입력칸에 안내가 다 보이도록 키보드 안내(Enter 전송)는 뺀다
   const mobile = useMediaQuery(MOBILE_QUERY);
 
@@ -158,8 +163,9 @@ export default function DocAssistant(p: Props) {
         }}
       >
         <Textarea
+          ref={inputRef}
           value={input}
-          rows={2}
+          rows={p.singleLine ? 1 : 2}
           maxLength={2000}
           placeholder={
             !doc ? "버튼을 누르거나 ‘견적서’처럼 입력하세요"

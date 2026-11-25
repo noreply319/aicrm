@@ -11,7 +11,9 @@ import { useCompanies } from "@/lib/useCompanies";
 import { useContacts } from "@/lib/useContacts";
 import { useLeads } from "@/lib/useLeads";
 import { useAgentChat } from "@/lib/useAgentChat";
+import { useKeyboardViewport } from "@/lib/useKeyboardViewport";
 import { useMe } from "@/lib/useMe";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useMeetings } from "@/lib/useMeetings";
 import { useSchedules } from "@/lib/useSchedules";
 import type {
@@ -347,6 +349,9 @@ export default function CrmApp() {
 
   /** 대화 화면이 따로 있는 화면은 조회형 Assistant 패널을 숨긴다 */
   const hideAssistant = view === "contracts" || view === "agent";
+  // 모바일 AI 채팅(첫 화면·전체 화면 채팅): 키보드가 열려도 상단은 그대로, 입력창만 키보드 위로
+  const mobile = useMediaQuery(MOBILE_QUERY);
+  useKeyboardViewport(mobile && (view === "assistant" || (assistantOpen && !hideAssistant)));
 
   const onAdd = useCallback(() => {
     if (view === "companies") setCompanyModal({ open: true, companyId: null });

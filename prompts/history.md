@@ -883,7 +883,9 @@
 
 > /feature-dev:feature-dev Jira의 AIC-8 분석해서 새로운 브랜치에서 구현 시작해줘.
 
-- 결과: (진행 중) `main`(`fdc1aad`)에서 worktree `worktress/sales-agent-security`(브랜치 `feat/sales-agent-security`) 생성. Jira AIC-8 → In Progress + 작업 시작 코멘트, 현황 점검 중
+> (선택: 레이트 리밋 보통 / 모두 승인은 위험 계획 제외 / 90일 후 내용 지우기)
+
+- 결과: `main`(`fdc1aad`)에서 worktree `worktress/sales-agent-security`(브랜치 `feat/sales-agent-security`) 생성. 점검 후 추가: `<crm_data>`·데이터 속 지시 무시 규칙, 도구 결과 `{data}`·오류 마스킹, 모두 승인 위험 계획 제외, DB 기준 사용량 제한(`lib/agentLimits.ts`, `agent_requests`), 감사 기록 `executed_at`·`result`·90일 내용 삭제, CSRF `Sec-Fetch-Site`(`lib/csrf.ts`), `docs/agent/security.md`·CLAUDE.md Sales Agent 섹션. build 통과, 테스트 작성·미실행, 커밋 안 함
 
 ## 126. 2026-11-25 — favicon·OpenGraph 이미지 추가
 
@@ -896,3 +898,62 @@
 > commit, merge해줘.
 
 - 결과: `main`에서 작업했으므로 병합 없이 `main`에 바로 커밋. zip 파일·`docs/practice-prompts/`는 제외, push 안 함
+
+## 126. 2026-11-25 — AIC-8 리뷰 지적 모두 수정
+
+> 모두 수정해줘
+
+- 결과: `agent_actions`·`agent_requests` crm_app GRANT 누락 수정(운영 DB 실패 원인, 로컬 적용), 메모리 기반 정리 → 저장 때마다, 한도 함수 문구 반환 통일·요청 기록 쿼리 1회, 발송 한도에 실패 시도 포함, 문서 표현 정정. build 통과. Jira AIC-8 → Done + 코멘트
+
+## 127. 2026-11-25 — 완료된 Jira 티켓 업데이트
+
+> 완료된 Jira ticket은 업데이트해줘.
+
+- 결과: 확인 결과 AIC-2~8은 이미 Done(AIC-9 To Do, AIC-1 In Progress). AIC-1에 티켓별 상태·반영(병합 커밋) 표와 배포 전 할 일 코멘트 추가
+
+## 128. 2026-11-25 — 명함 업로드로 회사·연락처 생성 요구사항 Jira 등록
+
+> Jira에 AI Assitant에 명함을 사진 또는 업로드 할 수 있게 해주고 이력서 업로드 하면 자동으로 회사 생성과 Contact 생성할 수 있는 요구사항 업데이트해줘.
+
+> (선택: 명함만 — 이력서는 오기 / AI Assistant 패널 + Sales Agent 둘 다 / AIC-1 아래 새 Story)
+
+- 결과: Jira AIC-10 "[Sales Agent] 명함 촬영·업로드 → 회사·연락처 자동 생성" 생성(AIC-1 하위). 업로드 UI, 추출 API(저장 안 함), 기존 회사·연락처 매칭, 확인 카드 승인 후 생성(한 트랜잭션), 패널 조회 전용 예외, OpenAI로 이메일·전화 전송 원칙 충돌은 결정 필요로 기록
+
+## 129. 2026-11-25 — AI Assistant 입력칸 한 줄 + 모바일 키보드 시 상단 고정 (AIC-11)
+
+> AI Assistant에 입력칸 한줄로 보이도록 수정해줘. 그리고 입력칸 클릭하면  키보드 나오면서 전체 화면이 올라가는데, 입력창만 올라가고 상단 화면은 그대로 나오도록 수정해줘. jira 에 새로운 요구사항으로 올려줘.
+
+- 결과: Jira AIC-11 생성. `lib/useAutoGrow.ts`(한 줄 → 최대 5줄), 일반 대화·견적서 탭 입력칸 적용(`DocAssistant` `singleLine`, 계약서 화면은 그대로), `lib/useKeyboardViewport.ts`(iOS visualViewport → `--vv-h`/`--vv-top`, `.kb-open`)를 CrmApp에서 모바일 첫 화면·전체 화면 채팅일 때 사용, viewport `interactive-widget=resizes-content`(Android). build 통과, 실기기 확인 안 함
+
+## 128. 2026-11-25 — AIC-9 Sales Agent 테스트 실행·보완
+
+> /feature-dev:feature-dev Jira의 AIC-9 분석해서 새로운 브랜치에서 구현 시작해줘.
+> (선택: 이번 작업에서는 테스트 실행 — 별도 DB `ai_crm_agent_test`·포트 3101 / AIC-8 커밋 후 그 위에)
+
+- 결과: AIC-8 커밋(`54e32bd`) → worktree `worktress/sales-agent-tests`(브랜치 `feat/sales-agent-tests`). 처음 실행에서 테스트 코드 문제 2건(테스트 사용자 이메일 충돌, 가짜 이벤트 id 카운터 미초기화) 수정. 추가: unit `chatWithTools.test.ts`, integration `agentRun.test.ts`(변경 도구는 pending만·요청당 한도), e2e 승인 후 보드 반영·취소 시 변경 없음. unit·integration 178개·Sales Agent e2e 4개 통과, build 통과, 커밋 안 함. Jira AIC-9 → Done, AIC-1에 남은 일 코멘트
+
+## 130. 2026-11-25 — AI Assistant에서 리드 추가·변경 요구사항 Jira 등록 (AIC-12)
+
+> AI Assistant에서 새로운 리드 추가 또는 변경이 안되는데, 가능하도록 요구사항 jira에 작성해줘.
+
+- 결과: Jira AIC-12 "[AI Assistant] 대화로 리드 추가·변경 (실행 계획 승인 후 반영)" 생성(AIC-1 하위). 범위: 리드 생성·수정(금액·마감일·우선순위·메모)·단계 이동, 실행 계획 카드 승인 후 반영, Sales Agent 엔진·도구·승인 API 재사용(허용 도구 제한), 삭제·개인정보 입력은 제외. 결정 필요: 삭제 허용 여부, 응답 형식(NDJSON vs {reply, plan}), Assistant·Sales Agent 통합 여부
+
+## 131. 2026-11-25 — AI Assistant에서 회사·연락처 추가·변경 요구사항 Jira 등록 (AIC-13)
+
+> 동일하게 AI Assistant에서 새로운 회사, 연락처  추가 또는 변경이 안되는데, 가능하도록 요구사항 jira에 따로  작성해줘.
+
+- 결과: Jira AIC-13 "[AI Assistant] 대화로 회사·연락처 추가·변경 (실행 계획 승인 후 반영)" 생성(AIC-1 하위, AIC-12 구조에 의존). 범위: 회사 등록·수정, 연락처 등록·수정, 리드 담당 연락처 지정. 중복 시 기존 항목 제안, 없는 회사는 회사+연락처 2단계 계획, 연결 리드 전파 건수 표시, 태그 추가는 기존 값 유지. 삭제·개인정보(이메일·전화·주소·사업자번호 등)는 제외
+
+## 132. 2026-11-25 — AIC-12 구현 시작 (feature-dev)
+
+> /feature-dev:feature-dev Jira의 AIC-12 분석해서 새로운 브랜치에서 구현 시작해줘.
+
+- 결과: (진행 중) worktree `worktress/assistant-lead-write`(브랜치 `feat/assistant-lead-write`) 생성, 코드 탐색
+
+## 130. 2026-11-25 — AIC-10 명함 → 회사·연락처 구현
+
+> /feature-dev:feature-dev Jira의 AIC-10 분석해서 새로운 브랜치에서 구현 시작해줘.
+
+> (선택: OpenAI 이미지 분석 — 명함만 예외 / Agent도 같은 확인 카드 / 같은 이메일은 빈 항목만 채우기 / 기록은 태그·메모만 / 추천 설계안)
+
+- 결과: (진행 중) `main`(`2ebf914`)에서 worktree `worktress/business-card`(브랜치 `feat/business-card`), Jira AIC-10 → In Progress. `lib/businessCard.ts`(비전 분석·정규화·매칭·한 트랜잭션 저장), `POST /api/business-cards/extract`·`/api/business-cards`, `findCompanyMatch`·`findContactByEmail`·`findSamePerson` 공용화(Agent 중복 확인도 사용), `useBusinessCards`·`imageFile.ts`, `BusinessCardAttach`·`BusinessCardConfirm`을 AI Assistant 패널·Sales Agent에 연결, CLAUDE.md 명함 섹션·PII 예외. unit·integration·e2e 테스트 작성(미실행), build 통과. 코드 리뷰 2건(80% 이상 없음) 후 선택한 3건 반영(+82 휴대폰, Safari createImageBitmap 옵션 제거, 카드 위치 보정·중복 채우기에 고친 값 사용). Jira AIC-10 코멘트, 커밋 안 함

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { ChatMessage, Me } from "@/lib/types";
+import { useAutoGrow } from "@/lib/useAutoGrow";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import QuoteChat from "./QuoteChat";
 import { Alert, Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
@@ -38,6 +39,9 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 입력칸: 기본 한 줄, 내용에 맞춰 최대 5줄까지 늘어남
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(inputRef, input);
   // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
   const mobile = useMediaQuery(MOBILE_QUERY);
 
@@ -141,9 +145,10 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
         }}
       >
         <Textarea
+          ref={inputRef}
           value={input}
           placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
-          rows={2}
+          rows={1}
           maxLength={2000}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
