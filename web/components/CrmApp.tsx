@@ -12,6 +12,7 @@ import { useContacts } from "@/lib/useContacts";
 import { useLeads } from "@/lib/useLeads";
 import { useAgentChat } from "@/lib/useAgentChat";
 import { useKeyboardViewport } from "@/lib/useKeyboardViewport";
+import { useBusinessCards } from "@/lib/useBusinessCards";
 import { useMe } from "@/lib/useMe";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useMeetings } from "@/lib/useMeetings";
@@ -35,6 +36,7 @@ import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
 import ContractsView from "./ContractsView";
 import AgentView from "./AgentView";
+import type { CardHost } from "./BusinessCardConfirm";
 import CompanyList from "./CompanyList";
 import CompanyDetail from "./CompanyDetail";
 import CompanyModal from "./CompanyModal";
@@ -347,6 +349,29 @@ export default function CrmApp() {
       else router.push("/calendar");
     },
     [openLead, openCompany, openContact, openNote, router]
+  );
+
+  /** 명함 → 회사·연락처 (Assistant 패널·Sales Agent 공용). Agent 화면의 카드는 화면을 옮겨도 남도록 여기서 가진다 */
+  const agentCards = useBusinessCards();
+  const { updateContact: updateContactApi } = contactsApi;
+  const { addCompany } = companiesApi;
+  const cardHost: CardHost = useMemo(
+    () => ({
+      companies,
+      companyStats,
+      createCompany: async (name: string) => (await addCompany({ name }, { reuseExisting: true })).company,
+      updateContact: updateContactApi,
+      onSaved: () => {
+        reloadCompanies();
+        reloadContacts();
+        showToast("명함으로 연락처를 등록했어요");
+      },
+      openCompany,
+      openContact,
+      newLead: (companyId: string | null, contactId: string) =>
+        setModal({ open: true, leadId: null, stage: "new", tab: "info", companyId, contactId }),
+    }),
+    [companies, companyStats, addCompany, updateContactApi, reloadCompanies, reloadContacts, showToast, openCompany, openContact]
   );
 
   /** 대화 화면이 따로 있는 화면은 조회형 Assistant 패널을 숨긴다 */
@@ -771,7 +796,7 @@ export default function CrmApp() {
                   onExpired={auth.reload}
                 />
               ) : view === "agent" ? (
-                <AgentView chat={agent} onOpenTarget={openAgentTarget} />
+                <AgentView chat={agent} onOpenTarget={openAgentTarget} cards={agentCards} cardHost={cardHost} />
               ) : view === "contracts" ? (
                 <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
               ) : view === "meetings" ? (
@@ -798,6 +823,7 @@ export default function CrmApp() {
                 onClose={() => changeAssistant(false)}
                 onLeadsChanged={reload}
                 onNotice={showToast}
+                cardHost={cardHost}
               />
             </div>
           </div>

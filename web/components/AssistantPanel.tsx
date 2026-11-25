@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { AgentTarget, Me } from "@/lib/types";
 import type { AgentChat } from "@/lib/useAgentChat";
 import { useAutoGrow } from "@/lib/useAutoGrow";
+import { useBusinessCards } from "@/lib/useBusinessCards";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useReviseInput } from "@/lib/useReviseInput";
 import AgentTurn from "./AgentTurn";
+import BusinessCardAttach, { cardDropProps } from "./BusinessCardAttach";
+import BusinessCardConfirm, { type CardHost } from "./BusinessCardConfirm";
 import QuoteChat from "./QuoteChat";
 import { Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
@@ -18,13 +21,15 @@ interface Props {
   /** 첫 화면(/): 메인 영역 전체를 쓰는 대화 화면 (숨기기 없음) */
   home: boolean;
   me: Me | null;
-  /** 일반 대화 상태 (CrmApp이 가짐 — /api/assistant, 리드 변경은 실행 계획 카드로 승인) */
+  /** 일반 대화 상태 (CrmApp이 가짐 — /api/assistant, 리드·회사·연락처 변경은 실행 계획 카드로 승인) */
   chat: AgentChat;
   /** 계획 카드의 리드 열기 등 */
   onOpenTarget: (target: AgentTarget) => void;
   /** 견적서 탭: 발송 후 단계 이동 등으로 리드가 바뀌었을 때 */
   onLeadsChanged: () => void;
   onNotice: (msg: string) => void;
+  /** 명함 → 회사·연락처 등록 */
+  cardHost: CardHost;
 }
 
 type Mode = "chat" | "quote";
@@ -38,7 +43,7 @@ const SUGGESTIONS = [
   "오션핀테크에 김민수 팀장 연락처 추가해줘",
 ];
 
-export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, chat, onOpenTarget, onLeadsChanged, onNotice }: Props) {
+export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, chat, onOpenTarget, onLeadsChanged, onNotice, cardHost }: Props) {
   const open = home || openProp;
   const [mode, setMode] = useState<Mode>("chat");
   /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
@@ -52,10 +57,19 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
   const mobile = useMediaQuery(MOBILE_QUERY);
 
-  // 새 메시지가 오면 맨 아래로 스크롤
+  /** 명함 카드: 화면 전용 (OpenAI로 보내는 대화에는 넣지 않는다) */
+  const cards = useBusinessCards();
+  const addCards = (files: File[]) => {
+    const warn = cards.addFiles(files, messages.length);
+    if (warn) onNotice(warn);
+  };
+  const cardsAt = (index: number) =>
+    cards.cards.filter((c) => Math.min(c.afterIndex, messages.length) === index).map((c) => <BusinessCardConfirm key={c.id} card={c} cards={cards} host={cardHost} />);
+
+  // 새 메시지·명함 카드가 오면 맨 아래로 스크롤
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, cards.cards.length]);
 
   const submit = async (text: string) => {
     if (busy || !text.trim()) return;
@@ -84,8 +98,8 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
           }}
         />
         <span className="spacer" />
-        {mode === "chat" && messages.length > 0 && (
-          <Button size="sm" variant="ghost" icon="refresh" onClick={reset}>
+        {mode === "chat" && (messages.length > 0 || cards.cards.length > 0) && (
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { reset(); cards.clear(); }}>
             새 대화
           </Button>
         )}
@@ -99,10 +113,10 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       )}
 
       <div className="assistant-chat" hidden={mode !== "chat"}>
-      <div className="assistant-messages" ref={listRef}>
-        {messages.length === 0 && (
+      <div className="assistant-messages" ref={listRef} {...cardDropProps(addCards)}>
+        {messages.length === 0 && cards.cards.length === 0 && (
           <div className="assistant-empty">
-            <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다.</p>
+            <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
             <div className="assistant-suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} className="assistant-chip" onClick={() => submit(s)}>
@@ -112,21 +126,24 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
             </div>
           </div>
         )}
-        {messages.map((m) =>
-          m.role === "user" ? (
-            <div key={m.id} className="bubble bubble-user">{m.content}</div>
-          ) : (
-            <AgentTurn
-              key={m.id}
-              message={m}
-              onApprove={(p) => approve(m.id, p)}
-              onCancel={(p) => cancel(m.id, p)}
-              onApproveAll={() => approveAll(m.id)}
-              onRevise={(p) => revise(m.id, p)}
-              onOpenTarget={onOpenTarget}
-            />
-          )
-        )}
+        {cardsAt(0)}
+        {messages.map((m, i) => (
+          <Fragment key={m.id}>
+            {m.role === "user" ? (
+              <div className="bubble bubble-user">{m.content}</div>
+            ) : (
+              <AgentTurn
+                message={m}
+                onApprove={(p) => approve(m.id, p)}
+                onCancel={(p) => cancel(m.id, p)}
+                onApproveAll={() => approveAll(m.id)}
+                onRevise={(p) => revise(m.id, p)}
+                onOpenTarget={onOpenTarget}
+              />
+            )}
+            {cardsAt(i + 1)}
+          </Fragment>
+        ))}
       </div>
 
       <form
@@ -136,6 +153,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
           submit(input);
         }}
       >
+        <BusinessCardAttach onFiles={addCards} />
         <Textarea
           ref={inputRef}
           value={input}

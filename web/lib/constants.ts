@@ -55,6 +55,12 @@ export const RECORD_WARN_SEC = 55 * 60;
 /** 전사 업로드 1건 최대 크기 (Vercel 요청 본문 한도 4.5MB보다 작게) */
 export const AUDIO_MAX_BYTES = 4 * 1024 * 1024;
 
+/** 명함: 업로드 이미지 1장 최대 크기(클라이언트에서 줄인 뒤), 줄일 때 긴 변, 한 번에 올릴 수 있는 장수, 연락처 태그 */
+export const CARD_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+export const CARD_IMAGE_MAX_SIDE = 2000;
+export const CARD_MAX_FILES = 10;
+export const CARD_TAG = "명함";
+
 export const NOTE_SOURCE_LABEL: Record<NoteSource, string> = {
   manual: "붙여넣기",
   recording: "녹음",

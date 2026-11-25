@@ -1,5 +1,5 @@
 import "server-only";
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { leadCopyOf } from "./contact";
 import { recordEvent } from "./events";
 import type { Contact, ContactInput } from "./types";
@@ -34,6 +34,26 @@ export async function contactConflict(client: PoolClient, e: unknown, d: Contact
   );
   const existing = rows[0] ? toContact(rows[0]) : null;
   return { ok: false, status: 409, error: `이미 등록된 이메일입니다: ${existing?.name ?? d.email}`, existing };
+}
+
+/** 같은 이메일의 연락처 (이메일이 비어 있으면 null) */
+export async function findContactByEmail(db: Pool | PoolClient, email: string): Promise<Contact | null> {
+  if (!email) return null;
+  const { rows } = await db.query<ContactRow>(`SELECT ${CONTACT_COLUMNS} FROM contacts WHERE email = lower($1) LIMIT 1`, [email]);
+  return rows[0] ? toContact(rows[0]) : null;
+}
+
+/** 같은 회사에 같은 이름(공백·대소문자 무시)의 다른 연락처. Sales Agent 중복 확인·명함 등록이 같이 쓴다 */
+export async function findSamePerson(
+  db: Pool | PoolClient, d: { name: string; companyId: string | null }, selfId: string | null = null
+): Promise<Contact | null> {
+  const { rows } = await db.query<ContactRow>(
+    `SELECT ${CONTACT_COLUMNS} FROM contacts
+     WHERE crm_person_key(name) = crm_person_key($1) AND company_id IS NOT DISTINCT FROM $2::uuid AND ($3::uuid IS NULL OR id <> $3)
+     LIMIT 1`,
+    [d.name, d.companyId, selfId]
+  );
+  return rows[0] ? toContact(rows[0]) : null;
 }
 
 /** 회사·담당 영업이 실제로 있는지 확인. 문제가 있으면 에러 메시지 */

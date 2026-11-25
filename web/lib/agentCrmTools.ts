@@ -4,9 +4,10 @@ import {
   type AgentTool, type Args, type ReadTool, type WriteTool,
 } from "./agentToolKit";
 import { COMPANY_SIZES, COMPANY_TIERS, CONTACT_ROLE_LABEL, CONTACT_ROLES, STAGES } from "./constants";
-import { resolveLeadCompany } from "./companies";
+import { findCompanyMatch, resolveLeadCompany } from "./companies";
 import { companyInputOf, companyLeadCount, createCompany, deleteCompany, findCompany, leadsBlockMessage, updateCompany } from "./companyOps";
 import { contactInputOf, createContact, deleteContact, findContact, updateContact } from "./contactOps";
+import { findSamePerson } from "./contacts";
 import { pool } from "./db";
 import { findLead, linkContact } from "./leadOps";
 import { maskPii } from "./openai";
@@ -221,13 +222,8 @@ const companyChange = (f: CompanyField, before: unknown, after: unknown): AgentC
 
 /** 같은 정규화 이름·도메인의 다른 회사 */
 async function duplicateCompany(d: Pick<CompanyInput, "name" | "emailDomain">, selfId: string | null = null) {
-  const { rows } = await pool.query<{ id: string; name: string; byDomain: boolean }>(
-    `SELECT id, name, (email_domain = $2) AS "byDomain" FROM companies
-     WHERE (name_key = crm_company_key($1) OR ($2::text IS NOT NULL AND email_domain = $2)) AND ($3::uuid IS NULL OR id <> $3)
-     LIMIT 1`,
-    [d.name, d.emailDomain, selfId]
-  );
-  return rows[0] ?? null;
+  const m = await findCompanyMatch(pool, d, selfId);
+  return m ? { id: m.company.id, name: m.company.name, byDomain: m.byDomain } : null;
 }
 
 const duplicateError = (dup: { id: string; name: string; byDomain: boolean }, what = "회사") => ({
@@ -333,13 +329,8 @@ async function contactChange(f: ContactField, before: unknown, after: unknown): 
 
 /** 같은 회사에 같은 이름(공백·대소문자 무시)의 다른 연락처 */
 async function samePerson(d: Pick<ContactInput, "name" | "companyId">, selfId: string | null = null) {
-  const { rows } = await pool.query<{ id: string; name: string }>(
-    `SELECT id, name FROM contacts
-     WHERE crm_person_key(name) = crm_person_key($1) AND company_id IS NOT DISTINCT FROM $2::uuid AND ($3::uuid IS NULL OR id <> $3)
-     LIMIT 1`,
-    [d.name, d.companyId, selfId]
-  );
-  return rows[0] ?? null;
+  const c = await findSamePerson(pool, d, selfId);
+  return c ? { id: c.id, name: c.name } : null;
 }
 
 const createContactTool: WriteTool = {

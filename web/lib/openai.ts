@@ -83,7 +83,11 @@ async function send(url: string, init: RequestInit, timeoutMs: number): Promise<
   return body;
 }
 
-export type ChatMessageParam = { role: "system" | "user" | "assistant"; content: string };
+/** 메시지 내용: 텍스트, 또는 텍스트·이미지 파트 목록 (명함 분석만 이미지 사용) */
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } };
+export type ChatMessageParam = { role: "system" | "user" | "assistant"; content: string | ChatContentPart[] };
 
 /** 채팅 완성 호출. json=true면 JSON 객체 응답을 강제한다. */
 export async function chatCompletion(

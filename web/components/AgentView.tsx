@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { AgentTarget } from "@/lib/types";
 import type { AgentChat } from "@/lib/useAgentChat";
+import type { BusinessCards } from "@/lib/useBusinessCards";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useReviseInput } from "@/lib/useReviseInput";
 import AgentTurn from "./AgentTurn";
-import { Badge, Button, EmptyState, Icon, Textarea } from "./ui";
+import BusinessCardAttach, { cardDropProps } from "./BusinessCardAttach";
+import BusinessCardConfirm, { type CardHost } from "./BusinessCardConfirm";
+import { Alert, Badge, Button, EmptyState, Icon, Textarea } from "./ui";
 
 interface Props {
   /** 대화 상태는 CrmApp이 가진다 (메뉴를 옮겨도 유지) */
   chat: AgentChat;
   onOpenTarget: (target: AgentTarget) => void;
+  /** 명함 카드 (화면을 옮겨도 남도록 CrmApp이 가진다) */
+  cards: BusinessCards;
+  cardHost: CardHost;
 }
 
 const SUGGESTIONS = [
@@ -23,17 +29,23 @@ const SUGGESTIONS = [
 ];
 
 /** Sales Agent: 대화로 요청하면 조회는 바로, 변경은 실행 계획 카드로 승인받아 처리한다 */
-export default function AgentView({ chat, onOpenTarget }: Props) {
+export default function AgentView({ chat, onOpenTarget, cards, cardHost }: Props) {
   const { messages, busy, send, approve, approveAll, cancel, reset } = chat;
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mobile = useMediaQuery(MOBILE_QUERY);
 
-  // 새 메시지·진행 단계가 오면 맨 아래로
+  // 새 메시지·진행 단계·명함 카드가 오면 맨 아래로
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, cards.cards.length]);
+
+  /** 명함: 확인 카드로 회사·연락처를 등록한다 (Agent 도구·OpenAI 대화를 거치지 않음 — 명함의 이메일·전화가 대화로 새지 않게) */
+  const [notice, setNotice] = useState<string | null>(null);
+  const addCards = (files: File[]) => setNotice(cards.addFiles(files, messages.length));
+  const cardsAt = (index: number) =>
+    cards.cards.filter((c) => Math.min(c.afterIndex, messages.length) === index).map((c) => <BusinessCardConfirm key={c.id} card={c} cards={cards} host={cardHost} />);
 
   const submit = async (text: string) => {
     if (busy || !text.trim()) return;
@@ -48,19 +60,19 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
       <div className="agent-head">
         <Badge tone="brand">Agent</Badge>
         <span className="agent-desc muted">조회는 바로 답하고, 리드 변경은 실행 계획을 보여드린 뒤 승인하면 처리합니다.</span>
-        {messages.length > 0 && (
-          <Button size="sm" variant="ghost" icon="refresh" onClick={reset}>
+        {(messages.length > 0 || cards.cards.length > 0) && (
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => { reset(); cards.clear(); setNotice(null); }}>
             새 대화
           </Button>
         )}
       </div>
 
-      <div className="agent-messages" ref={listRef}>
-        {messages.length === 0 && (
+      <div className="agent-messages" ref={listRef} {...cardDropProps(addCards)}>
+        {messages.length === 0 && cards.cards.length === 0 && (
           <EmptyState
             icon={<Icon name="agent" size={28} />}
             title="무엇을 도와드릴까요?"
-            description="리드 조회·생성·수정·단계 이동·삭제를 말로 요청하세요."
+            description="리드 조회·생성·수정·단계 이동·삭제를 말로 요청하세요. 명함 사진을 올리면 회사·연락처로 등록해 드려요."
             action={
               <div className="agent-suggestions">
                 {SUGGESTIONS.map((s) => (
@@ -72,12 +84,13 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
             }
           />
         )}
-        {messages.map((m) =>
-          m.role === "user" ? (
-            <div key={m.id} className="bubble bubble-user">{m.content}</div>
+        {cardsAt(0)}
+        {messages.map((m, i) => (
+          <Fragment key={m.id}>
+          {m.role === "user" ? (
+            <div className="bubble bubble-user">{m.content}</div>
           ) : (
             <AgentTurn
-              key={m.id}
               message={m}
               onApprove={(p) => approve(m.id, p)}
               onCancel={(p) => cancel(m.id, p)}
@@ -86,8 +99,11 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
               onSendDraft={(p) => submit(`「${p.title}」 초안 그대로 메일을 보내줘`)}
               onOpenTarget={onOpenTarget}
             />
-          )
-        )}
+          )}
+          {cardsAt(i + 1)}
+          </Fragment>
+        ))}
+        {notice && <Alert tone="info" action={<Button size="sm" variant="ghost" onClick={() => setNotice(null)}>닫기</Button>}>{notice}</Alert>}
       </div>
 
       <form
@@ -97,6 +113,7 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
           submit(input);
         }}
       >
+        <BusinessCardAttach onFiles={addCards} />
         <Textarea
           ref={inputRef}
           value={input}
