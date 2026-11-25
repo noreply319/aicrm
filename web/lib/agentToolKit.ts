@@ -52,6 +52,8 @@ export interface WriteTool {
   def: ToolDef;
   label: string;
   prepare: (args: Args, userId: string) => Promise<PreparedPlan | { error: string }>;
+  /** 메일·문서를 보내는 도구 (시간당 발송 수 제한 대상) */
+  sends?: boolean;
   /** 승인 때 실행. 초안만 보여주는 도구(prepare가 draft)는 없다 */
   execute?: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
 }

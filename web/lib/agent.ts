@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { PreparedPlan } from "./agentToolKit";
+import { planQuotaError, redactOldActions, sendLimitError } from "./agentLimits";
 import { AGENT_TOOLS } from "./agentTools";
 import { ASSISTANT_TOOL_LABELS, prepareAssistant, toolDetail } from "./assistant";
 import type { SessionUser } from "./auth";
@@ -16,6 +17,9 @@ import { UUID_RE } from "./validate";
  *    모델에는 "승인 대기"를 돌려줘 다음 라운드에서 안내 문장을 쓰게 한다.
  * 2) decideAction: 요청한 본인만 승인/취소. 행을 잠그고 상태·만료·변경 충돌을 확인한 뒤 같은 트랜잭션에서 실행한다.
  */
+
+/** 발송 도구 이름 (시간당 발송 수 제한) */
+const SEND_TOOLS = Object.values(AGENT_TOOLS).filter((t) => t.kind === "write" && t.sends).map((t) => t.def.name);
 
 /** 계획을 승인할 수 있는 시간 (시간 단위) */
 const PLAN_TTL_HOURS = 1;
@@ -49,6 +53,7 @@ const storedPlan = (p: PreparedPlan): StoredPlan => ({
 
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
 export async function savePlan(userId: string, tool: string, p: PreparedPlan): Promise<AgentPlan> {
+  await redactOldActions().catch((e: unknown) => console.error("[agent] redact", e));
   const plan = storedPlan(p);
   const { rows } = await pool.query<{ id: string }>(
     "INSERT INTO agent_actions (user_id, tool, args, plan) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -88,6 +93,8 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
     const key = `${name}:${JSON.stringify(prepared.args)}`;
     const existing = planned.get(key);
     if (existing) return { status: "pending_approval", planId: existing, note: "이미 같은 계획을 만들었습니다. " + PENDING_NOTE };
+    const quota = await planQuotaError(user.id, planned.size);
+    if (quota) return { error: quota };
     const plan = await savePlan(user.id, name, prepared);
     planned.set(key, plan.id);
     emit({ type: "plan", plan });
@@ -135,10 +142,15 @@ export async function decideAction(id: string, userId: string, action: "approve"
     if (!row) return { ok: false, status: 404, error: "실행 계획을 찾을 수 없습니다" };
     if (row.status !== "pending") return { ok: false, status: 409, error: "이미 처리된 계획입니다" };
 
-    const finish = async (status: ActionRow["status"], message: string, plan: StoredPlan = row.plan): Promise<DecideResult> => {
-      await client.query("UPDATE agent_actions SET status=$2, message=$3, plan=$4, decided_at=now() WHERE id=$1", [
-        id, status, message, JSON.stringify(plan),
-      ]);
+    /** 결과 저장. executed: 도구를 실행했으면 실행 시각·결과(대상)도 남긴다 (감사 기록) */
+    const finish = async (status: ActionRow["status"], message: string, plan: StoredPlan = row.plan, executed = false): Promise<DecideResult> => {
+      await client.query(
+        `UPDATE agent_actions SET status=$2, message=$3, plan=$4, decided_at=now(),
+                executed_at = CASE WHEN $5 THEN now() ELSE executed_at END,
+                result = CASE WHEN $5 THEN $6::jsonb ELSE result END
+         WHERE id=$1`,
+        [id, status, message, JSON.stringify(plan), executed, JSON.stringify({ ok: status === "done", ...(plan.target ? { target: plan.target } : {}) })]
+      );
       return { ok: true, plan: toPlan({ id, plan, status, message }) };
     };
 
@@ -147,12 +159,15 @@ export async function decideAction(id: string, userId: string, action: "approve"
 
     const tool = AGENT_TOOLS[row.tool];
     if (!tool || tool.kind !== "write" || !tool.execute) return finish("failed", "지원하지 않는 작업입니다");
+    // 발송 한도: 넘으면 실행하지 않고 승인 대기로 둔다 (나중에 다시 승인)
+    const sendLimit = tool.sends ? await sendLimitError(client, userId, SEND_TOOLS) : null;
+    if (sendLimit) return { ok: false, status: 429, error: sendLimit };
     const r = await tool.execute(client, userId, row.args);
-    if (!r.ok) return finish("failed", r.message);
+    if (!r.ok) return finish("failed", r.message, row.plan, true);
     after = r.after;
     next = r.next ?? [];
     // 실행에 성공하면 대상 링크를 결과로 바꾼다 (삭제는 링크 없음)
-    return finish("done", r.message, { ...row.plan, target: r.target });
+    return finish("done", r.message, { ...row.plan, target: r.target }, true);
   });
 
   if (!result.ok) return result;
@@ -180,6 +195,11 @@ export async function decideAction(id: string, userId: string, action: "approve"
     } catch (e) {
       console.error("[agent] follow-up", e);
     }
+  }
+  if (followUps.length) {
+    await pool.query("UPDATE agent_actions SET result = coalesce(result, '{}'::jsonb) || $2::jsonb WHERE id=$1", [
+      id, JSON.stringify({ followUpIds: followUps.map((f) => f.id) }),
+    ]);
   }
   return { ok: true, plan, ...(followUps.length ? { followUps } : {}) };
 }

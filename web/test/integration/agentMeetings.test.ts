@@ -59,6 +59,7 @@ beforeEach(async () => {
     [ME, OTHER]
   );
   google.calls = [];
+  google.n = 0;
   ai.summarized = [];
   ai.candidates = 0;
 });

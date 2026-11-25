@@ -264,6 +264,14 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 화면: 사이드바 `연락처`(`/contacts` ContactList, `/contacts/[id]` ContactDetail), ContactModal, 리드 모달 ContactCombobox(회사 연락처 먼저, 간이 생성 폼, `연락처 수정`은 리드 모달 위에 ContactModal), 회사 상세 소속 연락처.
 - AI Assistant 컨텍스트 `contacts`: 이름·회사·부서·직함·역할·태그·담당 영업, 메모는 질문에 이름이 나온 사람만. 이메일·전화·LinkedIn은 보내지 않음.
 
+## Sales Agent
+
+- 문서: `docs/agent/security.md`(승인 모델·OpenAI로 보내는 데이터·인젝션 대비·사용량 제한·감사 기록)
+- 화면: 사이드바 `Sales Agent`(`/agent`, `AgentView`·`useAgentChat`) — NDJSON 스트림(진행 단계·답변·실행 계획 카드), 승인·취소·수정 요청, 초안 카드, 발송 후 단계 이동 같은 후속 계획 카드.
+- 엔진 `lib/agent.ts`: 조회 도구는 바로, 변경 도구는 `agent_actions`에 `pending`으로 저장 → `decideAction`(본인만·한 번만·1시간 만료·`expect` 충돌 확인·같은 트랜잭션 실행, 커밋 후 `after`·`next`). 도구는 `lib/agentToolKit.ts` 형식(prepare/execute)으로 `agentTools.ts`(리드)·`agentCrmTools.ts`(회사·연락처)·`agentMeetingTools.ts`(노트·캘린더)·`agentMailTools.ts`(메일·문서)에 추가.
+- 변경 로직은 Route Handler와 공용(`leadOps`·`companyOps`·`contactOps`·`noteOps`·`scheduleOps`·`docOps`) — 이력은 `via: "agent"`.
+- 새 도구 규칙: 개인정보(이메일·전화 등)는 인자로 받지도 결과로 보내지도 않는다, 메일 받는 사람은 서버가 정한다, 되돌릴 수 없는 작업은 `danger`, 발송 도구는 `sends`(시간당 제한). 한도는 `lib/agentLimits.ts`.
+
 ## 참고 문서
 
 - Next.js 16 문서: `web/node_modules/next/dist/docs/`

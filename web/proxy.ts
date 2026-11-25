@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { findSessionUser, SESSION_COOKIE, USER_HEADER } from "@/lib/auth";
+import { isCrossSite } from "@/lib/csrf";
 
 /**
  * 로그인 확인 (Next.js 16 Proxy = 이전 Middleware, Node.js 런타임)
@@ -15,11 +16,8 @@ export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const isApi = pathname.startsWith("/api/");
 
-  if (isApi && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    const origin = req.headers.get("origin");
-    if (origin && safeHost(origin) !== req.headers.get("host")) {
-      return NextResponse.json({ error: "허용되지 않은 요청입니다" }, { status: 403 });
-    }
+  if (isApi && !["GET", "HEAD", "OPTIONS"].includes(req.method) && isCrossSite(req.headers)) {
+    return NextResponse.json({ error: "허용되지 않은 요청입니다" }, { status: 403 });
   }
 
   // 외부에서 보낸 사용자 헤더는 항상 지운다
@@ -45,14 +43,6 @@ export async function proxy(req: NextRequest) {
 
   headers.set(USER_HEADER, user.id);
   return NextResponse.next({ request: { headers } });
-}
-
-function safeHost(origin: string): string | null {
-  try {
-    return new URL(origin).host;
-  } catch {
-    return null;
-  }
 }
 
 export const config = {

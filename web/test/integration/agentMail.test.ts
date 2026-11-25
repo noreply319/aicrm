@@ -33,7 +33,7 @@ beforeEach(async () => {
   await resetDb();
   await pool.query(
     `INSERT INTO users (id, google_sub, email, name, google_refresh_token, gmail_enabled, google_scopes) VALUES
-       ($1, 'mail-me', 'me@nomargin.kr', '홍길동', 'enc', true, $3), ($2, 'mail-nosend', 'no@nomargin.kr', '읽기만', 'enc', true, 'openid')
+       ($1, 'mail-me', 'agent-mail@test.local', '홍길동', 'enc', true, $3), ($2, 'mail-nosend', 'agent-mail-nosend@test.local', '읽기만', 'enc', true, 'openid')
      ON CONFLICT (id) DO UPDATE SET google_refresh_token = EXCLUDED.google_refresh_token, gmail_enabled = true,
        google_scopes = EXCLUDED.google_scopes, calendar_expired = false`,
     [ME, NO_SEND, SCOPES]
