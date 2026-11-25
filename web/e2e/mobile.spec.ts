@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createCompany, createLead, hideDevIndicator, resetDb } from "./helpers";
+import { createCompany, createContact, createLead, hideDevIndicator, resetDb } from "./helpers";
 
 test.beforeEach(resetDb);
 test.beforeEach(({ page }) => hideDevIndicator(page));
@@ -129,6 +129,38 @@ test("모바일: 첫 화면은 AI Assistant 대화 (상단 바·햄버거 유지
   await expect(panel).toBeHidden();
 });
 
+test("모바일: 키보드가 열려 보이는 영역이 줄어도 입력창은 그 안(키보드 위)에 보인다", async ({ page }) => {
+  // iOS 키보드 흉내: 보이는 영역(visualViewport) 높이만 줄이고 resize 이벤트 → useKeyboardViewport가 화면을 맞춘다
+  await page.addInitScript(() => {
+    const w = window as Window & { __vvH?: number };
+    Object.defineProperty(VisualViewport.prototype, "height", { get: () => w.__vvH ?? window.innerHeight, configurable: true });
+  });
+  const keyboard = (h: number | undefined) => page.evaluate((px) => {
+    (window as Window & { __vvH?: number }).__vvH = px;
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  }, h);
+  const composerBottom = async () => {
+    const box = (await page.locator(".composer").boundingBox())!;
+    return box.y + box.height;
+  };
+
+  // 첫 화면 (/)
+  await page.goto("/");
+  await expect(page.locator(".composer")).toBeVisible();
+  await keyboard(400);
+  await expect.poll(composerBottom).toBeLessThanOrEqual(400);
+  await expect(page.locator(".page-title")).toBeInViewport(); // 상단 바는 그대로
+  await keyboard(undefined); // 키보드 닫힘 → 원래 높이
+  await expect.poll(composerBottom).toBeGreaterThan(600);
+
+  // 다른 화면의 전체 화면 채팅
+  await page.goto("/pipeline");
+  await page.getByRole("button", { name: "AI Assistant" }).click();
+  await expect(page.locator(".composer")).toBeVisible();
+  await keyboard(400);
+  await expect.poll(composerBottom).toBeLessThanOrEqual(400);
+});
+
 test("모바일: 다른 화면의 AI Assistant 채팅은 화면 전체 폭·높이를 쓰고, 다른 메뉴로 가면 닫힌다", async ({ page }) => {
   await page.goto("/pipeline");
   const panel = page.getByRole("complementary", { name: "AI Assistant" });
@@ -170,6 +202,38 @@ test("모바일: 화면마다 가로로 넘치는 요소가 없다 (360px)", asy
     const width = await page.evaluate(() => ({ inner: window.innerWidth, scroll: document.scrollingElement!.scrollWidth }));
     expect(width, path).toEqual({ inner: 360, scroll: 360 });
   }
+
+  // 새 리드 모달: 예상 마감일(날짜 입력)이 화면 밖으로 나가지 않고, 모달이 좌우로 스크롤되지 않는다
+  await page.goto("/pipeline");
+  await page.locator(".fab").click();
+  const modal = page.getByRole("dialog");
+  await expect(modal).toBeVisible();
+  const date = modal.locator('input[type="date"]');
+  await expect.poll(async () => {
+    const box = (await date.boundingBox())!;
+    return Math.round(box.x + box.width);
+  }).toBeLessThanOrEqual(360);
+  const overflow = await modal.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("모바일 리드 모달: 담당자 칩의 긴 회사·부서·직함은 둘째 줄, 이름과 × 버튼은 같은 줄", async ({ page, request }) => {
+  const company = await createCompany(request, { name: "(주)엔에스 컴퍼니" });
+  const contact = await createContact(request, { name: "안수현", companyId: company.id, department: "경영지원본부 인사기획팀", title: "대리" });
+  await request.post("/api/leads", { data: { companyId: company.id, contactId: contact.id, value: 10_000_000 } });
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/pipeline");
+  await page.locator(".card").filter({ hasText: "엔에스" }).click();
+  const chip = page.getByTestId("contact-chip");
+  await expect(chip).toBeVisible();
+  const name = (await chip.locator("b").boundingBox())!;
+  const close = (await chip.getByRole("button", { name: "다른 담당자 선택" }).boundingBox())!;
+  // 세로 가운데가 거의 같은 줄 (× 버튼이 다음 줄로 내려가지 않음)
+  expect(Math.abs(name.y + name.height / 2 - (close.y + close.height / 2))).toBeLessThan(8);
+  // 칩이 화면 밖으로 넘치지 않는다
+  const box = (await chip.boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
 test("모바일 계약서: 2단 대신 대화/문서 전환, 답변하면 문서 탭에 표시", async ({ page, request }) => {

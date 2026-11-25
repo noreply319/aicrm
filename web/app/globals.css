@@ -243,6 +243,8 @@ a, button, input, select, textarea, label, [role="button"], [role="tab"] { touch
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
+/* 날짜·시간 입력: iOS 사파리는 자체 최소 폭이 있어 width: 100%를 무시하고 화면 밖으로 넘친다 */
+.control[type="date"], .control[type="datetime-local"], .control[type="time"], .control[type="month"] { min-width: 0; }
 .control:hover:not(:disabled) { border-color: var(--text-3); }
 .control:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
 .control:disabled { background: var(--surface-2); color: var(--text-3); }
@@ -736,6 +738,11 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   /* iOS 사파리는 16px 미만 입력창에 포커스하면 화면을 확대한다 → 모바일 입력 글자는 16px 이상
      (개별 화면의 작은 글자 지정보다 우선하도록 !important) */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: 16px !important; }
+  /* iOS 날짜·시간 입력: 기본 모양을 끄면 화면 폭에 맞춰진다. 값은 왼쪽 정렬, 비어 있어도 다른 입력칸과 같은 높이 */
+  .control[type="date"], .control[type="datetime-local"], .control[type="time"], .control[type="month"] {
+    -webkit-appearance: none; appearance: none; display: block; min-height: calc(1.45em + 20px);
+  }
+  .control::-webkit-date-and-time-value { text-align: left; min-height: 1.45em; }
   /* 모바일: 상단 바 "AI" 버튼·메뉴의 AI Assistant → 떠 있는 창이 아닌 별도 화면. 상단 바·메인을 숨기고 채팅이 화면 전체를 쓴다
      (닫기는 채팅 상단 왼쪽 뒤로 가기) */
   .assistant {
@@ -753,7 +760,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   /* 키보드가 열려도 상단은 그대로: 채팅 화면을 보이는 영역(visualViewport)에 맞춘다 (useKeyboardViewport).
      대화 목록만 줄어들고 입력창은 키보드 바로 위에 붙는다 */
   .app-shell.home .app-main, .app-shell.ai-open .assistant {
-    height: var(--vv-h, 100dvh); transform: translateY(var(--vv-top, 0px));
+    /* min-height: 0 — 기본 .app-main의 min-height: 100vh가 이 높이를 덮어 입력창이 키보드 뒤로 숨던 문제 */
+    height: var(--vv-h, 100dvh); min-height: 0; transform: translateY(var(--vv-top, 0px));
   }
   .kb-open .assistant-input { padding-bottom: 12px; }
   .assistant-head .assistant-hide { display: none; }
@@ -822,7 +830,7 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
 
   /* 모달 → 전체 화면 */
   .overlay { padding: 0; align-items: stretch; }
-  .modal, .modal-wide, .modal-lg { max-width: none; max-height: none; height: 100%; border-radius: 0; display: flex; flex-direction: column; }
+  .modal, .modal-wide, .modal-lg { max-width: none; max-height: none; height: 100%; border-radius: 0; display: flex; flex-direction: column; overflow-x: hidden; }
   .modal-head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 14px 16px; }
   .modal-tabs { margin: 0 16px; }
   .modal-body { padding: 12px 16px; }
@@ -850,6 +858,8 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .choice-row { flex-wrap: wrap; }
   .choice-row .btn { flex: 1 0 auto; }
   .company-chip { flex-wrap: wrap; row-gap: 2px; }
+  /* 담당자 칩: 긴 회사·부서·직함은 이름 아래 둘째 줄(말줄임) → 이름·× 버튼은 첫 줄에 남는다 */
+  .company-chip > .ellipsis { flex-basis: 100%; order: 5; padding-left: 24px; }
   .panel { padding: 14px; }
 }
 
