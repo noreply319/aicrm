@@ -756,3 +756,41 @@
 > 완료되면 commit, main merge하고, worktree 정리하고, github에 push해줘.
 
 - 결과: `feature/ai-home`·`fix/table-width`를 커밋해 main에 병합하고 worktree·브랜치 삭제. push가 거부돼 확인하니 다른 기기에서 올린 같은 성격의 모바일 작업(98번 `5d49630` 햄버거 메뉴·화면 전수검사)이 있어 병합: 메뉴·모바일 AI 전체 화면(`ai-open`)·좁은 화면 수정은 원격 구현을 따르고, 그 위에 첫 화면 AI Assistant(`/`, `.app-shell.home`)·견적서 탭·`/pipeline`·회사/연락처 표 전체 폭을 얹음. 메뉴의 별도 `AI Assistant` 버튼은 NAV 첫 항목(`/`)으로 대체, 첫 화면에서는 상단 바 AI 버튼 숨김. history 번호는 원격(94~102) 뒤로 103~106으로 옮김. build 통과(테스트 생략)
+
+## 107. 2026-11-25 — 두 번째 사용자(gwanyong.park) 로그인·Gmail·캘린더 연동 허용
+
+> 현재 noreply@supercoder.co만 로그인 가능하고 gmail, calendar 연동가능한데 gwanyong.park@supercoder.co도 로그인 가능하고 연동 가능하도록 gcp 설정해줘. 브라우저 연결하면 로그인할께.
+
+- 결과: 로컬 `web/.env.local`·Vercel 운영 `ALLOWED_EMAILS`에 추가 후 운영 재배포. GCP OAuth 테스트 사용자 추가는 브라우저 도구가 없어 수동 절차 안내
+
+## 108. 2026-11-25 — Vercel에도 허용 이메일 반영
+
+> vercel에도 업데이트해줘.
+
+- 결과: Vercel CLI 로그인 후 운영 `ALLOWED_EMAILS`(Sensitive)를 두 계정으로 갱신, 운영 재배포(aicrm-orcin.vercel.app)
+
+## 109. 2026-11-25 — 메뉴별 실습 프롬프트 작성
+
+> 현재 까지 개발된 메뉴들 하나씩 만들때 넣을 수 있는 프롬프트 한국어로 작성해줘. 아래 순서로 개발했을 때 필요한 프롬프트 작성해줘. 아래 기능 중에서 프롬프트 단계를 나눠야 하는 부분들은 나눠서 제안해줘. 실습 중간에 수정은 필요할 수 있는 부분은 감안하고, 기능 하나씩 나눠서 개발 가능하도록 prompt 작성해줘. 해당 프롬프트는 docs 에 폴더 만들어서 프롬프트당 파일 하나로 작성해주고, 순서대로 번호 앞에 붙여서, 순차적으로 실습하면서 copy & paste 가능하도록 md파일로 작성해줘. 그리고 개발 순서 개선할 수 있거나, 명확하지 않은 부분 있으면 질문을 해서 내가 결정 할 수 있게 해줘.
+> (순서: 1. 파이프라인 / 1.1 Google Login / 1.2 Gmail 연동 / 3. 회사 / 4. 연락처 / 5. 미팅노트 / 6. 계약서 / 7. 캘린더)
+> (선택: AI Assistant는 파이프라인 직후 / 디자인 시스템은 파이프라인 단계에서 먼저 / 요구사항 → 와이어프레임 → 구현 / 배포·자동 테스트·모바일·AI 첫 화면+견적서 탭 모두 포함)
+
+- 결과: `docs/practice-prompts/`에 45개 md 작성 — `00-README`(순서·이유·사용법), 01~43(메뉴별 요구사항 → 와이어프레임 → 구현, 큰 기능은 구현 2~3개로 분할, 파일마다 복사용 프롬프트·AI 질문 추천 답·확인 체크리스트·중간 수정 예시), `99-common-prompts`(커밋·배포 반영·에러 분석 등). 코드 변경 없음
+
+## 110. 2026-11-25 — 모바일에서 모든 메뉴 화면이 반만 나오는 문제
+
+> 현재 모바일에서 모든 메뉴가 화면이 반만 나오는데, 반응형이 잘안나오는데 해당 이슈 분석해서 새로운 워크트리에서 구현하고, commit, push까지 해줘.
+
+- 결과: 원인은 모바일(640px 이하) `.assistant { flex: 1 1 auto }`가 닫힌 패널(`.assistant.closed`의 `flex-basis: 0`)에도 적용돼, 보이지 않는 Assistant 패널이 `.workspace-main`과 폭을 반씩 나눠 가짐(390px 화면에서 메인 195px). 모바일에서 `.assistant.closed { display: none }`으로 수정(메인 390px 확인). worktree `worktress/mobile-layout`(브랜치 `fix/mobile-layout`)에서 커밋·push. build 통과(테스트 생략)
+
+## 111. 2026-11-25 — main 병합·push·worktree 정리
+
+> 진행해줘.
+
+- 결과: `fix/mobile-layout`을 main에 fast-forward 병합(`0d5c916`) 후 push(Vercel 자동 배포), worktree·로컬/원격 브랜치 삭제
+
+## 112. 2026-11-25 — 프롬프트 기록 커밋·push
+
+> history.md 커밋하고 push해줘
+
+- 결과: `prompts/history.md`(107~112번)만 커밋해 main에 push
