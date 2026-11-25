@@ -1,56 +1,17 @@
 import "server-only";
-import type { PoolClient } from "pg";
+import { AGENT_CRM_TOOLS } from "./agentCrmTools";
+import { diffFields, has, idArg, leadTarget, stale, str, text, unchanged, VIA, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import { formatWon } from "./format";
-import { createLead, deleteLead, findLead, moveLead, updateLead } from "./leadOps";
-import { maskChanges, maskPii, type ToolDef } from "./openai";
-import type { AgentChange, AgentTarget, Lead, LeadInput, Priority, StageId } from "./types";
-import { isPriority, isStage, parseLeadInput, UUID_RE } from "./validate";
+import { createLead, deleteLead, findLead, leadInputOf, moveLead, updateLead } from "./leadOps";
+import { maskChanges, maskPii } from "./openai";
+import type { AgentChange, Lead, LeadInput, Priority, StageId } from "./types";
+import { isPriority, isStage, parseLeadInput } from "./validate";
 
-/**
- * Sales Agent 도구 레지스트리.
- * - read: 바로 실행해 결과를 모델에 돌려준다 (이메일·전화번호는 넣지 않음)
- * - write: 실행하지 않고 prepare로 실행 계획(카드)을 만든다 → 사용자가 승인하면 execute가 트랜잭션 안에서 실행
- *   prepare가 저장한 args를 execute에서 다시 검증하고(모델·DB 값을 믿지 않음),
- *   args.expect(계획을 만들 때의 현재 값)와 지금 값이 다르면 실행하지 않는다.
- */
+/** 리드 도구 (조회·생성·수정·단계 이동·삭제) + 전체 도구 레지스트리 */
 
-type Args = Record<string, unknown>;
-
-export interface PreparedPlan {
-  title: string;
-  changes: AgentChange[];
-  target?: AgentTarget;
-  danger?: boolean;
-  affectsLeads: boolean;
-  /** 저장할 인자 (execute에 그대로 전달) */
-  args: Args;
-}
-
-export type ExecResult = { ok: true; message: string; target?: AgentTarget } | { ok: false; message: string };
-
-interface ReadTool {
-  kind: "read";
-  def: ToolDef;
-  label: string;
-  run: (args: Args) => Promise<unknown>;
-}
-
-interface WriteTool {
-  kind: "write";
-  def: ToolDef;
-  label: string;
-  prepare: (args: Args) => Promise<PreparedPlan | { error: string }>;
-  execute: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
-}
-
-export type AgentTool = ReadTool | WriteTool;
-
-/** 리드 변경 이력에 남기는 표시 */
-const VIA = { via: "agent" } as const;
-
-const STALE = "계획을 만든 뒤 리드가 바뀌었습니다. 최신 내용으로 다시 요청하세요";
+const STALE = stale("리드가");
 const GONE = "리드를 찾을 수 없습니다 (이미 삭제됐을 수 있습니다)";
 
 /* ───────── 표시용 ───────── */
@@ -68,8 +29,7 @@ function display(field: string, v: unknown): string | undefined {
   if (field === "value") return formatWon(Number(v));
   if (field === "stage") return stageName(String(v));
   if (field === "priority") return PRIORITY_LABEL[v as Priority] ?? String(v);
-  const s = String(v);
-  return s.length > 200 ? `${s.slice(0, 200)}…` : s;
+  return text(v);
 }
 
 const change = (field: string, before: unknown, after: unknown): AgentChange => ({
@@ -78,20 +38,10 @@ const change = (field: string, before: unknown, after: unknown): AgentChange => 
   after: display(field, after),
 });
 
-const leadTarget = (l: Pick<Lead, "id" | "company" | "contact">): AgentTarget => ({
-  kind: "lead",
-  id: l.id,
-  label: l.contact ? `${l.company} · ${l.contact}` : l.company,
-});
 
 /* ───────── 인자 파싱 ───────── */
 
-const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-const has = (a: Args, k: string) => a[k] !== undefined && a[k] !== null;
-
-function leadIdArg(a: Args): string | null {
-  return typeof a.leadId === "string" && UUID_RE.test(a.leadId) ? a.leadId : null;
-}
+const leadIdArg = (a: Args) => idArg(a, "leadId");
 
 /** 모델에 보내는 리드 요약 (이메일·전화번호 제외) */
 const leadForModel = (l: Lead) => ({
@@ -105,12 +55,6 @@ const leadForModel = (l: Lead) => ({
   stageName: stageName(l.stage),
   priority: l.priority,
 });
-
-/** args.expect의 값이 지금 리드 값과 모두 같은지 (계획 이후 다른 사람이 바꿨는지 확인) */
-function unchanged(lead: Lead, expect: unknown): boolean {
-  if (!expect || typeof expect !== "object") return false;
-  return Object.entries(expect as Args).every(([k, v]) => lead[k as keyof Lead] === v);
-}
 
 /* ───────── 조회 도구 ───────── */
 
@@ -276,11 +220,6 @@ function parseUpdate(a: Args): { ok: true; id: string; set: Partial<Pick<LeadInp
   return { ok: true, id, set: Object.fromEntries(keys.map((k) => [k, v.data[k]])) };
 }
 
-/** 리드 → 전체 교체용 입력 (updateLead는 모든 필드를 덮어쓴다) */
-const toInput = (l: Lead): LeadInput => ({
-  companyId: l.companyId, company: l.company, contactId: l.contactId, contact: l.contact, title: l.title,
-  email: l.email, phone: l.phone, value: l.value, closeDate: l.closeDate, stage: l.stage, priority: l.priority, notes: l.notes,
-});
 
 const updateLeadTool: WriteTool = {
   kind: "write",
@@ -306,10 +245,8 @@ const updateLeadTool: WriteTool = {
     if (!p.ok) return { error: p.error };
     const lead = await findLead(pool, p.id);
     if (!lead) return { error: "리드를 찾을 수 없습니다" };
-    const fields = (Object.keys(p.set) as Updatable[]).filter((f) => p.set[f] !== lead[f]);
+    const { fields, set, expect } = diffFields(lead, p.set);
     if (fields.length === 0) return { error: "이미 같은 값입니다. 바뀌는 항목이 없습니다" };
-    const set = Object.fromEntries(fields.map((f) => [f, p.set[f]]));
-    const expect = Object.fromEntries(fields.map((f) => [f, lead[f]]));
     return {
       title: "리드 수정",
       changes: fields.map((f) => change(f, lead[f], p.set[f])),
@@ -325,7 +262,7 @@ const updateLeadTool: WriteTool = {
     if (!lead) return { ok: false, message: GONE };
     if (!unchanged(lead, a.expect)) return { ok: false, message: STALE };
     // 지금 값에 바꿀 항목만 덮어써 다른 필드는 그대로 둔다
-    const r = await updateLead(client, userId, p.id, { ...toInput(lead), ...p.set }, VIA);
+    const r = await updateLead(client, userId, p.id, { ...leadInputOf(lead), ...p.set }, VIA);
     return r.ok ? { ok: true, message: "리드를 수정했습니다", target: leadTarget(r.lead) } : { ok: false, message: r.error };
   },
 };
@@ -419,6 +356,7 @@ const deleteLeadTool: WriteTool = {
   },
 };
 
+/** 전체 도구 (리드 + 회사·연락처) */
 export const AGENT_TOOLS: Record<string, AgentTool> = Object.fromEntries(
-  [searchLeads, getLead, pipelineSummary, createLeadTool, updateLeadTool, moveLeadTool, deleteLeadTool].map((t) => [t.def.name, t])
+  [searchLeads, getLead, pipelineSummary, createLeadTool, updateLeadTool, moveLeadTool, deleteLeadTool, ...AGENT_CRM_TOOLS].map((t) => [t.def.name, t])
 );

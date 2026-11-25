@@ -1,5 +1,6 @@
 import "server-only";
-import { AGENT_TOOLS, type PreparedPlan } from "./agentTools";
+import type { PreparedPlan } from "./agentToolKit";
+import { AGENT_TOOLS } from "./agentTools";
 import { ASSISTANT_TOOL_LABELS, prepareAssistant, toolDetail } from "./assistant";
 import type { SessionUser } from "./auth";
 import { pool } from "./db";
@@ -20,7 +21,7 @@ const PLAN_TTL_HOURS = 1;
 // 조회 후 계획까지 여러 번 도구를 쓸 수 있게 Assistant(3)보다 넉넉히
 const MAX_ROUNDS = 5;
 
-type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "affectsLeads">;
+type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "notice" | "affectsLeads">;
 
 interface ActionRow {
   id: string;
@@ -43,7 +44,7 @@ const toPlan = (r: Pick<ActionRow, "id" | "plan" | "status" | "message">): Agent
 
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
 export async function savePlan(userId: string, tool: string, p: PreparedPlan): Promise<AgentPlan> {
-  const plan: StoredPlan = { title: p.title, changes: p.changes, target: p.target, danger: p.danger, affectsLeads: p.affectsLeads };
+  const plan: StoredPlan = { title: p.title, changes: p.changes, target: p.target, danger: p.danger, notice: p.notice, affectsLeads: p.affectsLeads };
   const { rows } = await pool.query<{ id: string }>(
     "INSERT INTO agent_actions (user_id, tool, args, plan) VALUES ($1, $2, $3, $4) RETURNING id",
     [userId, tool, JSON.stringify(p.args), JSON.stringify(plan)]

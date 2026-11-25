@@ -24,6 +24,12 @@ export async function findLead(db: Pool | PoolClient, id: string, { lock = false
   return rows[0] ? toLead(rows[0]) : null;
 }
 
+/** 리드 → 전체 교체용 입력 (updateLead는 모든 필드를 덮어쓰므로 일부만 바꿀 때 현재 값과 합친다) */
+export const leadInputOf = (l: Lead): LeadInput => ({
+  companyId: l.companyId, company: l.company, contactId: l.contactId, contact: l.contact, title: l.title,
+  email: l.email, phone: l.phone, value: l.value, closeDate: l.closeDate, stage: l.stage, priority: l.priority, notes: l.notes,
+});
+
 export async function createLead(client: PoolClient, userId: string | null, d: LeadInput, meta: Meta = {}): Promise<LeadOpResult> {
   // 회사: companyId로 지정하거나, 회사명만 오면 같은 이름의 회사를 찾거나 만든다
   const company = await resolveLeadCompany(client, d.companyId, d.company, userId);
@@ -46,7 +52,9 @@ export async function createLead(client: PoolClient, userId: string | null, d: L
 
 /** 전체 값 교체 (PATCH). 일부만 바꾸려면 호출 전에 현재 값과 합친다 */
 export async function updateLead(
-  client: PoolClient, userId: string | null, id: string, d: LeadInput, meta: Meta = {}
+  client: PoolClient, userId: string | null, id: string, d: LeadInput, meta: Meta = {},
+  /** 필드 비교로는 안 보이는 변경 (예: 연결 연락처) — 있으면 항상 이력을 남긴다 */
+  extra: Meta = {}
 ): Promise<LeadOpResult> {
   const before = await findLead(client, id, { lock: true });
   if (!before) return NOT_FOUND;
@@ -65,9 +73,28 @@ export async function updateLead(
     [id, input.company, input.contact, input.title, input.email, input.phone, d.value, d.closeDate || null, d.stage, d.priority, d.notes,
       company.id, d.contactId]
   );
-  const changes = diffLead(before, input);
+  const changes = { ...diffLead(before, input), ...extra };
   if (Object.keys(changes).length > 0) await recordEvent(client, id, input.company, "updated", { ...changes, ...meta });
   return { ok: true, lead: toLead(rows[0]) };
+}
+
+/**
+ * 리드의 담당 연락처 연결(contactId=null이면 해제). 담당자 사본은 연락처 값으로 바뀌고,
+ * 이력에 contactLink { from, to }(연락처 이름)를 남긴다.
+ */
+export async function linkContact(
+  client: PoolClient, userId: string | null, id: string, contactId: string | null, meta: Meta = {}
+): Promise<LeadOpResult> {
+  const lead = await findLead(client, id, { lock: true });
+  if (!lead) return NOT_FOUND;
+  const names = await client.query<{ id: string; name: string }>("SELECT id, name FROM contacts WHERE id = ANY($1)", [
+    [lead.contactId, contactId].filter((x): x is string => !!x),
+  ]);
+  const nameOf = (cid: string | null) => (cid ? (names.rows.find((r) => r.id === cid)?.name ?? null) : null);
+  if (contactId && !nameOf(contactId)) return NO_CONTACT;
+  return updateLead(client, userId, id, { ...leadInputOf(lead), contactId }, meta, {
+    contactLink: { from: nameOf(lead.contactId), to: nameOf(contactId) },
+  });
 }
 
 /**

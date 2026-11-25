@@ -141,6 +141,8 @@ export interface AgentPlan {
   affectsLeads?: boolean;
   /** 되돌릴 수 없는 작업 (삭제) — 승인 버튼을 위험 색으로 */
   danger?: boolean;
+  /** 승인 전에 알아야 할 점 (예: 연결 리드도 함께 바뀜, 다른 회사 소속 연락처) */
+  notice?: { tone: "info" | "warning"; text: string };
 }
 
 export type AgentEvent =

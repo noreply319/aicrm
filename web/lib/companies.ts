@@ -21,22 +21,18 @@ export const companyParams = (d: CompanyInput) => [
   d.businessNumber, d.ceoName, d.ownerId, d.tier, d.tags, d.notes,
 ];
 
-export class CompanyConflictError extends Error {
-  constructor(message: string, readonly existing: Company | null) {
-    super(message);
-  }
-}
+export type CompanyConflict = { ok: false; status: 409; error: string; existing: Company | null };
 
-/** 유니크 인덱스 위반(23505)이면 어느 항목이 겹쳤는지 찾아 CompanyConflictError로 바꾼다 */
-export async function conflictFromError(client: PoolClient, e: unknown, d: CompanyInput, selfId: string | null = null): Promise<never> {
+/** 유니크 인덱스 위반(23505)이면 어느 항목이 겹쳤는지 찾아 409 결과로 바꾼다 (그 밖의 에러는 그대로 던진다) */
+export async function companyConflict(client: PoolClient, e: unknown, d: CompanyInput, selfId: string | null = null): Promise<CompanyConflict> {
   const err = e as { code?: string; constraint?: string };
   if (err.code !== "23505") throw e;
   if (err.constraint === "companies_email_domain_idx") {
     const existing = await findBy(client, "email_domain = $1", d.emailDomain, selfId);
-    throw new CompanyConflictError(`이메일 도메인 ${d.emailDomain}은(는) 이미 '${existing?.name ?? "다른 회사"}'에 등록되어 있습니다`, existing);
+    return { ok: false, status: 409, error: `이메일 도메인 ${d.emailDomain}은(는) 이미 '${existing?.name ?? "다른 회사"}'에 등록되어 있습니다`, existing };
   }
   const existing = await findBy(client, "name_key = crm_company_key($1)", d.name, selfId);
-  throw new CompanyConflictError(`이미 등록된 회사입니다: ${existing?.name ?? d.name}`, existing);
+  return { ok: false, status: 409, error: `이미 등록된 회사입니다: ${existing?.name ?? d.name}`, existing };
 }
 
 async function findBy(client: PoolClient, where: string, value: unknown, selfId: string | null): Promise<Company | null> {

@@ -100,6 +100,11 @@ function PlanCard({
           </tbody>
         </table>
       )}
+      {plan.notice && plan.status === "pending" && (
+        <Alert tone={plan.notice.tone} plain>
+          {plan.notice.text}
+        </Alert>
+      )}
       {plan.message && (
         <Alert tone={plan.status === "done" ? "success" : plan.status === "canceled" ? "neutral" : "danger"} plain>
           {plan.message}

@@ -268,14 +268,19 @@ function calendarRules(state: CalendarState, userName: string): string {
 const READ_ONLY_RULES = `- 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
   일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.`;
 
-const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, 캘린더·이메일 조회)는 바로 실행됩니다. 최신 값이 필요하면 먼저 조회하세요.
-- 리드 생성·수정·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead 도구를 호출하세요.
+const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact, 캘린더·이메일 조회)는 바로 실행됩니다.
+  최신 값이 필요하면 먼저 조회하세요.
+- 리드 생성·수정·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead,
+  회사 등록·수정은 create_company / update_company, 연락처 등록·수정은 create_contact / update_contact,
+  리드에 담당 연락처 지정은 link_contact_to_lead 도구를 호출하세요.
   이 도구는 바로 실행되지 않고 "실행 계획" 카드로 사용자에게 보여지며, 사용자가 승인해야 실행됩니다.
   절대 "변경했습니다/옮겼습니다"라고 말하지 마세요. "아래 계획을 확인하고 승인하면 반영됩니다"처럼 안내하세요.
-- 리드는 CRM 데이터의 leads.id로 지정하세요. 같은 회사의 리드가 여럿이거나 대상이 불분명하면 도구를 호출하지 말고 어느 리드인지 되물으세요.
+- 리드·회사·연락처는 CRM 데이터의 id(leads.id, companies.id, contacts.id)로 지정하세요. 대상이 여럿이거나 불분명하면 도구를 호출하지 말고 되물으세요.
+- 계획 도구가 "이미 있습니다"(중복) error를 돌려주면 새로 만들지 말고 그 기존 회사·연락처를 쓰자고 제안하세요.
 - 금액은 원 단위 정수, 날짜는 YYYY-MM-DD, 단계는 id(${STAGES.map((s) => `${s.id}=${s.name}`).join(", ")})로 넘기세요.
 - 도구가 error를 돌려주면 그 이유를 사용자에게 알리세요.
-- 회사·담당자·이메일·전화번호 변경, 회사·연락처 등록, 일정 등록, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
+- 이메일·전화번호·주소·사업자번호·대표자명·LinkedIn은 입력·변경할 수 없습니다(개인정보는 받지 않음). 회사·연락처 화면에서 직접 입력하도록 안내하세요.
+- 회사·연락처 삭제, 일정 등록, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
 
 /** assistant: 조회 전용 AI Assistant, agent: 변경은 실행 계획으로만 만드는 Sales Agent */
 export type PromptMode = "assistant" | "agent";

@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  COMPANY_COLUMNS, CompanyConflictError, companyParams, conflictFromError, ownerExists, toCompany, type CompanyRow,
-} from "@/lib/companies";
+import { findCompany, updateCompany } from "@/lib/companyOps";
 import { pool } from "@/lib/db";
-import { recordEvent, withTransaction } from "@/lib/events";
+import { withTransaction } from "@/lib/events";
 import { parseCompanyInput, UUID_RE } from "@/lib/validate";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -13,8 +11,8 @@ const notFound = () => NextResponse.json({ error: "회사를 찾을 수 없습�
 export async function GET(_req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound();
-  const { rows } = await pool.query<CompanyRow>(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id = $1`, [id]);
-  return rows[0] ? NextResponse.json(toCompany(rows[0])) : notFound();
+  const company = await findCompany(pool, id);
+  return company ? NextResponse.json(company) : notFound();
 }
 
 /** 회사 수정. 이름을 바꾸면 연결 리드의 회사명 사본도 바꾸고 리드마다 updated 이력을 남긴다 (같은 트랜잭션). */
@@ -23,50 +21,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!UUID_RE.test(id)) return notFound();
   const parsed = parseCompanyInput(await req.json().catch(() => null));
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
-  const d = parsed.data;
 
-  try {
-    const result = await withTransaction(async (client) => {
-      const before = (await client.query<{ name: string }>("SELECT name FROM companies WHERE id = $1 FOR UPDATE", [id])).rows[0];
-      if (!before) return null;
-      if (!(await ownerExists(client, d.ownerId))) return "no-owner" as const;
-
-      let row: CompanyRow;
-      try {
-        await client.query("SAVEPOINT upd");
-        row = (
-          await client.query<CompanyRow>(
-            `UPDATE companies SET name=$1, name_key=crm_company_key($1), website=$2, email_domain=$3, industry=$4, size=$5,
-                    phone=$6, address=$7, business_number=$8, ceo_name=$9, owner_id=$10, tier=$11, tags=$12, notes=$13,
-                    updated_at=now()
-             WHERE id=$14
-             RETURNING ${COMPANY_COLUMNS}`,
-            [...companyParams(d), id]
-          )
-        ).rows[0];
-      } catch (e) {
-        await client.query("ROLLBACK TO SAVEPOINT upd");
-        return conflictFromError(client, e, d, id);
-      }
-
-      if (before.name !== d.name) {
-        const { rows: leads } = await client.query<{ id: string; old: string }>(
-          `UPDATE leads l SET company = $2, updated_at = now()
-           FROM (SELECT id, company AS old FROM leads WHERE company_id = $1 FOR UPDATE) o
-           WHERE l.id = o.id AND o.old <> $2
-           RETURNING l.id, o.old`,
-          [id, d.name]
-        );
-        for (const l of leads) await recordEvent(client, l.id, d.name, "updated", { company: { from: l.old, to: d.name } });
-      }
-      return toCompany(row);
-    });
-    if (result === "no-owner") return NextResponse.json({ error: "담당 영업을 찾을 수 없습니다" }, { status: 400 });
-    return result ? NextResponse.json(result) : notFound();
-  } catch (e) {
-    if (e instanceof CompanyConflictError) return NextResponse.json({ error: e.message, company: e.existing }, { status: 409 });
-    throw e;
-  }
+  const r = await withTransaction((client) => updateCompany(client, id, parsed.data));
+  if (r.ok) return NextResponse.json(r.company);
+  return NextResponse.json(r.status === 409 ? { error: r.error, company: r.existing } : { error: r.error }, { status: r.status });
 }
 
 /** 회사 삭제. 연결된 리드가 있으면 409 (리드를 다른 회사로 옮기거나 삭제한 뒤 삭제) */

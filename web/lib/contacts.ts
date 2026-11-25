@@ -23,21 +23,17 @@ export const contactParams = (d: ContactInput) => [
   d.linkedinUrl, d.role, d.ownerId, d.tags, d.notes,
 ];
 
-export class ContactConflictError extends Error {
-  constructor(message: string, readonly existing: Contact | null) {
-    super(message);
-  }
-}
+export type ContactConflict = { ok: false; status: 409; error: string; existing: Contact | null };
 
-/** 이메일 유니크 인덱스 위반(23505)이면 기존 연락처를 찾아 ContactConflictError로 바꾼다 */
-export async function contactConflict(client: PoolClient, e: unknown, d: ContactInput, selfId: string | null = null): Promise<never> {
+/** 이메일 유니크 인덱스 위반(23505)이면 기존 연락처를 찾아 409 결과로 바꾼다 (그 밖의 에러는 그대로 던진다) */
+export async function contactConflict(client: PoolClient, e: unknown, d: ContactInput, selfId: string | null = null): Promise<ContactConflict> {
   if ((e as { code?: string }).code !== "23505") throw e;
   const { rows } = await client.query<ContactRow>(
     `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE email = $1 AND ($2::uuid IS NULL OR id <> $2) LIMIT 1`,
     [d.email, selfId]
   );
   const existing = rows[0] ? toContact(rows[0]) : null;
-  throw new ContactConflictError(`이미 등록된 이메일입니다: ${existing?.name ?? d.email}`, existing);
+  return { ok: false, status: 409, error: `이미 등록된 이메일입니다: ${existing?.name ?? d.email}`, existing };
 }
 
 /** 회사·담당 영업이 실제로 있는지 확인. 문제가 있으면 에러 메시지 */
@@ -65,9 +61,11 @@ const COPY_FIELDS = ["contact", "title", "email", "phone"] as const;
 
 /**
  * 연락처를 수정한 뒤 연결된 모든 리드(수주·실주 포함)의 담당자 사본을 바꾸고,
- * 바뀐 리드마다 updated 이력({ 바뀐 필드, via: "contact" })을 남긴다. 같은 트랜잭션의 client로 호출.
+ * 바뀐 리드마다 updated 이력({ 바뀐 필드, ...meta(기본 via: "contact") })을 남긴다. 같은 트랜잭션의 client로 호출.
  */
-export async function syncLeadCopies(client: PoolClient, contactId: string, c: Contact): Promise<number> {
+export async function syncLeadCopies(
+  client: PoolClient, contactId: string, c: Contact, meta: Record<string, unknown> = { via: "contact" }
+): Promise<number> {
   const copy = leadCopyOf(c);
   const { rows } = await client.query<CopyRow>(
     `SELECT id, company, contact, title, email, phone FROM leads WHERE contact_id = $1 ORDER BY id FOR UPDATE`,
@@ -82,7 +80,7 @@ export async function syncLeadCopies(client: PoolClient, contactId: string, c: C
       "UPDATE leads SET contact = $2, title = $3, email = $4, phone = $5, updated_at = now() WHERE id = $1",
       [l.id, copy.contact, copy.title, copy.email, copy.phone]
     );
-    await recordEvent(client, l.id, l.company, "updated", { ...changes, via: "contact" });
+    await recordEvent(client, l.id, l.company, "updated", { ...changes, ...meta });
     changed++;
   }
   return changed;
