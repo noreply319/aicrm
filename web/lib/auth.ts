@@ -93,6 +93,12 @@ export async function findSessionUser(token: string | undefined): Promise<Sessio
   return user && isAllowedEmail(user.email) ? user : null;
 }
 
+/** id로 사용자 조회 (Sales Agent 승인 실행 등 이미 인증된 요청 안에서 구글 토큰이 필요할 때) */
+export async function findUserById(id: string): Promise<SessionUser | null> {
+  const { rows } = await pool.query<SessionUser>(`SELECT ${USER_COLUMNS} FROM users u WHERE u.id = $1`, [id]);
+  return rows[0] ?? null;
+}
+
 /** Route Handler에서 현재 로그인 사용자 조회 (쿠키로 다시 검증) */
 export async function getSessionUser(): Promise<SessionUser | null> {
   const store = await cookies();

@@ -1,5 +1,6 @@
 import "server-only";
 import { CONTACT_ROLE_LABEL, PRIORITY_LABEL, STAGES } from "./constants";
+import { weekday } from "./format";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
 import { featureState, getSessionUser, type ConnectionState, type SessionUser } from "./auth";
@@ -53,6 +54,7 @@ const TOOL_MAX_DAYS = 90;
 const TOOL_MAX_EVENTS = 100;
 
 interface ScheduleContextRow {
+  id: string;
   leadId: string | null;
   company: string | null;
   status: string;
@@ -121,7 +123,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
       [MAX_NOTES]
     ),
     pool.query<ScheduleContextRow>(
-      `SELECT m.lead_id AS "leadId", l.company, m.status, m.certainty, m.title, m.starts_at AS "startsAt",
+      `SELECT m.id, m.lead_id AS "leadId", l.company, m.status, m.certainty, m.title, m.starts_at AS "startsAt",
               m.ends_at AS "endsAt", m.all_day AS "allDay", m.location, coalesce(u.name, u.email) AS "owner"
        FROM scheduled_meetings m
        LEFT JOIN leads l ON l.id = m.lead_id LEFT JOIN users u ON u.id = m.user_id
@@ -172,6 +174,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
 
   // CRM에서 잡은 다음 미팅 (팀 전체). scheduled = 등록자 구글 캘린더에 등록됨, candidate = 노트에서 찾았지만 미확정
   const scheduledMeetings = schedulesRes.rows.map((m) => ({
+    id: m.id,
     leadId: m.leadId,
     company: m.company ?? "(리드 미지정)",
     status: m.status,
@@ -268,11 +271,13 @@ function calendarRules(state: CalendarState, userName: string): string {
 const READ_ONLY_RULES = `- 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
   일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.`;
 
-const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact, 캘린더·이메일 조회)는 바로 실행됩니다.
+const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact,
+  search_meeting_notes, get_meeting_note, 캘린더·이메일 조회)는 바로 실행됩니다.
   최신 값이 필요하면 먼저 조회하세요.
 - 리드 생성·수정·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead,
   회사 등록·수정은 create_company / update_company, 연락처 등록·수정은 create_contact / update_contact,
-  리드에 담당 연락처 지정은 link_contact_to_lead 도구를 호출하세요.
+  리드에 담당 연락처 지정은 link_contact_to_lead, 미팅 노트 작성은 create_meeting_note,
+  캘린더 일정 등록·변경·취소는 create_calendar_event / update_calendar_event / cancel_calendar_event 도구를 호출하세요.
   이 도구는 바로 실행되지 않고 "실행 계획" 카드로 사용자에게 보여지며, 사용자가 승인해야 실행됩니다.
   절대 "변경했습니다/옮겼습니다"라고 말하지 마세요. "아래 계획을 확인하고 승인하면 반영됩니다"처럼 안내하세요.
 - 리드·회사·연락처는 CRM 데이터의 id(leads.id, companies.id, contacts.id)로 지정하세요. 대상이 여럿이거나 불분명하면 도구를 호출하지 말고 되물으세요.
@@ -280,7 +285,11 @@ const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, s
 - 금액은 원 단위 정수, 날짜는 YYYY-MM-DD, 단계는 id(${STAGES.map((s) => `${s.id}=${s.name}`).join(", ")})로 넘기세요.
 - 도구가 error를 돌려주면 그 이유를 사용자에게 알리세요.
 - 이메일·전화번호·주소·사업자번호·대표자명·LinkedIn은 입력·변경할 수 없습니다(개인정보는 받지 않음). 회사·연락처 화면에서 직접 입력하도록 안내하세요.
-- 회사·연락처 삭제, 일정 등록, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
+- 일정: "다음 주 화요일 2시"처럼 상대적인 날짜는 위의 현재 시각(KST) 기준으로 계산해 date=YYYY-MM-DD, startTime/endTime=HH:mm(24시간)으로 넘기세요.
+  애매하면(오전/오후, 몇째 주) 되물으세요. 일정 변경·취소는 scheduledMeetings.id 또는 캘린더 조회 결과의 scheduleId로 지정하며, CRM에서 등록한 본인 일정만 가능합니다.
+  초대 메일(invite)은 사용자가 리드 담당자에게 초대를 보내 달라고 명시했을 때만 true로 하세요.
+- 캘린더 도구가 "연동되지 않았습니다/만료되었습니다" error를 돌려주면 프로필 메뉴의 설정 → Google 연동에서 다시 연동하도록 안내하세요.
+- 회사·연락처·미팅 노트 삭제, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
 
 /** assistant: 조회 전용 AI Assistant, agent: 변경은 실행 계획으로만 만드는 Sales Agent */
 export type PromptMode = "assistant" | "agent";
@@ -294,7 +303,7 @@ function systemPrompt(
 
 규칙:
 - 아래 CRM 데이터만 근거로 답하세요. 데이터에 없는 내용은 추측하지 말고 "기록이 없습니다"라고 답하세요.
-- 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())} (${"일월화수목금토"[new Date(kst(Date.now()).slice(0, 10) + "T00:00:00Z").getUTCDay()]}요일)
+- 시간은 한국 시간(KST) 기준입니다. 현재 시각: ${kst(Date.now())} (${weekday(kst(Date.now()).slice(0, 10))}요일)
 - 금액은 원화(₩)이며 천 단위 구분 기호를 붙이세요.
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
 - companies는 회사 목록입니다(업종·규모(직원 수)·등급 A/B/C·태그·담당 영업 owner). leads.companyId로 연결됩니다.
@@ -362,6 +371,7 @@ async function runCalendarTool(user: SessionUser, args: unknown): Promise<unknow
       allDay: e.allDay,
       ...(e.location ? { location: maskPii(e.location) } : {}),
       ...(e.crm?.company ? { crmCompany: e.crm.company } : {}),
+      ...(e.crm?.scheduleId ? { scheduleId: e.crm.scheduleId } : {}),
     })),
   };
 }

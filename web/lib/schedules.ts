@@ -1,7 +1,8 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import { featureState, type SessionUser } from "./auth";
-import { CRM_DESCRIPTION_MARK, STAGES } from "./constants";
+import { CRM_DESCRIPTION_MARK, DATE_RE, STAGES, TIME_RE } from "./constants";
+import { weekday } from "./format";
 import {
   addDays, deleteEvent, fromKst, inputRange, insertEvent, kstDate, kstDateTime,
   SCHEDULE_COLUMNS, SCHEDULE_FROM, scheduleSnapshot, toSchedule, type ScheduleRow,
@@ -14,8 +15,6 @@ import type { CalendarEvent, CalendarEventInput, ExtractResult, ScheduledMeeting
 
 /** 미팅 노트 → 다음 미팅 일정 후보 (AI 추출) */
 
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-const weekday = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
 const MAX_CANDIDATES = 3;
 const DEFAULT_MINUTES = 60;
 
@@ -53,8 +52,6 @@ interface Candidate {
   certainty: "confirmed" | "tentative";
 }
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function extractNextMeetings(input: ExtractInput): Promise<Candidate[]> {
   const base = kstDate(input.metAt);
@@ -191,6 +188,19 @@ export function eventDescription(
     .slice(0, 8000);
 }
 
+/** 호출한 쪽 트랜잭션 안에서 SAVEPOINT로 감싸 실행 (실패하면 그 부분만 되돌리고 예외를 다시 던진다) */
+export async function inSavepoint<T>(client: PoolClient, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  await client.query("SAVEPOINT schedule_step");
+  try {
+    const r = await fn(client);
+    await client.query("RELEASE SAVEPOINT schedule_step");
+    return r;
+  } catch (e) {
+    await client.query("ROLLBACK TO SAVEPOINT schedule_step");
+    throw e;
+  }
+}
+
 /** 일정 등록 실패 (사용자에게 보여줄 메시지 + 상태 코드) */
 export class ScheduleError extends Error {
   constructor(message: string, readonly status: number) {
@@ -207,7 +217,12 @@ type LeadInfo = { company: string; stage: string; email: string };
  */
 export async function registerSchedule(
   user: SessionUser,
-  d: CalendarEventInput
+  d: CalendarEventInput,
+  /**
+   * client: 호출한 쪽 트랜잭션 안에서 저장 (Sales Agent 승인 실행). SAVEPOINT로 감싸 실패해도 그 트랜잭션은 계속 쓸 수 있다.
+   * meta: meeting_scheduled 이력에 함께 남길 값 (예: { via: "agent" })
+   */
+  opts: { client?: PoolClient; meta?: Record<string, unknown> } = {}
 ): Promise<{ event: CalendarEvent; schedule: ScheduledMeeting }> {
   let noteId = d.noteId;
   if (d.scheduleId) {
@@ -238,8 +253,7 @@ export async function registerSchedule(
   });
 
   const { startsAt, endsAt } = inputRange(d);
-  try {
-    const schedule = await withTransaction(async (client) => {
+  const save = async (client: PoolClient): Promise<ScheduledMeeting> => {
       const params = [
         d.leadId, noteId, user.id, d.title, startsAt, endsAt, d.allDay, d.location,
         created.calendarId, created.id, created.htmlLink, attendees.length > 0, d.description,
@@ -266,11 +280,13 @@ export async function registerSchedule(
       if (!row) throw new ScheduleError("이미 처리된 일정 후보입니다", 409);
       if (d.leadId && lead) {
         await recordEvent(client, d.leadId, lead.company, "meeting_scheduled",
-          scheduleSnapshot({ id: row.id, title: d.title, startsAt, allDay: d.allDay, noteId }));
+          { ...scheduleSnapshot({ id: row.id, title: d.title, startsAt, allDay: d.allDay, noteId }), ...opts.meta });
       }
       const r = await client.query<ScheduleRow>(`SELECT ${SCHEDULE_COLUMNS} FROM ${SCHEDULE_FROM} WHERE m.id = $1`, [row.id]);
       return toSchedule(r.rows[0]);
-    });
+  };
+  try {
+    const schedule = opts.client ? await inSavepoint(opts.client, save) : await withTransaction(save);
     return {
       event: { ...created, crm: { scheduleId: schedule.id, leadId: d.leadId, company: lead?.company ?? null, noteId } },
       schedule,

@@ -2,7 +2,7 @@ import { businessDigits, isFreeMailDomain, normalizeDomain } from "./company";
 import { isValidEmail, normalizeUrl } from "./contact";
 import {
   COMPANY_NAME_MAX, COMPANY_NOTES_MAX, COMPANY_SIZES, COMPANY_TAG_LEN, COMPANY_TAG_MAX, COMPANY_TIERS,
-  CONTACT_NAME_MAX, CONTACT_NOTES_MAX, CONTACT_ROLES,
+  CONTACT_NAME_MAX, CONTACT_NOTES_MAX, CONTACT_ROLES, DATE_RE,
   NOTE_BODY_MAX, NOTE_SUMMARY_MAX, NOTE_TITLE_MAX, STAGES, stripCrmPrefix,
 } from "./constants";
 import { cleanItem, ITEM_LIMITS, syncFields, TEMPLATE_LIMITS } from "./docTemplate";
@@ -268,7 +268,6 @@ export function parseSummarizeInput(body: unknown): { ok: true; data: { title: s
   return { ok: true, data: { title: str(b.title, NOTE_TITLE_MAX), body: text } };
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const optionalUuid = (v: unknown): string | null | false =>
   v === null || v === undefined || v === "" ? null : typeof v === "string" && UUID_RE.test(v) ? v : false;
 

@@ -114,7 +114,7 @@ export interface AgentStep {
 
 /** 실행 결과에서 이동할 대상 */
 export interface AgentTarget {
-  kind: "lead" | "company" | "contact" | "document" | "event";
+  kind: "lead" | "company" | "contact" | "note" | "document" | "event";
   id: string;
   label: string;
 }
@@ -137,8 +137,6 @@ export interface AgentPlan {
   status: AgentPlanStatus;
   /** 실행 결과 또는 실패 사유 */
   message?: string;
-  /** 실행되면 리드가 바뀌는 작업 (보드 새로고침용) */
-  affectsLeads?: boolean;
   /** 되돌릴 수 없는 작업 (삭제) — 승인 버튼을 위험 색으로 */
   danger?: boolean;
   /** 승인 전에 알아야 할 점 (예: 연결 리드도 함께 바뀜, 다른 회사 소속 연락처) */

@@ -1,5 +1,6 @@
 import "server-only";
 import { AGENT_CRM_TOOLS } from "./agentCrmTools";
+import { AGENT_MEETING_TOOLS } from "./agentMeetingTools";
 import { diffFields, has, idArg, leadTarget, stale, str, text, unchanged, VIA, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
 import { PRIORITY_LABEL, STAGES } from "./constants";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
@@ -191,7 +192,6 @@ const createLeadTool: WriteTool = {
     return {
       title: "리드 생성",
       changes,
-      affectsLeads: true,
       args: { company, contact, title, value, closeDate, stage, priority, notes },
     };
   },
@@ -251,7 +251,6 @@ const updateLeadTool: WriteTool = {
       title: "리드 수정",
       changes: fields.map((f) => change(f, lead[f], p.set[f])),
       target: leadTarget(lead),
-      affectsLeads: true,
       args: { leadId: lead.id, ...set, expect },
     };
   },
@@ -299,7 +298,6 @@ const moveLeadTool: WriteTool = {
       title: "리드 단계 이동",
       changes: [change("stage", lead.stage, p.stage)],
       target: leadTarget(lead),
-      affectsLeads: true,
       args: { leadId: lead.id, stage: p.stage, expect: { stage: lead.stage } },
     };
   },
@@ -341,7 +339,6 @@ const deleteLeadTool: WriteTool = {
       changes: DELETE_FIELDS.filter((f) => lead[f] !== "").map((f) => change(f, lead[f], undefined)),
       target: leadTarget(lead),
       danger: true,
-      affectsLeads: true,
       args: { leadId: lead.id, expect: Object.fromEntries(DELETE_FIELDS.map((f) => [f, lead[f]])) },
     };
   },
@@ -356,7 +353,7 @@ const deleteLeadTool: WriteTool = {
   },
 };
 
-/** 전체 도구 (리드 + 회사·연락처) */
+/** 전체 도구 (리드 + 회사·연락처 + 미팅 노트·캘린더) */
 export const AGENT_TOOLS: Record<string, AgentTool> = Object.fromEntries(
-  [searchLeads, getLead, pipelineSummary, createLeadTool, updateLeadTool, moveLeadTool, deleteLeadTool, ...AGENT_CRM_TOOLS].map((t) => [t.def.name, t])
+  [searchLeads, getLead, pipelineSummary, createLeadTool, updateLeadTool, moveLeadTool, deleteLeadTool, ...AGENT_CRM_TOOLS, ...AGENT_MEETING_TOOLS].map((t) => [t.def.name, t])
 );

@@ -20,25 +20,33 @@ export interface PreparedPlan {
   target?: AgentTarget;
   danger?: boolean;
   notice?: AgentPlan["notice"];
-  affectsLeads: boolean;
   /** 저장할 인자 (execute에 그대로 전달) */
   args: Args;
 }
 
-export type ExecResult = { ok: true; message: string; target?: AgentTarget } | { ok: false; message: string };
+export type ExecResult =
+  | {
+      ok: true;
+      message: string;
+      target?: AgentTarget;
+      /** 승인 트랜잭션이 커밋된 뒤 실행할 후속 작업 (AI 요약 등 오래 걸리는 일). 돌려준 문장을 결과 메시지에 덧붙인다 */
+      after?: () => Promise<string | undefined>;
+    }
+  | { ok: false; message: string };
 
 export interface ReadTool {
   kind: "read";
   def: ToolDef;
   label: string;
-  run: (args: Args) => Promise<unknown>;
+  /** userId: 요청한 사용자 (캘린더처럼 본인 계정이 필요한 도구용) */
+  run: (args: Args, userId: string) => Promise<unknown>;
 }
 
 export interface WriteTool {
   kind: "write";
   def: ToolDef;
   label: string;
-  prepare: (args: Args) => Promise<PreparedPlan | { error: string }>;
+  prepare: (args: Args, userId: string) => Promise<PreparedPlan | { error: string }>;
   execute: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
 }
 

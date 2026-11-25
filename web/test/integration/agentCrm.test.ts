@@ -28,7 +28,7 @@ const lead = async (over = {}) => (await (await CREATE_LEAD(req("POST", leadInpu
 async function prepare(tool: string, args: Record<string, unknown>) {
   const t = AGENT_TOOLS[tool];
   if (t.kind !== "write") throw new Error("write tool only");
-  return t.prepare(args);
+  return t.prepare(args, USER);
 }
 
 async function plan(tool: string, args: Record<string, unknown>) {

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { pool } from "@/lib/db";
-import { recordEvent, withTransaction } from "@/lib/events";
-import { NOTE_COLUMNS, summarizeNote, toNote, type NoteRow } from "@/lib/meetings";
+import { summarizeAndSaveNote } from "@/lib/noteOps";
 import { AiError } from "@/lib/openai";
 import { UUID_RE } from "@/lib/validate";
 
@@ -19,40 +17,11 @@ const notFound = () => NextResponse.json({ error: "미팅 노트를 찾을 수 �
 export async function POST(_req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound();
-
-  const { rows } = await pool.query<{ title: string; body: string }>(
-    "SELECT title, body FROM meeting_notes WHERE id=$1",
-    [id]
-  );
-  if (!rows[0]) return notFound();
-
-  // OpenAI 호출(수 초)은 트랜잭션 밖에서 한다
-  let result;
   try {
-    result = await summarizeNote(rows[0].title, rows[0].body);
+    const r = await summarizeAndSaveNote(id);
+    return r.ok ? NextResponse.json(r.note) : NextResponse.json({ error: r.error }, { status: r.status });
   } catch (e) {
     if (e instanceof AiError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
-
-  const note = await withTransaction(async (client) => {
-    const updated = (
-      await client.query<NoteRow>(
-        `UPDATE meeting_notes SET summary=$2, next_actions=$3, updated_at=now()
-         WHERE id=$1 RETURNING ${NOTE_COLUMNS}`,
-        [id, result.summary, result.nextActions]
-      )
-    ).rows[0];
-    if (!updated) return null; // 요약하는 사이 삭제됨
-    const saved = toNote(updated);
-    if (saved.leadId) {
-      const company = (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1", [saved.leadId]))
-        .rows[0]?.company ?? "";
-      await recordEvent(client, saved.leadId, company, "note_updated", {
-        noteId: id, title: saved.title, summary: "changed", auto: true,
-      });
-    }
-    return saved;
-  });
-  return note ? NextResponse.json(note) : notFound();
 }

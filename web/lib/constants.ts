@@ -104,3 +104,7 @@ export const CONTACT_NAME_MAX = 50;
 export const CONTACT_NOTES_MAX = 5000;
 /** 리드 모달 담당자 검색 결과 최대 개수 */
 export const CONTACT_SEARCH_LIMIT = 8;
+
+/** 날짜 YYYY-MM-DD · 시간 HH:mm(24시간) 입력 형식 */
+export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;

@@ -43,7 +43,7 @@ function applyEvent(m: AgentMessage, e: AgentEvent): AgentMessage {
  * Sales Agent 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다 (새로고침 시 초기화).
  * 답변은 /api/agent의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
  */
-export function useAgentChat({ onLeadsChanged }: { onLeadsChanged: () => void }) {
+export function useAgentChat({ onChanged }: { onChanged: () => void }) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -132,12 +132,13 @@ export function useAgentChat({ onLeadsChanged }: { onLeadsChanged: () => void })
       try {
         const next = await api<AgentPlan>(`/api/agent/actions/${encodeURIComponent(plan.id)}/${action}`, { method: "POST" });
         setPlan(next);
-        if (next.status === "done" && next.affectsLeads) onLeadsChanged();
+        // 실행되면 리드·노트·일정·회사·연락처 화면 데이터를 새로 불러온다
+        if (next.status === "done") onChanged();
       } catch (e) {
         setPlan({ ...plan, status: "pending", message: (e as Error).message });
       }
     },
-    [patchMessage, onLeadsChanged]
+    [patchMessage, onChanged]
   );
 
   const approve = useCallback((messageId: string, plan: AgentPlan) => decide(messageId, plan, "approve"), [decide]);

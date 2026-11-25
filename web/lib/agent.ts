@@ -21,7 +21,7 @@ const PLAN_TTL_HOURS = 1;
 // 조회 후 계획까지 여러 번 도구를 쓸 수 있게 Assistant(3)보다 넉넉히
 const MAX_ROUNDS = 5;
 
-type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "notice" | "affectsLeads">;
+type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "notice">;
 
 interface ActionRow {
   id: string;
@@ -44,7 +44,7 @@ const toPlan = (r: Pick<ActionRow, "id" | "plan" | "status" | "message">): Agent
 
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
 export async function savePlan(userId: string, tool: string, p: PreparedPlan): Promise<AgentPlan> {
-  const plan: StoredPlan = { title: p.title, changes: p.changes, target: p.target, danger: p.danger, notice: p.notice, affectsLeads: p.affectsLeads };
+  const plan: StoredPlan = { title: p.title, changes: p.changes, target: p.target, danger: p.danger, notice: p.notice };
   const { rows } = await pool.query<{ id: string }>(
     "INSERT INTO agent_actions (user_id, tool, args, plan) VALUES ($1, $2, $3, $4) RETURNING id",
     [userId, tool, JSON.stringify(p.args), JSON.stringify(plan)]
@@ -71,9 +71,9 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
     const tool = AGENT_TOOLS[name];
     if (!tool) return session.runTool(name, args);
     const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-    if (tool.kind === "read") return tool.run(a);
+    if (tool.kind === "read") return tool.run(a, user.id);
 
-    const prepared = await tool.prepare(a);
+    const prepared = await tool.prepare(a, user.id);
     if ("error" in prepared) return { error: prepared.error };
     const key = `${name}:${JSON.stringify(prepared.args)}`;
     const existing = planned.get(key);
@@ -110,11 +110,12 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
 
 export type DecideResult = { ok: true; plan: AgentPlan } | { ok: false; status: number; error: string };
 
-/** 실행 계획 승인/취소 (요청한 본인만, 한 번만) */
+/** 실행 계획 승인/취소 (요청한 본인만, 한 번만). 커밋 후 후속 작업(after)이 있으면 실행하고 결과를 메시지에 덧붙인다 */
 export async function decideAction(id: string, userId: string, action: "approve" | "cancel"): Promise<DecideResult> {
   if (!UUID_RE.test(id)) return { ok: false, status: 404, error: "실행 계획을 찾을 수 없습니다" };
 
-  return withTransaction(async (client): Promise<DecideResult> => {
+  let after: (() => Promise<string | undefined>) | undefined;
+  const result = await withTransaction(async (client): Promise<DecideResult> => {
     // 동시에 두 번 승인해도 한 번만 실행되도록 행을 잠근다
     const row = (
       await client.query<ActionRow>(`SELECT ${ACTION_COLUMNS} FROM agent_actions WHERE id=$1 AND user_id=$2 FOR UPDATE`, [id, userId])
@@ -135,10 +136,21 @@ export async function decideAction(id: string, userId: string, action: "approve"
 
     const tool = AGENT_TOOLS[row.tool];
     if (!tool || tool.kind !== "write") return finish("failed", "지원하지 않는 작업입니다");
-    const result = await tool.execute(client, userId, row.args);
-    // 실행에 성공하면 대상 링크를 결과로 바꾼다 (삭제는 링크 없음). 실패면 계획 카드 그대로
-    return result.ok
-      ? finish("done", result.message, { ...row.plan, target: result.target })
-      : finish("failed", result.message);
+    const r = await tool.execute(client, userId, row.args);
+    if (!r.ok) return finish("failed", r.message);
+    after = r.after;
+    // 실행에 성공하면 대상 링크를 결과로 바꾼다 (삭제는 링크 없음)
+    return finish("done", r.message, { ...row.plan, target: r.target });
   });
+
+  if (!result.ok || !after) return result;
+  // 후속 작업은 실패해도 실행 결과(done)는 그대로 두고 안내만 덧붙인다
+  const extra = await after().catch((e: unknown) => {
+    console.error("[agent] after", e);
+    return "후속 작업은 실패했습니다";
+  });
+  if (!extra) return result;
+  const message = `${result.plan.message ?? ""} · ${extra}`;
+  await pool.query("UPDATE agent_actions SET message=$2 WHERE id=$1", [id, message]);
+  return { ok: true, plan: { ...result.plan, message } };
 }

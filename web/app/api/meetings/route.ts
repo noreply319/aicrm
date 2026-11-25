@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requestUserId } from "@/lib/auth";
 import { pool } from "@/lib/db";
-import { recordEvent, withTransaction } from "@/lib/events";
-import { NOTE_COLUMNS, NOTE_SUMMARY_COLUMNS, noteSnapshot, toNote, toNoteSummary, type NoteRow, type NoteSummaryRow } from "@/lib/meetings";
+import { withTransaction } from "@/lib/events";
+import { NOTE_SUMMARY_COLUMNS, toNoteSummary, type NoteSummaryRow } from "@/lib/meetings";
+import { createNote } from "@/lib/noteOps";
 import { parseNoteInput, UUID_RE } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -25,25 +26,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const parsed = parseNoteInput(await req.json().catch(() => null));
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
-  const d = parsed.data;
 
-  const note = await withTransaction(async (client) => {
-    // 리드 미지정 노트도 저장할 수 있다. 리드가 있으면 존재 확인 후 리드 이력에 남긴다.
-    const lead = d.leadId
-      ? (await client.query<{ company: string }>("SELECT company FROM leads WHERE id=$1 FOR SHARE", [d.leadId])).rows[0]
-      : undefined;
-    if (d.leadId && !lead) return null;
-
-    const { rows } = await client.query<NoteRow>(
-      `INSERT INTO meeting_notes (lead_id, title, met_at, body, source, summary, next_actions, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING ${NOTE_COLUMNS}`,
-      [d.leadId, d.title, d.metAt, d.body, d.source, d.summary, d.nextActions, await requestUserId()]
-    );
-    const created = toNote(rows[0]);
-    if (d.leadId && lead) await recordEvent(client, d.leadId, lead.company, "note_created", noteSnapshot(created));
-    return created;
-  });
-  if (!note) return NextResponse.json({ error: "연결할 리드를 찾을 수 없습니다" }, { status: 400 });
-  return NextResponse.json(note, { status: 201 });
+  const userId = await requestUserId();
+  const r = await withTransaction((client) => createNote(client, userId, parsed.data));
+  return r.ok ? NextResponse.json(r.note, { status: 201 }) : NextResponse.json({ error: r.error }, { status: r.status });
 }

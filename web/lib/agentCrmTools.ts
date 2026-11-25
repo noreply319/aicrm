@@ -249,7 +249,6 @@ const createCompanyTool: WriteTool = {
     return {
       title: "회사 등록",
       changes: p.keys.filter((k) => text(p.data[k]) !== undefined).map((k) => companyChange(k, undefined, p.data[k])),
-      affectsLeads: false,
       args: pick(p.data, p.keys),
     };
   },
@@ -287,7 +286,6 @@ const updateCompanyTool: WriteTool = {
       title: "회사 정보 수정",
       changes: fields.map((f) => companyChange(f, c[f], set[f])),
       target: companyTarget(c),
-      affectsLeads: leads > 0,
       ...(leads > 0 ? { notice: { tone: "info" as const, text: `연결된 리드 ${leads}건의 회사명도 함께 바뀝니다` } } : {}),
       args: { companyId: id, ...set, expect },
     };
@@ -371,7 +369,6 @@ const createContactTool: WriteTool = {
     return {
       title: "연락처 등록",
       changes,
-      affectsLeads: false,
       notice: { tone: "info", text: "이메일·전화번호는 등록 후 연락처 화면에서 입력하세요" },
       args: pick(p.data, p.keys),
     };
@@ -409,7 +406,6 @@ const updateContactTool: WriteTool = {
       title: "연락처 수정",
       changes: await Promise.all(fields.map((f) => contactChange(f, c[f], set[f]))),
       target: contactTarget(c),
-      affectsLeads: leads > 0,
       ...(leads > 0 ? { notice: { tone: "info" as const, text: `담당 리드 ${leads}건의 담당자 정보도 함께 바뀝니다` } } : {}),
       args: { contactId: id, ...set, expect },
     };
@@ -456,7 +452,6 @@ const linkContactTool: WriteTool = {
         ...(lead.title !== contact.title ? [{ field: "직함", before: text(lead.title), after: text(contact.title) }] : []),
       ],
       target: leadTarget(lead),
-      affectsLeads: true,
       ...(otherCompany
         ? { notice: { tone: "warning" as const, text: `리드 회사(${lead.company})가 아닌 ${otherCompany} 소속 연락처입니다` } }
         : {}),

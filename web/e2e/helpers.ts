@@ -114,7 +114,6 @@ export async function createMovePlan(lead: { id: string; company: string }, from
       title: "리드 단계 이동",
       changes: [{ field: "단계", before: from === "qualified" ? "니즈 확인" : from, after: to === "negotiation" ? "협상" : to }],
       target: { kind: "lead", id: lead.id, label: lead.company },
-      affectsLeads: true,
     };
     const { rows } = await c.query<{ id: string }>(
       `INSERT INTO agent_actions (user_id, tool, args, plan)

@@ -31,7 +31,7 @@ const lead = async (id: string) => (await pool.query<{ stage: string; value: str
 async function plan(tool: string, args: Record<string, unknown>, userId = USER) {
   const t = AGENT_TOOLS[tool];
   if (t.kind !== "write") throw new Error("write tool only");
-  const p = await t.prepare(args);
+  const p = await t.prepare(args, userId);
   if ("error" in p) throw new Error(p.error);
   return savePlan(userId, tool, p as PreparedPlan);
 }
@@ -128,10 +128,10 @@ describe("Sales Agent 실행 계획", () => {
     const move = AGENT_TOOLS.move_lead_stage;
     const update = AGENT_TOOLS.update_lead;
     if (move.kind !== "write" || update.kind !== "write") throw new Error("write tool only");
-    expect(await move.prepare({ leadId: l.id, stage: "new" })).toEqual({ error: "이미 신규 리드 단계입니다" });
-    expect(await move.prepare({ leadId: l.id, stage: "done" })).toEqual({ error: "단계가 올바르지 않습니다" });
-    expect(await move.prepare({ leadId: "x", stage: "won" })).toEqual({ error: "리드 id가 올바르지 않습니다" });
-    expect(await update.prepare({ leadId: l.id, value: 1_000_000 })).toMatchObject({ error: expect.stringContaining("바뀌는 항목이 없습니다") });
-    expect(await update.prepare({ leadId: l.id })).toMatchObject({ error: expect.stringContaining("바꿀 항목이 없습니다") });
+    expect(await move.prepare({ leadId: l.id, stage: "new" }, USER)).toEqual({ error: "이미 신규 리드 단계입니다" });
+    expect(await move.prepare({ leadId: l.id, stage: "done" }, USER)).toEqual({ error: "단계가 올바르지 않습니다" });
+    expect(await move.prepare({ leadId: "x", stage: "won" }, USER)).toEqual({ error: "리드 id가 올바르지 않습니다" });
+    expect(await update.prepare({ leadId: l.id, value: 1_000_000 }, USER)).toMatchObject({ error: expect.stringContaining("바뀌는 항목이 없습니다") });
+    expect(await update.prepare({ leadId: l.id }, USER)).toMatchObject({ error: expect.stringContaining("바꿀 항목이 없습니다") });
   });
 });

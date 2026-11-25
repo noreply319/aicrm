@@ -36,3 +36,6 @@ export const fromLocalInput = (v: string) => {
 
 /** 구글 일정 설명에서 CRM이 붙인 부분을 떼어 사용자 메모만 남긴다 */
 export const memoFromDescription = (description: string, mark: string) => description.split(mark)[0].trim();
+
+/** YYYY-MM-DD → 요일 한 글자 ("화") */
+export const weekday = (date: string) => "일월화수목금토"[new Date(`${date}T00:00:00Z`).getUTCDay()];

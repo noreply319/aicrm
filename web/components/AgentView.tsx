@@ -38,6 +38,7 @@ const TARGET_LABEL: Record<AgentTarget["kind"], string> = {
   lead: "리드 열기",
   company: "회사 보기",
   contact: "연락처 보기",
+  note: "노트 보기",
   document: "문서 보기",
   event: "일정 보기",
 };

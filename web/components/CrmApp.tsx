@@ -315,8 +315,21 @@ export default function CrmApp() {
     router.push(`/contacts/${id}`);
   }, [router]);
 
-  /** Sales Agent 대화: 화면을 옮겨도 유지되도록 여기서 가진다. 리드를 바꾼 작업이 끝나면 보드를 새로 불러온다 */
-  const agent = useAgentChat({ onLeadsChanged: reload });
+  /** 화면 데이터 전체 다시 불러오기 (Sales Agent 실행 후·에러 배너 "다시 불러오기") */
+  const { reload: reloadMeetings } = meetings;
+  const { reload: reloadSchedules } = sched;
+  const { reload: reloadCompanies } = companiesApi;
+  const { reload: reloadContacts } = contactsApi;
+  const reloadAll = useCallback(() => {
+    reload();
+    reloadMeetings();
+    reloadSchedules();
+    reloadCompanies();
+    reloadContacts();
+  }, [reload, reloadMeetings, reloadSchedules, reloadCompanies, reloadContacts]);
+
+  /** Sales Agent 대화: 화면을 옮겨도 유지되도록 여기서 가진다. 계획이 실행되면 바뀌었을 수 있는 데이터를 모두 새로 불러온다 */
+  const agent = useAgentChat({ onChanged: reloadAll });
 
   /** Sales Agent 실행 결과의 대상으로 이동 */
   const openAgentTarget = useCallback(
@@ -324,11 +337,12 @@ export default function CrmApp() {
       if (t.kind === "lead") openLead(t.id);
       else if (t.kind === "company") openCompany(t.id);
       else if (t.kind === "contact") openContact(t.id);
+      else if (t.kind === "note") openNote(t.id);
       // 문서·일정은 해당 메뉴로 (개별 문서·일정 열기는 실행 엔진과 함께 추가)
       else if (t.kind === "document") router.push("/contracts");
       else router.push("/calendar");
     },
-    [openLead, openCompany, openContact, router]
+    [openLead, openCompany, openContact, openNote, router]
   );
 
   /** 대화 화면이 따로 있는 화면은 조회형 Assistant 패널을 숨긴다 */
@@ -658,10 +672,7 @@ export default function CrmApp() {
                         meetings.clearError();
                         companiesApi.clearError();
                         contactsApi.clearError();
-                        reload();
-                        meetings.reload();
-                        companiesApi.reload();
-                        contactsApi.reload();
+                        reloadAll();
                       }}
                     >
                       다시 불러오기
