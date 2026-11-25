@@ -10,6 +10,15 @@ const serif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif" });
 export const metadata: Metadata = {
   title: "Pipeline CRM",
   description: "칸반 보드 기반 세일즈 리드 관리",
+  // 링크 미리보기 이미지·아이콘은 app/의 opengraph-image.png, icon.svg, favicon.ico, apple-icon.png 파일 규칙으로 자동 연결
+  openGraph: {
+    type: "website",
+    siteName: "Pipeline CRM",
+    locale: "ko_KR",
+    title: "Pipeline CRM",
+    description: "리드부터 수주까지, 세일즈 파이프라인을 한눈에",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 // 첫 페인트 전에 저장된 테마·메뉴 접힘을 적용해 깜빡임을 막는다.

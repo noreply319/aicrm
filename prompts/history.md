@@ -794,3 +794,105 @@
 > history.md 커밋하고 push해줘
 
 - 결과: `prompts/history.md`(107~112번)만 커밋해 main에 push
+
+## 113. 2026-11-25 — Sales Agent 기능 Jira 티켓 생성
+
+> 해당 프로젝트는 Jira 의 https://supercoder.atlassian.net/jira/software/projects/AIC 스페이스에 연결되어 있고, 해당 칸반과 연결했어. AI Assistant를 Sales Agent 화면을 추가해서 모든 작업을 Sales Agent가 받아서 할 수 있는 기능을 만들고 싶은데 해당 기능 구현에 대한 티켓을 Jira에 생성해줘.
+> (선택: Epic + Story 분할 / 변경은 확인 후 실행 / 새 메뉴로 추가)
+
+- 결과: Jira AIC에 Epic `AIC-1`(Sales Agent) + Story 8개 생성 — AIC-2 화면·메뉴, AIC-3 실행 엔진(승인 대기), AIC-4 리드·파이프라인, AIC-5 회사·연락처, AIC-6 미팅 노트·캘린더, AIC-7 Gmail·견적서/계약서, AIC-8 보안·감사 로그, AIC-9 테스트. 코드 변경 없음
+
+## 114. 2026-11-25 — AIC-2 Sales Agent 화면 구현 (worktree)
+
+> /feature-dev:feature-dev Jira의 AIC-2 분석해서 새로운 브랜치에서 구현 시작해줘.
+> (선택: API 형식만 정의 + 임시 응답 / 진행 표시는 스트리밍(NDJSON) / 대화는 화면 이동 시 유지·새로고침 시 초기화 / 수정 요청은 입력창에 안내 문구 / 리뷰 지적 1~3 수정)
+
+- 결과: worktree `worktress/sales-agent-ui`(브랜치 `feat/sales-agent-ui`)에 사이드바 `Sales Agent`(`/agent`) 추가 — `AgentView`(진행 단계·답변·실행 계획 카드 승인/취소/수정 요청·대상 링크), `useAgentChat`(NDJSON 스트림, CrmApp에서 유지), `POST /api/agent`(임시: 조회형 `askAssistant` + `onContext`/`onStep` 진행 단계 스트림), 승인·취소 API 자리(501 준비 중, AIC-3), Assistant 패널 숨김, e2e `agent.spec.ts`(미실행). build 통과, 커밋 안 함
+
+## 115. 2026-11-25 — AIC-1 Epic 구현 시작 (AIC-3 엔진 + AIC-4 리드 도구)
+
+> /feature-dev:feature-dev Jira의 AIC-1 분석해서 새로운 브랜치에서 구현 시작해줘.
+> (선택: 범위 AIC-3 엔진 + AIC-4 리드 도구 / AIC-2 커밋 후 그 위에 새 브랜치)
+
+> (추가 선택: 변경 충돌 시 실패+다시 요청 / 계획 만료 1시간 / 삭제 도구 포함 / 모두 승인 버튼 / 리뷰 지적 1~4 수정)
+
+- 결과: `feat/sales-agent-ui`에 AIC-2 커밋(`cdba7e6`, push 안 함) → worktree `worktress/sales-agent-engine`(브랜치 `feat/sales-agent-engine`)에서 구현. `lib/leadOps.ts`(리드 API 3개와 공용), `agent_actions` 테이블(RLS), `lib/agentTools.ts`(search_leads·get_lead·pipeline_summary / create·update·move·delete_lead), `lib/agent.ts`(runAgent: 변경은 계획 저장·plan 이벤트, decideAction: 본인·409·만료·충돌 확인 후 같은 트랜잭션 실행, 이력 `via: agent`), 승인/취소 API, 모두 승인·삭제 승인 버튼. 리뷰로 리드 변경 이력의 이메일·전화번호가 OpenAI로 가던 기존 문제도 `maskChanges`로 수정. build 통과, 로컬 DB에 agent_actions만 적용(`db:init`은 기존 document_templates 소유자 문제로 실패), 테스트 작성·미실행, 커밋 안 함. Jira AIC-3·AIC-4 → Done + 코멘트
+
+## 116. 2026-11-25 — 완료된 Jira 티켓 업데이트
+
+> 완료된 Jira ticket은 업데이트해줘.
+
+- 결과: AIC-2 → Done + 구현 내용·결정 사항·확인 상태 코멘트, AIC-1·AIC-3·AIC-4 → In Progress
+
+## 117. 2026-11-25 — AIC-5 회사·연락처 도구 구현 시작
+
+> /feature-dev:feature-dev Jira의 AIC-5 분석해서 새로운 브랜치에서 구현 시작해줘.
+> (선택: 엔진 커밋 후 그 위에 새 브랜치)
+
+> (추가 선택: 개인정보 항목은 받지 않음 / 다른 회사 연락처 연결은 카드 경고 후 승인 가능 / 리뷰 지적 1~6 수정)
+
+- 결과: `feat/sales-agent-engine`에 AIC-3/4 커밋(`9be1297`, push 안 함) → worktree `worktress/sales-agent-company-contact`(브랜치 `feat/sales-agent-company-contact`)에서 구현. `lib/companyOps.ts`·`contactOps.ts`(회사·연락처 API와 공용, 409는 결과로 반환), `lib/agentToolKit.ts`(도구 공용), `lib/agentCrmTools.ts`(search/get_company·contact, create/update_company·contact, link_contact_to_lead), `leadOps.linkContact`(이력 contactLink), 계획 카드 `notice`(연결 리드 함께 변경·다른 회사 경고). 리뷰로 "항목 비우기가 승인 때 무시되던" 버그 수정. build 통과, integration 테스트 작성·미실행, 커밋 안 함. Jira AIC-5 → Done + 코멘트
+
+## 118. 2026-11-25 — Jira 티켓 업데이트
+
+> jira tikect도 업데이트해줘.
+
+- 결과: AIC-5 → In Progress + 작업 시작 코멘트, AIC-3·AIC-4에 커밋(`9be1297`) 코멘트
+
+## 119. 2026-11-25 — AIC-6 미팅 노트·캘린더 도구 구현 시작
+
+> /feature-dev:feature-dev Jira의 AIC-6 분석해서 새로운 브랜치에서 구현 시작해줘.
+
+> (선택: 노트 후처리는 요약 + 다음 미팅 후보만 / 초대 메일은 요청 시 허용 / 리드 연결은 선택 / 리뷰 지적 1~7 수정)
+
+- 결과: AIC-5 커밋(`7b38dba`, push 안 함) → worktree `worktress/sales-agent-meetings`(브랜치 `feat/sales-agent-meetings`)에서 구현. `lib/noteOps.ts`·`scheduleOps.ts`(노트·일정 API와 공용), `registerSchedule` 트랜잭션 옵션, `decideAction` 커밋 후 후속 작업(`after`)·`findUserById`, `lib/agentMeetingTools.ts`(search/get_meeting_note, create_meeting_note, create/update/cancel_calendar_event — 본인 CRM 일정만, 초대는 요청 시 위험 표시, 확정 날짜·요일 카드), 승인 후 화면 데이터 전체 새로고침. 리뷰로 여러 날·자정 넘는 일정이 줄어들던 버그 등 수정. build 통과, integration 테스트 작성·미실행, 커밋 안 함. Jira AIC-6 → In Progress → Done + 코멘트
+
+## 120. 2026-11-25 — Sales Agent 작업 커밋·main 병합
+
+> commit 하고 merge 진행해줘.
+
+- 결과: AIC-6 커밋(`391a6a3`) 후 `main`을 `feat/sales-agent-meetings`로 fast-forward(AIC-2~6 커밋 4개, origin/main 변경 없음), 병합 후 build 통과. push·운영 DB 반영·worktree 정리는 하지 않음. Jira AIC-6·AIC-1에 병합 코멘트
+
+## 121. 2026-11-25 — AIC-7 Gmail·견적서/계약서 도구 구현 시작
+
+> /feature-dev:feature-dev Jira의 AIC-7 분석해서 새로운 브랜치에서 구현 시작해줘.
+
+> (선택: 일반 메일은 새 이력 타입 email_sent / 발송 계획 카드가 곧 초안 / 받는 사람은 리드 담당자 + 같은 회사 연락처 참조)
+
+- 결과: (진행 중) `main`(`391a6a3`)에서 worktree `worktress/sales-agent-gmail-docs`(브랜치 `feat/sales-agent-gmail-docs`) 생성, Jira AIC-7 → In Progress. `lib/docOps.ts`(문서 생성·메일 초안·발송 기록 공용), `docChat.fillFromInput`·`insertDocument`, `buildMime` 첨부 선택, `email_sent` 이력 타입(schema CHECK, 로컬 DB 적용), `lib/agentMailTools.ts`(list_templates·list_documents, create_document, send_document, draft_email, send_email — 받는 사람은 서버가 결정), 초안 카드·후속 계획(발송 후 단계 이동)·승인 버튼 문구. build 통과, integration 테스트 작성·미실행, 커밋 안 함
+
+## 122. 2026-11-25 — AIC-7 리뷰 지적 모두 수정
+
+> 모두 수정해줘
+
+- 결과: 리드 조회(`findLeadLite`)·단계 제안(`suggestedStage`)·미리 채우기(`buildFilledState`)·메일 크기 상한(`MAX_MAIL_BYTES`) 공용화, `idListArg`, 초안 도구 `execute` 제거(선택), `send_document` 확인 로직 분리(`verifyPlannedDocument`), `recordDocumentSend` 반환 정리, Gmail 시간 초과 시 "발송 여부 확인" 안내, 후속 계획 저장 실패 시에도 실행 결과 반환. build 통과
+
+## 123. 2026-11-25 — 완료된 Jira 티켓 업데이트
+
+> 완료된 Jira ticket은 업데이트해줘.
+
+- 결과: AIC-7 → Done + 구현·결정·리뷰 반영·DB·확인 상태 코멘트
+
+## 124. 2026-11-25 — AIC-7 커밋·main 병합
+
+> commit 하고 merge 진행해줘.
+
+- 결과: AIC-7 커밋(`fdc1aad`) 후 `main`을 `feat/sales-agent-gmail-docs`로 fast-forward, 병합 후 build 통과. push·운영 DB 반영·worktree 정리는 하지 않음. Jira AIC-7·AIC-1에 병합 코멘트
+
+## 125. 2026-11-25 — AIC-8 보안·개인정보·감사 로그 구현 시작
+
+> /feature-dev:feature-dev Jira의 AIC-8 분석해서 새로운 브랜치에서 구현 시작해줘.
+
+- 결과: (진행 중) `main`(`fdc1aad`)에서 worktree `worktress/sales-agent-security`(브랜치 `feat/sales-agent-security`) 생성. Jira AIC-8 → In Progress + 작업 시작 코멘트, 현황 점검 중
+
+## 126. 2026-11-25 — favicon·OpenGraph 이미지 추가
+
+> 브라우저 탭에 보이는 favicon과 링크 복사시 나오는 opengraph 이미지 만들어서 넣어줘.
+
+- 결과: `web/app/`에 `icon.svg`(에버그린 배경 + 민트 다이아몬드, 사이드바 ◆ 로고와 통일), `favicon.ico`(32px), `apple-icon.png`(180px), `opengraph-image.png`(1200×630, 나눔고딕, 단계 흐름 칩) + `opengraph-image.alt.txt` 추가. `layout.tsx` metadata에 openGraph(사이트명·ko_KR·설명)·twitter `summary_large_image`. 확장자가 있는 경로라 proxy 로그인 검사 대상 아님. build 통과
+
+## 127. 2026-11-25 — favicon·OG 이미지 커밋
+
+> commit, merge해줘.
+
+- 결과: `main`에서 작업했으므로 병합 없이 `main`에 바로 커밋. zip 파일·`docs/practice-prompts/`는 제외, push 안 함
