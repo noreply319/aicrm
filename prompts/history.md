@@ -1045,3 +1045,37 @@
 > commit하고 push해줘.
 
 - 결과: 키보드 입력창 가림·예상 마감일 넘침·담당자 칩 × 줄바꿈 수정 커밋, `feat/assistant-crm-write`·`main` push → Vercel 운영 배포
+
+## 142. 2026-11-25 — 모바일 AI Assistant 위로 스크롤 시 화면 떨림 분석·수정
+
+> 모바일 AI assistant 에서 위로 스크롤 하면 화면이 떨리는 현상이 발생하는데 해당 이슈 분석해서 수정해줘.
+
+- 결과: 원인 3가지 — ① iOS는 100vh가 보이는 영역보다 커서 `.app-shell`·`.app-main`의 `min-height: 100vh` 때문에 페이지 자체가 스크롤됨 → 대화 목록 위 끝에서 더 끌면 페이지가 출렁임 ② `useKeyboardViewport`가 키보드가 없어도 스크롤·튕김마다 `scrollTo(0,0)`·`--vv-top` 이동으로 되돌려 서로 싸움 ③ 스트리밍 이벤트마다 목록을 맨 아래로 부드럽게 스크롤해 위로 올린 사용자를 끌어내림. 수정: 채팅 화면에서 `html.chat-screen`(페이지 스크롤 잠금·min-height 해제), 대화 목록 `overscroll-behavior: contain`, 키보드가 열린 동안에만 위치 보정, `lib/useStickToBottom.ts`(맨 아래를 보고 있을 때만 따라가기, 보낼 때는 맨 아래로) — AI Assistant·Sales Agent 공용. e2e 2건 추가(수정 전 실패 확인), 전체 e2e 47·unit 89·build 통과. 실기기 확인은 배포 후
+
+## 143. 2026-11-25 — AI Assistant·Sales Agent 대화 기록 저장 (다른 기기에서도)
+
+> AI assistant 에서 대화한 내역 저장되고 다른 디바이스 가더라도 보여지게 수정해줘.
+
+> (선택: 이전 대화 목록까지 / AI Assistant + Sales Agent / 보관 기간 무기한)
+
+- 결과: 테이블 `chat_conversations`·`chat_messages`(RLS·crm_app 권한), `lib/chatStore.ts`. 스트림 요청에 `conversationId`(없으면 새 대화, 첫 이벤트 `conversation`), 답변이 끝나면 서버가 질문·답변·진행 단계·계획 카드를 한 번에 저장. 계획 카드는 id만 저장 → 불러올 때 `loadPlans`로 지금 승인 상태(만료 표시), 초안 카드는 그대로, 승인 후 후속 계획은 `attachFollowUps`. API `/api/conversations`·`[id]`(GET·DELETE, 본인만). 화면: 처음에 최근 대화 자동 불러오기, 탭으로 돌아오면 다시 불러오기, 헤더 `대화 목록` 버튼(`ConversationList` — 열기·새 대화·두 번 눌러 삭제). 로컬 DB `db:init` 적용, 운영 DB 미적용. integration 6·e2e 1 추가, 전체 unit+integration 214·e2e 48·build 통과
+
+## 144. 2026-11-25 — AI 컨텍스트를 최근·관련 내용 위주로 + Assistant 문서 탭에 계약서·작성한 문서
+
+> Context는 최근 관련된 내용에 context 들어가도록 구현해줘.
+> AI assistant의 견적서에 실제 등록된 계약서가 안보이고 못불라왔는데 해당 이슈 분석해서 수정해줘.
+
+> (선택: 계약서 템플릿 + 작성한 문서 / 대화·CRM 데이터 둘 다)
+
+- 결과:
+  - 문서 탭 원인 — 견적서 탭이 `kind === "quote"` 템플릿만 보여주고 새 문서만 만들 수 있어 운영의 계약서 템플릿 1개·작성한 문서 7건(견적서 5, 계약서 2)이 안 보임. 탭 이름 `문서`, 견적서·계약서 템플릿 모두(견적서 먼저), 템플릿 아래 `RecentDocs`(작성한 문서 최근 8건 + 더 보기 → 열어서 이어 쓰기·PDF·메일), 미리보기·발송 문구는 문서 종류에 맞게
+  - 컨텍스트 — `lib/chatContext.ts`: 이어 쓰는 대화는 서버가 저장된 기록에서 최근 12개 + 질문과 관련된 이전 질문·답변 최대 3쌍(1.2만 자 상한). `buildContext`: 이번 질문 + 최근 질문 2개에 나온 회사·연락처·리드((주)·공백 무시)의 이력 300건·노트 30건(본문)·메모, 나머지는 최근 60일 이력·90일 노트만(전체 최근 500건·100건 대신). 프롬프트 설명 갱신
+  - 테스트: unit 5·integration 2·e2e 1 추가, layout e2e 수정. 전체 unit+integration 221·e2e 49·build 통과
+
+## 145. 2026-11-25 — 운영 문서 탭에 견적서 하나만 보이는 문제 → 운영 반영
+
+> AI assistant 메뉴에 하나만 나타나. 이슈 분석해서 수정해줘. (iPhone 운영 화면 스크린샷)
+
+> (선택: 운영 반영 진행)
+
+- 결과: 스크린샷은 수정 전 코드(탭 `견적서`, 견적서 템플릿만 필터)가 돌고 있는 운영 화면 — 운영 템플릿은 견적서 1·계약서 1. 144번 수정이 배포 전이었음. 운영 DB에 `schema.sql` 적용(chat_conversations·chat_messages, RLS·crm_app 권한·시퀀스 확인) → 대기 중 수정(스크롤 떨림·대화 기록·컨텍스트·문서 탭) 커밋 → `main` push → Vercel 운영 배포

@@ -1,16 +1,18 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { AgentTarget } from "@/lib/types";
 import type { AgentChat } from "@/lib/useAgentChat";
 import type { BusinessCards } from "@/lib/useBusinessCards";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { useStickToBottom } from "@/lib/useStickToBottom";
 import { useReviseInput } from "@/lib/useReviseInput";
 import AgentTurn from "./AgentTurn";
 import BusinessCardAttach, { cardDropProps } from "./BusinessCardAttach";
 import BusinessCardConfirm, { type CardHost } from "./BusinessCardConfirm";
-import { Alert, Badge, Button, EmptyState, Icon, Textarea } from "./ui";
+import ConversationList from "./ConversationList";
+import { Alert, Badge, Button, EmptyState, Icon, IconButton, Textarea } from "./ui";
 
 interface Props {
   /** 대화 상태는 CrmApp이 가진다 (메뉴를 옮겨도 유지) */
@@ -30,16 +32,16 @@ const SUGGESTIONS = [
 
 /** Sales Agent: 대화로 요청하면 조회는 바로, 변경은 실행 계획 카드로 승인받아 처리한다 */
 export default function AgentView({ chat, onOpenTarget, cards, cardHost }: Props) {
-  const { messages, busy, send, approve, approveAll, cancel, reset } = chat;
+  const { messages, busy, send, approve, approveAll, cancel, reset, conversationId, conversations, loaded, open: openConversation, remove } = chat;
+  /** 저장된 대화 목록 보기 (대화 영역 자리에) */
+  const [showList, setShowList] = useState(false);
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mobile = useMediaQuery(MOBILE_QUERY);
 
-  // 새 메시지·진행 단계·명함 카드가 오면 맨 아래로
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, cards.cards.length]);
+  // 새 메시지·명함 카드가 오면 맨 아래로 — 위로 올려 읽는 중이면 그대로 둔다
+  const stickToBottom = useStickToBottom(listRef, messages, cards.cards.length);
 
   /** 명함: 확인 카드로 회사·연락처를 등록한다 (Agent 도구·OpenAI 대화를 거치지 않음 — 명함의 이메일·전화가 대화로 새지 않게) */
   const [notice, setNotice] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export default function AgentView({ chat, onOpenTarget, cards, cardHost }: Props
   const submit = async (text: string) => {
     if (busy || !text.trim()) return;
     setInput("");
+    stickToBottom(); // 보낸 질문과 답변은 맨 아래에서 보여준다
     await send(text);
   };
 
@@ -60,15 +63,27 @@ export default function AgentView({ chat, onOpenTarget, cards, cardHost }: Props
       <div className="agent-head">
         <Badge tone="brand">Agent</Badge>
         <span className="agent-desc muted">조회는 바로 답하고, 리드 변경은 실행 계획을 보여드린 뒤 승인하면 처리합니다.</span>
-        {(messages.length > 0 || cards.cards.length > 0) && (
+        {(messages.length > 0 || cards.cards.length > 0) && !showList && (
           <Button size="sm" variant="ghost" icon="refresh" onClick={() => { reset(); cards.clear(); setNotice(null); }}>
             새 대화
           </Button>
         )}
+        <IconButton icon="history" label="대화 목록" size="sm" aria-pressed={showList} className={showList ? "btn-active" : undefined} onClick={() => { if (!showList) chat.refreshList(); setShowList(!showList); }} />
       </div>
 
-      <div className="agent-messages" ref={listRef} {...cardDropProps(addCards)}>
-        {messages.length === 0 && cards.cards.length === 0 && (
+      {showList && (
+        <ConversationList
+          conversations={conversations}
+          currentId={conversationId}
+          onOpen={(id) => { cards.clear(); setNotice(null); setShowList(false); if (id !== conversationId) openConversation(id); }}
+          onDelete={remove}
+          onNew={() => { reset(); cards.clear(); setNotice(null); setShowList(false); }}
+          onClose={() => setShowList(false)}
+        />
+      )}
+
+      <div className="agent-messages" ref={listRef} hidden={showList} {...cardDropProps(addCards)}>
+        {loaded && messages.length === 0 && cards.cards.length === 0 && (
           <EmptyState
             icon={<Icon name="agent" size={28} />}
             title="무엇을 도와드릴까요?"
@@ -107,6 +122,7 @@ export default function AgentView({ chat, onOpenTarget, cards, cardHost }: Props
       </div>
 
       <form
+        hidden={showList}
         className="agent-input"
         onSubmit={(e) => {
           e.preventDefault();

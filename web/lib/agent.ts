@@ -66,6 +66,24 @@ const storedPlan = (p: PreparedPlan): StoredPlan => ({
   title: p.title, changes: p.changes, target: p.target, danger: p.danger, approveLabel: p.approveLabel, notice: p.notice,
 });
 
+/**
+ * 저장된 대화의 계획 카드를 지금 상태로 다시 읽는다 (본인 계획만).
+ * 승인 대기인데 승인 기한이 지났으면 실패로 보여준다 (승인해도 만료로 끝나므로).
+ */
+export async function loadPlans(userId: string, ids: string[]): Promise<Map<string, AgentPlan>> {
+  const valid = ids.filter((id) => UUID_RE.test(id));
+  if (valid.length === 0) return new Map();
+  const { rows } = await pool.query<ActionRow>(`SELECT ${ACTION_COLUMNS} FROM agent_actions WHERE user_id = $1 AND id = ANY($2::uuid[])`, [userId, valid]);
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      r.status === "pending" && r.expired
+        ? toPlan({ ...r, status: "failed", message: `계획이 만료되었습니다 (${PLAN_TTL_HOURS}시간). 다시 요청하세요` })
+        : toPlan(r),
+    ])
+  );
+}
+
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
 export async function savePlan(userId: string, tool: string, p: PreparedPlan, source: AgentSource = "agent"): Promise<AgentPlan> {
   await redactOldActions().catch((e: unknown) => console.error("[agent] redact", e));

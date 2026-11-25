@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import type { AgentDecision, AgentEvent, AgentMessage, AgentPlan, AgentStep } from "./types";
+import type { AgentDecision, AgentEvent, AgentMessage, AgentPlan, AgentStep, ConversationDetail, ConversationSummary } from "./types";
 
 let seq = 0;
 const newId = () => `m${Date.now().toString(36)}-${++seq}`;
@@ -36,17 +36,30 @@ function applyEvent(m: AgentMessage, e: AgentEvent): AgentMessage {
       return { ...m, error: e.error };
     case "done":
       return { ...m, streaming: false };
+    case "conversation":
+      return m;
   }
 }
 
 /**
- * Sales Agent·AI Assistant 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다 (새로고침 시 초기화).
+ * Sales Agent·AI Assistant 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다.
  * 답변은 endpoint(/api/agent, /api/assistant)의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
  * 승인·취소는 둘 다 /api/agent/actions (계획의 출처는 서버가 저장해 둔다).
+ * 대화 기록은 서버에 저장된다: 처음에 가장 최근 대화를 불러오고(다른 기기에서 이어 보기), 이전 대화는 목록에서 연다.
  */
 export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged: () => void; endpoint?: "/api/agent" | "/api/assistant" }) {
+  const source = endpoint === "/api/assistant" ? "assistant" : "agent";
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  /** 지금 보고 있는 저장된 대화 (null = 아직 저장 안 된 새 대화) */
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  /** 처음 불러오기 끝났는지 (그 전에는 빈 화면 안내를 보이지 않는다) */
+  const [loaded, setLoaded] = useState(false);
+  const conversationRef = useRef(conversationId);
+  useEffect(() => {
+    conversationRef.current = conversationId;
+  }, [conversationId]);
   const abortRef = useRef<AbortController | null>(null);
   /** send에서 최신 대화 내역을 읽기 위한 참조 */
   const messagesRef = useRef(messages);
@@ -79,7 +92,7 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [...history, { role: "user", content }] }),
+          body: JSON.stringify({ messages: [...history, { role: "user", content }], conversationId: conversationRef.current }),
           signal: ctrl.signal,
         });
         if (res.status === 401) {
@@ -92,6 +105,14 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
           throw new Error(msg || `요청 실패 (${res.status})`);
         }
 
+        // 대화 이벤트: 저장될 대화를 기억하고 목록 맨 위로 (나머지는 답변 메시지에 반영)
+        const handle = (event: AgentEvent) => {
+          if (event.type !== "conversation") return patchMessage(replyId, (m) => applyEvent(m, event));
+          const c = { ...event.conversation, updatedAt: new Date().toISOString() };
+          conversationRef.current = c.id;
+          setConversationId(c.id);
+          setConversations((list) => [c, ...list.filter((x) => x.id !== c.id)]);
+        };
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buf = "";
         for (;;) {
@@ -102,11 +123,11 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
           buf = lines.pop() ?? "";
           for (const line of lines) {
             const event = line.trim() ? parseEvent(line) : null;
-            if (event) patchMessage(replyId, (m) => applyEvent(m, event));
+            if (event) handle(event);
           }
         }
         const last = buf.trim() ? parseEvent(buf) : null;
-        if (last) patchMessage(replyId, (m) => applyEvent(m, last));
+        if (last) handle(last);
         // done 이벤트 없이 끊겨도 진행 중 표시는 끝낸다
         patchMessage(replyId, (m) =>
           m.streaming ? { ...m, streaming: false, error: m.error ?? (m.content ? undefined : "응답이 중간에 끊겼습니다") } : m
@@ -173,15 +194,89 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
     );
   }, []);
 
-  /** 새 대화: 받는 중인 답변은 중단 */
+  /** 새 대화: 받는 중인 답변은 중단 (이전 대화는 목록에 남는다 — 답변은 서버가 끝까지 저장) */
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setBusy(false);
     setMessages([]);
+    conversationRef.current = null;
+    setConversationId(null);
   }, []);
 
-  return { messages, busy, send, stop, approve, approveAll, cancel, reset };
+  /** 저장된 대화 열기 (받는 중인 답변은 중단). quiet: 다시 불러오기 — 실패해도 지금 화면 유지 */
+  const open = useCallback(async (id: string, { quiet = false } = {}) => {
+    if (!quiet) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setBusy(false);
+    }
+    try {
+      const c = await api<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`);
+      // 불러오는 사이 다른 대화로 바뀌었거나 답변을 받는 중이면 덮어쓰지 않는다
+      if (quiet && (conversationRef.current !== id || abortRef.current)) return;
+      conversationRef.current = c.id;
+      setConversationId(c.id);
+      setMessages(c.messages);
+    } catch (e) {
+      if (quiet) return;
+      // 지워진 대화 등: 목록에서 빼고 새 대화로
+      setConversations((list) => list.filter((x) => x.id !== id));
+      conversationRef.current = null;
+      setConversationId(null);
+      setMessages([{ id: newId(), role: "assistant", content: "", error: (e as Error).message }]);
+    }
+  }, []);
+
+  /** 대화 삭제 (지금 보던 대화면 새 대화로) */
+  const remove = useCallback(
+    async (id: string) => {
+      await api(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setConversations((list) => list.filter((x) => x.id !== id));
+      if (conversationRef.current === id) reset();
+    },
+    [reset]
+  );
+
+  /** 목록 다시 불러오기 → first면 가장 최근 대화를 연다 (처음 불러오기는 실패하면 한 번 더) */
+  const refresh = useCallback(
+    async (first: boolean) => {
+      const load = () => api<ConversationSummary[]>(`/api/conversations?source=${source}`).catch(() => null);
+      let list = await load();
+      if (!list && first) list = await new Promise<ConversationSummary[] | null>((r) => setTimeout(() => load().then(r), 1500));
+      if (!list) return;
+      setConversations(list);
+      if (first && list[0] && !conversationRef.current && messagesRef.current.length === 0) await open(list[0].id);
+    },
+    [source, open]
+  );
+
+  // 처음: 가장 최근 대화를 이어서 보여준다 (다른 기기에서 하던 대화 포함)
+  useEffect(() => {
+    let alive = true;
+    refresh(true).finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+  }, [refresh]);
+
+  // 다시 이 탭·앱으로 돌아오면 목록과 보던 대화를 새로 불러온다 (다른 기기에서 이어 쓴 내용·승인 상태)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || abortRef.current) return;
+      refresh(false);
+      if (conversationRef.current) open(conversationRef.current, { quiet: true });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh, open]);
+
+  /** 대화 목록을 열 때: 다른 기기에서 새로 만든 대화까지 */
+  const refreshList = useCallback(() => {
+    refresh(false);
+  }, [refresh]);
+
+  return { messages, busy, send, stop, approve, approveAll, cancel, reset, conversationId, conversations, loaded, open, remove, refreshList };
 }
 
 export type AgentChat = ReturnType<typeof useAgentChat>;

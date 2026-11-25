@@ -161,6 +161,33 @@ test("모바일: 키보드가 열려 보이는 영역이 줄어도 입력창은 
   await expect.poll(composerBottom).toBeLessThanOrEqual(400);
 });
 
+test("모바일: 채팅 화면은 페이지가 스크롤되지 않고 대화 목록만 스크롤 (위로 스크롤 시 화면 떨림 방지)", async ({ page }) => {
+  const state = () => page.evaluate(() => {
+    const root = document.documentElement;
+    const list = document.querySelector(".assistant-messages");
+    return {
+      locked: root.classList.contains("chat-screen"),
+      overflow: getComputedStyle(root).overflowY,
+      fits: document.scrollingElement!.scrollHeight <= window.innerHeight,
+      contain: list ? getComputedStyle(list).overscrollBehaviorY : null,
+      vvTop: root.style.getPropertyValue("--vv-top"),
+    };
+  });
+
+  await page.goto("/");
+  await expect(page.locator(".composer")).toBeVisible();
+  await expect.poll(state).toMatchObject({ locked: true, overflow: "hidden", fits: true, contain: "contain" });
+  // 키보드가 닫힌 채로 보이는 영역이 움직여도(주소창·튕김) 화면을 옮기지 않는다
+  await page.evaluate(() => window.visualViewport!.dispatchEvent(new Event("scroll")));
+  expect((await state()).vvTop).toBe("");
+
+  // 다른 화면으로 가면 잠금을 풀어 평소처럼 스크롤된다
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "회사" }).click();
+  await expect(page).toHaveURL(/\/companies$/);
+  await expect.poll(async () => (await state()).locked).toBe(false);
+});
+
 test("모바일: 다른 화면의 AI Assistant 채팅은 화면 전체 폭·높이를 쓰고, 다른 메뉴로 가면 닫힌다", async ({ page }) => {
   await page.goto("/pipeline");
   const panel = page.getByRole("complementary", { name: "AI Assistant" });

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { contextOf } from "@/lib/docTemplate";
+import { contextOf, KIND_LABEL } from "@/lib/docTemplate";
 import { useDocDraft } from "@/lib/useDocDraft";
 import type { Me } from "@/lib/types";
 import DocAssistant from "./DocAssistant";
 import DocBadge from "./DocBadge";
 import DocPaper from "./DocPaper";
+import RecentDocs from "./RecentDocs";
 import SendDocModal from "./SendDocModal";
 import { Button, Modal, ModalFooter, ModalHeader } from "./ui";
 
@@ -18,8 +19,8 @@ interface Props {
 }
 
 /**
- * AI Assistant의 "견적서" 탭: 견적서 템플릿만 골라 대화로 작성 → 완성 → PDF·메일.
- * 문서는 계약서 메뉴의 작성한 문서에도 그대로 저장된다. 미리보기는 "문서 보기" 모달.
+ * AI Assistant의 "문서" 탭: 견적서·계약서 템플릿을 골라 대화로 작성 → 완성 → PDF·메일.
+ * 작성한 문서(계약서 메뉴와 같은 목록)를 열어 이어 쓰기·PDF·메일도 할 수 있다. 미리보기는 "문서 보기" 모달.
  */
 export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
   const draft = useDocDraft({ onLeadsChanged });
@@ -31,7 +32,12 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
     loadTemplates();
   }, [loadTemplates]);
 
-  const quotes = useMemo(() => templates?.filter((t) => t.kind === "quote") ?? null, [templates]);
+  // 견적서 템플릿을 먼저, 그다음 계약서
+  const sorted = useMemo(
+    () => (templates ? [...templates].sort((a, b) => Number(a.kind !== "quote") - Number(b.kind !== "quote")) : null),
+    [templates]
+  );
+  const kindLabel = doc ? KIND_LABEL[doc.kind] : "문서";
   const ctx = useMemo(() => (doc ? contextOf(doc) : null), [doc]);
   const currentKey = doc?.step.type === "field" ? doc.step.key : doc?.step.type === "items" ? "품목표" : null;
 
@@ -44,14 +50,14 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
     <>
       <DocAssistant
         doc={doc}
-        templates={quotes}
+        templates={sorted}
         busy={busy}
         error={draft.error}
-        title="견적서 작성"
+        title="문서 작성"
         singleLine
         headActions={doc && (
           <div className="quote-head-actions">
-            <Button size="sm" variant="ghost" icon="plus" onClick={draft.reset}>새 견적서</Button>
+            <Button size="sm" variant="ghost" icon="plus" onClick={draft.reset}>새 문서</Button>
             <Button size="sm" onClick={() => setPreview(true)}>문서 보기</Button>
           </div>
         )}
@@ -61,11 +67,12 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
         onDownload={draft.download}
         onEmail={() => setSending(true)}
         onLoadDefaults={loadDefaults}
+        startExtra={<RecentDocs onOpen={draft.openDoc} disabled={busy} />}
       />
 
       {/* 패널(sticky)이 쌓임 맥락을 만들어 메뉴·상단 바 아래에 깔리지 않도록 모달은 body에 그린다 */}
       {preview && doc && ctx && createPortal(
-        <Modal label="견적서 미리보기" size="wide" className="quote-preview-modal" onClose={() => setPreview(false)}>
+        <Modal label={`${kindLabel} 미리보기`} size="wide" className="quote-preview-modal" onClose={() => setPreview(false)}>
           <ModalHeader
             title={<>{doc.title} <DocBadge status={doc.status} /></>}
             onClose={() => setPreview(false)}
@@ -99,7 +106,7 @@ export default function QuoteChat({ me, onLeadsChanged, onNotice }: Props) {
           onSent={(r) => {
             setSending(false);
             draft.applyResult(r);
-            onNotice(`${doc.company ? `${doc.company}에 ` : ""}견적서를 보냈어요`);
+            onNotice(`${doc.company ? `${doc.company}에 ` : ""}${kindLabel}를 보냈어요`);
             if (r.document.leadId) onLeadsChanged();
           }}
         />,

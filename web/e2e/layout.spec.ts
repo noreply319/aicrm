@@ -111,25 +111,46 @@ test("첫 화면(/)은 메인 영역 전체를 쓰는 AI Assistant 대화 (숨�
   expect(Math.round(box.x + box.width)).toBe(1440);
 });
 
-test("AI Assistant 견적서 탭: 견적서 템플릿만 보여주고, 탭을 바꿔도 대화가 남는다", async ({ page, request }) => {
+test("AI Assistant 문서 탭: 견적서·계약서 템플릿(견적서 먼저), 탭을 바꿔도 대화가 남는다", async ({ page, request }) => {
   await request.post("/api/templates/defaults");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const panel = page.getByRole("complementary", { name: "AI Assistant" });
-  await panel.getByRole("tab", { name: "견적서" }).click();
-  const quote = panel.getByRole("region", { name: "견적서 작성" });
-  await expect(quote.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
-  await expect(quote.locator(".tpl-btn").first()).toBeVisible();
-  for (const b of await quote.locator(".tpl-btn").all()) await expect(b).toContainText("견적서");
+  await panel.getByRole("tab", { name: "문서" }).click();
+  const docs = panel.getByRole("region", { name: "문서 작성" });
+  await expect(docs.getByText("안녕하세요! 어떤 문서를 만들까요?")).toBeVisible();
+  await expect(docs.locator(".tpl-btn").first()).toContainText("견적서");
+  await expect(docs.locator(".tpl-btn").filter({ hasText: "계약서" }).first()).toBeVisible();
 
-  await quote.locator(".tpl-btn").first().click();
-  await expect(quote.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
+  await docs.locator(".tpl-btn").first().click();
+  await expect(docs.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
   await panel.getByRole("tab", { name: "일반 대화" }).click();
-  await expect(quote).toBeHidden();
-  await panel.getByRole("tab", { name: "견적서" }).click();
-  await expect(quote.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
-  await quote.getByRole("button", { name: "문서 보기" }).click();
+  await expect(docs).toBeHidden();
+  await panel.getByRole("tab", { name: "문서" }).click();
+  await expect(docs.getByRole("button", { name: "리드 없이 작성" })).toBeVisible();
+  await docs.getByRole("button", { name: "문서 보기" }).click();
   await expect(page.getByRole("dialog", { name: "견적서 미리보기" }).locator(".paper")).toBeVisible();
+});
+
+test("AI Assistant 문서 탭: 계약서 메뉴에서 작성한 문서가 목록에 보이고, 열어서 이어 쓴다", async ({ page, request }) => {
+  await request.post("/api/templates/defaults");
+  const templates = (await (await request.get("/api/templates")).json()) as { id: string; kind: string; name: string }[];
+  const contract = templates.find((t) => t.kind === "contract")!;
+  const created = (await (await request.post("/api/documents", { data: { templateId: contract.id } })).json()) as { id: string; title: string };
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const panel = page.getByRole("complementary", { name: "AI Assistant" });
+  await panel.getByRole("tab", { name: "문서" }).click();
+  const list = panel.getByRole("region", { name: "작성한 문서" });
+  const item = list.getByRole("button", { name: new RegExp(created.title) });
+  await expect(item).toContainText("계약서");
+  await item.click();
+  const docs = panel.getByRole("region", { name: "문서 작성" });
+  await expect(docs.getByRole("button", { name: "문서 보기" })).toBeVisible();
+  await expect(list).toBeHidden(); // 문서를 열면 목록 대신 작성 대화
+  await docs.getByRole("button", { name: "문서 보기" }).click();
+  await expect(page.getByRole("dialog", { name: "계약서 미리보기" }).locator(".paper")).toBeVisible();
 });
 
 test("데스크톱에는 햄버거 메뉴가 없고, 파이프라인에서는 상단 바 AI Assistant 버튼을 쓴다", async ({ page }) => {

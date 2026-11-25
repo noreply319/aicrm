@@ -8,7 +8,7 @@ export async function resetDb() {
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
   await c.connect();
   try {
-    await c.query("TRUNCATE agent_requests, agent_actions, document_sends, documents, document_templates, meeting_notes, lead_events, leads, contacts, companies RESTART IDENTITY CASCADE");
+    await c.query("TRUNCATE chat_conversations, agent_requests, agent_actions, document_sends, documents, document_templates, meeting_notes, lead_events, leads, contacts, companies RESTART IDENTITY CASCADE");
   } finally {
     await c.end();
   }
@@ -123,6 +123,29 @@ export async function createMovePlan(
       [JSON.stringify({ leadId: lead.id, stage: to, expect: { stage: from } }), JSON.stringify(plan), source]
     );
     return { id: rows[0].id, ...plan, status: "pending" as const };
+  } finally {
+    await c.end();
+  }
+}
+
+/**
+ * 저장된 대화를 테스트 DB에 직접 만든다 (다른 기기에서 하던 대화 흉내). 테스트 사용자 소유.
+ * turns: [질문, 답변] 목록. ageMinutes만큼 예전 대화로 (목록 순서 확인용)
+ */
+export async function createConversation(source: "assistant" | "agent", title: string, turns: [string, string][], ageMinutes = 0) {
+  assertSafeTestDb(TEST_DATABASE_URL);
+  const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
+  await c.connect();
+  try {
+    const { rows } = await c.query<{ id: string }>(
+      `INSERT INTO chat_conversations (user_id, source, title, updated_at)
+       SELECT id, $1, $2, now() - make_interval(mins => $3) FROM users WHERE google_sub = 'e2e-test-user' RETURNING id`,
+      [source, title, ageMinutes]
+    );
+    for (const [q, a] of turns) {
+      await c.query("INSERT INTO chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2), ($1, 'assistant', $3)", [rows[0].id, q, a]);
+    }
+    return rows[0].id;
   } finally {
     await c.end();
   }

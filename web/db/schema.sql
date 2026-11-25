@@ -561,3 +561,44 @@ BEGIN
     GRANT USAGE ON SEQUENCE agent_requests_id_seq TO crm_app;
   END IF;
 END $$;
+
+-- AI Assistant·Sales Agent 대화 기록 (사용자 본인만, 다른 기기에서도 이어서 보기). 기간 제한 없이 보관, 사용자가 삭제
+-- source: assistant(AI Assistant 일반 대화) / agent(Sales Agent)
+CREATE TABLE IF NOT EXISTS chat_conversations (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source      text NOT NULL CHECK (source IN ('agent','assistant')),
+  title       text NOT NULL DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chat_conversations_user_idx ON chat_conversations (user_id, source, updated_at DESC);
+
+-- 대화 메시지. plans: 화면에 보낸 계획 카드(승인 상태는 불러올 때 agent_actions 기준으로 다시 맞춘다), steps: 진행 단계
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id               bigserial PRIMARY KEY,
+  conversation_id  uuid NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+  role             text NOT NULL CHECK (role IN ('user','assistant')),
+  content          text NOT NULL DEFAULT '',
+  steps            jsonb NOT NULL DEFAULT '[]',
+  plans            jsonb NOT NULL DEFAULT '[]',
+  error            text,
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chat_messages_conversation_idx ON chat_messages (conversation_id, id);
+
+ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'chat_conversations' AND policyname = 'chat_conversations_crm_app') THEN
+      CREATE POLICY chat_conversations_crm_app ON chat_conversations FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'chat_messages' AND policyname = 'chat_messages_crm_app') THEN
+      CREATE POLICY chat_messages_crm_app ON chat_messages FOR ALL TO crm_app USING (true) WITH CHECK (true);
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO crm_app;
+    GRANT USAGE ON SEQUENCE chat_messages_id_seq TO crm_app;
+  END IF;
+END $$;

@@ -1,16 +1,18 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { MOBILE_QUERY } from "@/lib/constants";
 import type { AgentTarget, Me } from "@/lib/types";
 import type { AgentChat } from "@/lib/useAgentChat";
 import { useAutoGrow } from "@/lib/useAutoGrow";
 import { useBusinessCards } from "@/lib/useBusinessCards";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { useStickToBottom } from "@/lib/useStickToBottom";
 import { useReviseInput } from "@/lib/useReviseInput";
 import AgentTurn from "./AgentTurn";
 import BusinessCardAttach, { cardDropProps } from "./BusinessCardAttach";
 import BusinessCardConfirm, { type CardHost } from "./BusinessCardConfirm";
+import ConversationList from "./ConversationList";
 import QuoteChat from "./QuoteChat";
 import { Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
@@ -39,7 +41,9 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   const [mode, setMode] = useState<Mode>("chat");
   /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
   const [quoteSeen, setQuoteSeen] = useState(false);
-  const { messages, busy, send, stop, approve, approveAll, cancel, reset } = chat;
+  const { messages, busy, send, stop, approve, approveAll, cancel, reset, conversationId, conversations, loaded, open: openConversation, remove } = chat;
+  /** 저장된 대화 목록 보기 (대화 영역 자리에) */
+  const [showList, setShowList] = useState(false);
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   // 입력칸: 기본 한 줄, 내용에 맞춰 최대 5줄까지 늘어남
@@ -59,14 +63,13 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   const cardsAt = (index: number) =>
     cards.cards.filter((c) => Math.min(c.afterIndex, messages.length) === index).map((c) => <BusinessCardConfirm key={c.id} card={c} cards={cards} host={cardHost} />);
 
-  // 새 메시지·명함 카드가 오면 맨 아래로 스크롤
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, cards.cards.length]);
+  // 새 메시지·명함 카드가 오면 맨 아래로 — 위로 올려 읽는 중이면 그대로 둔다
+  const stickToBottom = useStickToBottom(listRef, messages, cards.cards.length);
 
   const submit = async (text: string) => {
     if (busy || !text.trim()) return;
     setInput("");
+    stickToBottom(); // 보낸 질문과 답변은 맨 아래에서 보여준다
     await send(text);
   };
 
@@ -83,7 +86,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
         <Tabs
           className="assistant-tabs"
           label="대화 종류"
-          items={[{ id: "chat", label: "일반 대화" }, { id: "quote", label: "견적서" }]}
+          items={[{ id: "chat", label: "일반 대화" }, { id: "quote", label: "문서" }]}
           value={mode}
           onChange={(m) => {
             setMode(m);
@@ -91,10 +94,13 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
           }}
         />
         <span className="spacer" />
-        {mode === "chat" && (messages.length > 0 || cards.cards.length > 0) && (
+        {mode === "chat" && (messages.length > 0 || cards.cards.length > 0) && !showList && (
           <Button size="sm" variant="ghost" icon="refresh" onClick={() => { reset(); cards.clear(); }}>
             새 대화
           </Button>
+        )}
+        {mode === "chat" && (
+          <IconButton icon="history" label="대화 목록" size="sm" aria-pressed={showList} className={showList ? "btn-active" : undefined} onClick={() => { if (!showList) chat.refreshList(); setShowList(!showList); }} />
         )}
         {!home && <IconButton className="assistant-hide" icon="panelRight" label="Assistant 숨기기" size="sm" onClick={onClose} />}
       </div>
@@ -106,8 +112,18 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       )}
 
       <div className="assistant-chat" hidden={mode !== "chat"}>
-      <div className="assistant-messages" ref={listRef} {...cardDropProps(addCards)}>
-        {messages.length === 0 && cards.cards.length === 0 && (
+      {showList && (
+        <ConversationList
+          conversations={conversations}
+          currentId={conversationId}
+          onOpen={(id) => { cards.clear(); setShowList(false); if (id !== conversationId) openConversation(id); }}
+          onDelete={remove}
+          onNew={() => { reset(); cards.clear(); setShowList(false); }}
+          onClose={() => setShowList(false)}
+        />
+      )}
+      <div className="assistant-messages" ref={listRef} hidden={showList} {...cardDropProps(addCards)}>
+        {loaded && messages.length === 0 && cards.cards.length === 0 && (
           <div className="assistant-empty">
             <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
           </div>
@@ -134,6 +150,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
 
       {/* 입력창: 둥근 알약 모양 안에 첨부(+) · 입력 · 보내기/멈추기 */}
       <form
+        hidden={showList}
         className="assistant-input composer-wrap"
         onSubmit={(e) => {
           e.preventDefault();

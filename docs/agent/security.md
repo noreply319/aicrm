@@ -79,6 +79,15 @@ Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 
 - 리드에 생긴 변경은 `lead_events`에도 `via: "agent"`로 남는다(받는 사람 주소는 넣지 않고 수만).
 - RLS·권한: `agent_actions`·`agent_requests` 모두 RLS를 켜고 `crm_app` 정책만 두며, `crm_app`에 테이블 권한(GRANT)을 준다.
 
+### 대화 기록 (`chat_conversations`·`chat_messages`)
+
+- AI Assistant·Sales Agent 대화(질문·답변·진행 단계)를 **사용자 본인만** 보도록 저장한다 — 목록·열기·이어 쓰기·삭제 모두 `user_id` 확인, 다른 화면(source)의 대화로 이어 쓰기도 막는다.
+- **보관 기간 없음**(사용자가 대화 목록에서 삭제). 대화에는 사용자가 입력한 내용과 답변이 그대로 남으므로 이메일·전화번호는 대화로 입력하지 않도록 안내하는 기존 원칙을 유지한다.
+- 계획 카드는 **id만** 저장하고 불러올 때 `agent_actions`에서 읽는다 → 90일 지난 계획의 전/후 내용은 대화 기록에서도 지워진 상태로 보인다. 메일 초안 카드(`draft`)는 저장된 계획이 없어 카드 내용을 그대로 저장한다.
+- 명함 확인 카드는 저장하지 않는다(화면 전용).
+- 대화를 지워도 실행한 계획의 감사 기록(`agent_actions`)은 남는다.
+- RLS·권한: 두 테이블 모두 RLS + `crm_app` 정책 + GRANT(시퀀스 포함).
+
 ## 6. 인증·CSRF (`web/proxy.ts`)
 
 - `/login`·`/api/auth/*` 외 모든 페이지·API는 세션 필요(API 401) — `/api/agent/*`도 자동 적용. Agent 라우트는 세션 사용자를 다시 확인한다.

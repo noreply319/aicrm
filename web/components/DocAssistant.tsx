@@ -26,6 +26,8 @@ interface Props {
   title?: string;
   /** 머리말 오른쪽 버튼 (문서 보기 등) */
   headActions?: ReactNode;
+  /** 문서를 고르기 전 템플릿 선택 아래에 보여줄 내용 (AI Assistant 문서 탭: 작성한 문서 목록) */
+  startExtra?: ReactNode;
   /** 입력칸을 한 줄로 시작해 내용에 맞춰 늘린다 (Assistant 견적서 탭) */
   singleLine?: boolean;
 }
@@ -127,6 +129,7 @@ export default function DocAssistant(p: Props) {
             )}
           </div>
         )}
+        {!doc && p.startExtra}
         {!doc && startReply && (
           <div className="bubble bubble-assistant">
             {startReply.text}

@@ -11,14 +11,21 @@ import { leadTarget } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
 import { maskChanges, maskPii, toolErrorText, type ChatMessageParam, type ToolDef } from "./openai";
 import type { ChatMessage, ContactRole } from "./types";
+import { focusText } from "./chatContext";
+import { companyKey } from "./company";
+import { personKey } from "./contact";
 import { parseDateRange, UUID_RE } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
 
-// 컨텍스트에 넣을 최근 이력 개수 상한 (토큰 비용 제한)
-const MAX_EVENTS = 500;
-// 미팅 노트: 최근 N건, 질문에 언급된 리드의 노트만 본문 포함 (토큰 비용 제한)
-const MAX_NOTES = 100;
+// 이력: 질문(최근 대화 포함)에 나온 리드의 이력 + 최근 기간 이력 (토큰 비용 제한)
+const FOCUS_EVENTS = 300;
+const RECENT_EVENT_DAYS = 60;
+const RECENT_EVENTS = 200;
+// 미팅 노트: 질문에 나온 리드의 노트(본문 포함) + 최근 기간 노트(요약)
+const FOCUS_NOTES = 30;
+const RECENT_NOTE_DAYS = 90;
+const RECENT_NOTES = 50;
 const MAX_COMPANIES = 500;
 const COMPANY_NOTE_CHARS = 1000;
 // 컨텍스트에 넣을 연락처 상한, 메모 길이
@@ -108,22 +115,29 @@ interface CompanyContextRow {
  * DB에서 현재 리드 + 변경 이력 + 미팅 노트를 읽어 모델 컨텍스트 문자열을 만든다.
  * question에 회사명이 언급된 리드의 노트는 본문까지 넣는다.
  */
-async function buildContext(question: string, emails: EmailContext[] = []): Promise<string> {
-  const [leadsRes, eventsRes, notesRes, schedulesRes, companiesRes, contactsRes] = await Promise.all([
+/**
+ * 질문과 관련된 회사·연락처·리드 찾기. 회사명은 (주)·공백을 무시하고(companyKey), 사람 이름은 공백을 무시한다.
+ * focus: 이번 질문 + 최근 질문 몇 개 (이어지는 질문도 같은 대상으로)
+ */
+function findFocus(focus: string, leads: LeadRow[], companies: CompanyContextRow[], contacts: ContactContextRow[]) {
+  const companyText = companyKey(focus);
+  const personText = personKey(focus);
+  const hit = (key: string, text: string) => key.length >= 2 && text.includes(key);
+  const companyIds = new Set(companies.filter((c) => hit(companyKey(c.name), companyText)).map((c) => c.id));
+  const contactIds = new Set(contacts.filter((c) => hit(personKey(c.name), personText)).map((c) => c.id));
+  const leadIds = new Set(
+    leads
+      .filter((l) =>
+        (l.companyId && companyIds.has(l.companyId)) || hit(companyKey(l.company), companyText) ||
+        (l.contactId && contactIds.has(l.contactId)) || hit(personKey(l.contact), personText))
+      .map((l) => l.id)
+  );
+  return { companyIds, contactIds, leadIds };
+}
+
+async function buildContext(focus: string, emails: EmailContext[] = []): Promise<string> {
+  const [leadsRes, schedulesRes, companiesRes, contactsRes] = await Promise.all([
     pool.query<LeadRow>(`SELECT ${LEAD_COLUMNS} FROM leads ORDER BY position`),
-    pool.query<LeadEvent & { by: string | null }>(
-      `SELECT e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
-       FROM lead_events e LEFT JOIN users u ON u.id = e.user_id
-       ORDER BY e.created_at DESC, e.id DESC LIMIT $1`,
-      [MAX_EVENTS]
-    ),
-    pool.query<NoteContextRow>(
-      `SELECT m.lead_id AS "leadId", l.company, m.title, m.met_at AS "metAt", m.source,
-              m.summary, m.next_actions AS "nextActions", m.body
-       FROM meeting_notes m LEFT JOIN leads l ON l.id = m.lead_id
-       ORDER BY m.met_at DESC LIMIT $1`,
-      [MAX_NOTES]
-    ),
     pool.query<ScheduleContextRow>(
       `SELECT m.id, m.lead_id AS "leadId", l.company, m.status, m.certainty, m.title, m.starts_at AS "startsAt",
               m.ends_at AS "endsAt", m.all_day AS "allDay", m.location, coalesce(u.name, u.email) AS "owner"
@@ -149,6 +163,34 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     ),
   ]);
 
+  // 질문·최근 대화에 나온 대상 → 그 리드의 이력·노트는 오래된 것까지, 나머지는 최근 기간만
+  const focused = findFocus(focus, leadsRes.rows, companiesRes.rows, contactsRes.rows);
+  const focusLeadIds = [...focused.leadIds];
+  const [eventsRes, notesRes] = await Promise.all([
+    pool.query<LeadEvent & { id: string; by: string | null }>(
+      `(SELECT e.id, e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
+        FROM lead_events e LEFT JOIN users u ON u.id = e.user_id
+        WHERE e.lead_id = ANY($1::uuid[]) ORDER BY e.created_at DESC, e.id DESC LIMIT $2)
+       UNION
+       (SELECT e.id, e.lead_id AS "leadId", e.company, e.type, e.changes, e.created_at AS "createdAt", u.name AS "by"
+        FROM lead_events e LEFT JOIN users u ON u.id = e.user_id
+        WHERE e.created_at > now() - make_interval(days => $3) ORDER BY e.created_at DESC, e.id DESC LIMIT $4)
+       ORDER BY "createdAt", id`,
+      [focusLeadIds, FOCUS_EVENTS, RECENT_EVENT_DAYS, RECENT_EVENTS]
+    ),
+    pool.query<NoteContextRow & { id: string }>(
+      `(SELECT m.id, m.lead_id AS "leadId", l.company, m.title, m.met_at AS "metAt", m.source, m.summary, m.next_actions AS "nextActions", m.body
+        FROM meeting_notes m LEFT JOIN leads l ON l.id = m.lead_id
+        WHERE m.lead_id = ANY($1::uuid[]) ORDER BY m.met_at DESC LIMIT $2)
+       UNION
+       (SELECT m.id, m.lead_id AS "leadId", l.company, m.title, m.met_at AS "metAt", m.source, m.summary, m.next_actions AS "nextActions", m.body
+        FROM meeting_notes m LEFT JOIN leads l ON l.id = m.lead_id
+        WHERE m.met_at > now() - make_interval(days => $3) ORDER BY m.met_at DESC LIMIT $4)
+       ORDER BY "metAt" DESC`,
+      [focusLeadIds, FOCUS_NOTES, RECENT_NOTE_DAYS, RECENT_NOTES]
+    ),
+  ]);
+
   // 이메일·전화번호는 외부 API로 보내지 않는다 (개인정보 최소화)
   const leads = leadsRes.rows.map(toLead).map((l) => ({
     id: l.id,
@@ -165,7 +207,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     createdAt: kst(l.createdAt),
   }));
 
-  const events = eventsRes.rows.reverse().map((e) => ({
+  const events = eventsRes.rows.map((e) => ({
     at: kst(new Date(e.createdAt)),
     leadId: e.leadId,
     company: e.company,
@@ -189,11 +231,10 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     owner: m.owner ?? undefined,
   }));
 
-  // 질문에 회사명이 나온 리드의 노트는 본문 포함, 나머지는 요약(없으면 본문 앞부분)만
-  const q = question.toLowerCase();
+  // 질문·최근 대화에 나온 리드의 노트는 본문 포함, 나머지는 요약(없으면 본문 앞부분)만
   let bodyBudget = NOTE_BODY_TOTAL_CHARS;
   const meetingNotes = notesRes.rows.map((n) => {
-    const mentioned = n.company !== null && q.includes(n.company.toLowerCase());
+    const mentioned = n.leadId !== null && focused.leadIds.has(n.leadId);
     const bodyText = mentioned && bodyBudget > 0 ? n.body.slice(0, Math.min(NOTE_BODY_CHARS, bodyBudget)) : "";
     bodyBudget -= bodyText.length;
     return {
@@ -210,7 +251,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     };
   });
 
-  // 회사 메모는 질문에 회사명이 나온 회사만 (나머지는 기본 정보만)
+  // 회사 메모는 질문·최근 대화에 나온 회사만 (나머지는 기본 정보만)
   const companies = companiesRes.rows.map((c) => ({
     id: c.id,
     name: c.name,
@@ -220,10 +261,10 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     tags: c.tags.length ? c.tags : undefined,
     owner: c.owner ?? undefined,
     emailDomain: c.emailDomain ?? undefined,
-    ...(c.notes && q.includes(c.name.toLowerCase()) ? { notes: maskPii(c.notes.slice(0, COMPANY_NOTE_CHARS)) } : {}),
+    ...(c.notes && focused.companyIds.has(c.id) ? { notes: maskPii(c.notes.slice(0, COMPANY_NOTE_CHARS)) } : {}),
   }));
 
-  // 연락처 메모는 질문에 이름이 나온 사람만
+  // 연락처 메모는 질문·최근 대화에 이름이 나온 사람만
   const contacts = contactsRes.rows.map((c) => ({
     id: c.id,
     name: c.name,
@@ -233,7 +274,7 @@ async function buildContext(question: string, emails: EmailContext[] = []): Prom
     role: c.role ? CONTACT_ROLE_LABEL[c.role as ContactRole] : undefined,
     tags: c.tags.length ? c.tags : undefined,
     owner: c.owner ?? undefined,
-    ...(c.notes && q.includes(c.name.toLowerCase()) ? { notes: maskPii(c.notes.slice(0, CONTACT_NOTE_CHARS)) } : {}),
+    ...(c.notes && focused.contactIds.has(c.id) ? { notes: maskPii(c.notes.slice(0, CONTACT_NOTE_CHARS)) } : {}),
   }));
 
   // 질문과 관련된 저장 메일(제목·AI 요약)만. 본문은 넣지 않는다
@@ -334,20 +375,21 @@ function systemPrompt(
 - 금액은 원화(₩)이며 천 단위 구분 기호를 붙이세요.
 - 단계 흐름: ${STAGES.map((s) => s.name).join(" → ")}. 파이프라인 금액은 수주·실주를 제외한 리드 금액 합계입니다.
 - companies는 회사 목록입니다(업종·규모(직원 수)·등급 A/B/C·태그·담당 영업 owner). leads.companyId로 연결됩니다.
-  회사 단위 질문(이 회사 리드 전체, 회사별 파이프라인 등)은 companyId로 묶어 답하세요. notes는 질문에 회사명이 나온 회사만 포함됩니다.
+  회사 단위 질문(이 회사 리드 전체, 회사별 파이프라인 등)은 companyId로 묶어 답하세요. notes는 질문·최근 대화에 회사명이 나온 회사만 포함됩니다.
 - contacts는 연락처(영업 상대방) 목록입니다(회사·부서·직함·역할 의사결정자/영향력자/실무자·태그·담당 영업 owner). leads.contactId로 담당 리드와 연결됩니다.
   사람 단위 질문(이 사람이 담당자인 리드, 회사의 의사결정자 등)은 contactId·company로 답하세요. 연락처의 이메일·전화번호는 제공되지 않습니다.
 - events는 리드 변경 이력입니다. type: created(생성), updated(필드 수정, changes에 {from,to}), moved(단계 이동), deleted(삭제),
   note_created/note_updated/note_deleted(미팅 노트 작성/수정/삭제).
-- meetingNotes는 리드별 미팅 노트입니다(최근 ${MAX_NOTES}건, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.
+- meetingNotes는 리드별 미팅 노트입니다(질문·최근 대화에 나온 리드의 노트 최근 ${FOCUS_NOTES}건 + 최근 ${RECENT_NOTE_DAYS}일 노트, 미팅 일시 최신순). summary(요약·고객 니즈), nextActions(다음 액션)를 우선 참고하세요.
   company가 "(리드 미지정)"인 노트는 아직 리드에 연결되지 않은 노트입니다.
-  body는 질문에 회사명이 언급된 리드의 노트에만 포함됩니다. 노트를 근거로 답할 때는 "(출처: 노트 제목, 미팅 일시)"를 붙이세요.
+  body는 질문·최근 대화에 나온 리드의 노트에만 포함됩니다. 노트를 근거로 답할 때는 "(출처: 노트 제목, 미팅 일시)"를 붙이세요.
   본문은 녹음 전사일 수 있어 오인식이 있을 수 있습니다.
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
   meeting_scheduled/meeting_rescheduled/meeting_canceled(다음 미팅 등록/변경/취소). by는 변경한 사용자입니다.
   document_sent(계약서·견적서 메일 발송: kind=contract 계약서/quote 견적서, title, docNumber, recipients=받는 사람 수).
   email_sent(Sales Agent로 보낸 일반 메일: subject, recipients=받는 사람 수).
-- 이력은 최근 ${MAX_EVENTS}건까지만 포함됩니다.
+- 이력은 질문·최근 대화에 나온 리드의 이력(최근 ${FOCUS_EVENTS}건) + 최근 ${RECENT_EVENT_DAYS}일 이력(최대 ${RECENT_EVENTS}건)만 포함됩니다.
+  그보다 오래된 다른 리드의 이력은 없으니, 필요하면 search_leads·get_lead로 조회하거나 "최근 기록에는 없습니다"라고 답하세요.
 - scheduledMeetings는 CRM에서 잡은 다음 미팅입니다(팀 전체). status: scheduled(등록자 owner의 구글 캘린더에 등록됨),
   candidate(미팅 노트에서 찾았지만 아직 확정 안 됨, certainty=tentative면 시간 미정). 다른 팀원의 미팅은 여기서 답하세요.
   candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
@@ -474,9 +516,10 @@ export interface AssistantSession {
 export async function prepareAssistant(
   messages: ChatMessage[], user: SessionUser | null, mode: AgentSource = "assistant"
 ): Promise<AssistantSession> {
-  const question = messages.at(-1)?.content ?? "";
-  const emails = user ? await findRelevantEmails(user, question) : [];
-  const context = await buildContext(question, emails);
+  // 관련 기록을 찾을 글: 이번 질문 + 최근 질문 몇 개 ("그 회사 금액은?" 같은 이어지는 질문도 같은 회사로)
+  const focus = focusText(messages);
+  const emails = user ? await findRelevantEmails(user, focus) : [];
+  const context = await buildContext(focus, emails);
   const state = featureState(user, "calendar");
   const gmail = featureState(user, "gmail");
   const chat: ChatMessageParam[] = [

@@ -196,9 +196,23 @@ export type AgentEvent =
   | { type: "reply"; content: string }
   | { type: "plan"; plan: AgentPlan }
   | { type: "error"; error: string }
+  /** 이 답변이 저장되는 대화 (새 대화면 서버가 만들어 처음에 알려준다) */
+  | { type: "conversation"; conversation: ConversationSummary }
   | { type: "done" };
 
-/** Sales Agent 화면의 대화 메시지 (화면 전용 — 서버에는 role·content만 보낸다) */
+/** 저장된 대화 목록 한 줄 (AI Assistant·Sales Agent, 본인 것만) */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+/** 저장된 대화 + 메시지 (계획 카드는 지금 승인 상태로) */
+export interface ConversationDetail extends ConversationSummary {
+  messages: AgentMessage[];
+}
+
+/** AI Assistant·Sales Agent 대화 메시지 (보낼 때는 role·content만, 답변은 서버가 대화 기록에 저장한다) */
 export interface AgentMessage {
   id: string;
   role: "user" | "assistant";
