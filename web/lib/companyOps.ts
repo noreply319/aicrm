@@ -7,7 +7,7 @@ import { recordEvent } from "./events";
 import type { Company, CompanyInput } from "./types";
 
 /**
- * 회사 생성·수정 로직 (Route Handler와 Sales Agent가 같은 코드를 쓴다). 호출한 쪽의 트랜잭션 client로 실행.
+ * 회사 생성·수정·삭제 로직 (Route Handler와 Sales Agent가 같은 코드를 쓴다). 호출한 쪽의 트랜잭션 client로 실행.
  * 중복(유니크 위반)은 SAVEPOINT로 되돌린 뒤 409 결과로 돌려준다 — 트랜잭션은 계속 쓸 수 있다.
  * meta는 회사명 변경으로 바뀐 리드 이력에 함께 남길 값 (예: { via: "agent" }).
  */
@@ -81,4 +81,33 @@ export async function updateCompany(client: PoolClient, id: string, d: CompanyIn
     for (const l of leads) await recordEvent(client, l.id, d.name, "updated", { company: { from: l.old, to: d.name }, ...meta });
   }
   return { ok: true, company: toCompany(row) };
+}
+
+export type CompanyDeleteResult = { ok: true; name: string } | { ok: false; status: 404 | 409; error: string };
+
+/** 회사에 연결된 리드 수 (회사 삭제 가능 여부·회사명 변경 전파 건수) */
+export async function companyLeadCount(db: Pool | PoolClient, id: string): Promise<number> {
+  return (await db.query<{ n: number }>("SELECT count(*)::int AS n FROM leads WHERE company_id = $1", [id])).rows[0].n;
+}
+
+/** 연결된 리드가 있어 회사를 삭제할 수 없을 때 안내 (API·Agent 공용) */
+export const leadsBlockMessage = (n: number) =>
+  `연결된 리드 ${n}건이 있어 삭제할 수 없습니다. 리드를 다른 회사로 옮기거나 삭제해 주세요`;
+
+/** 연결된 리드가 있으면 삭제하지 않는다 (FK RESTRICT). 소속 연락처는 FK에 따라 소속 없음이 된다 */
+export async function deleteCompany(client: PoolClient, id: string): Promise<CompanyDeleteResult> {
+  const row = (await client.query<{ name: string }>("SELECT name FROM companies WHERE id = $1 FOR UPDATE", [id])).rows[0];
+  if (!row) return { ok: false, status: 404, error: "회사를 찾을 수 없습니다" };
+  const n = await companyLeadCount(client, id);
+  if (n > 0) return { ok: false, status: 409, error: leadsBlockMessage(n) };
+  try {
+    await client.query("SAVEPOINT del");
+    await client.query("DELETE FROM companies WHERE id = $1", [id]);
+  } catch (e) {
+    // 확인과 삭제 사이에 리드가 연결된 경우 (FK RESTRICT)
+    if ((e as { code?: string }).code !== "23503") throw e;
+    await client.query("ROLLBACK TO SAVEPOINT del");
+    return { ok: false, status: 409, error: "연결된 리드가 있어 삭제할 수 없습니다" };
+  }
+  return { ok: true, name: row.name };
 }

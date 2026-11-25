@@ -102,9 +102,9 @@ describe("AI Assistant 리드 변경 계획", () => {
     expect((await events(l.id)).at(-1)).toMatchObject({ type: "deleted", changes: { via: "assistant" } });
   });
 
-  it("허용하지 않은 Sales Agent 도구는 모델이 불러도 계획을 만들지 않는다", async () => {
-    const bodies = fakeOpenAi([calls([{ name: "create_company", args: { name: "새회사" } }]), { content: "Sales Agent를 이용하세요." }]);
-    const out = await run("새회사 등록해줘");
+  it("허용하지 않은 Sales Agent 도구(미팅 노트·메일 등)는 모델이 불러도 계획을 만들지 않는다", async () => {
+    const bodies = fakeOpenAi([calls([{ name: "create_meeting_note", args: { title: "킥오프" } }]), { content: "Sales Agent를 이용하세요." }]);
+    const out = await run("킥오프 미팅 노트 써줘");
     expect(plans(out)).toHaveLength(0);
     expect((await pool.query("SELECT count(*)::int AS n FROM agent_actions")).rows[0].n).toBe(0);
     const tool = (bodies[1].messages as { role: string; content: string }[]).find((m) => m.role === "tool");
@@ -113,10 +113,10 @@ describe("AI Assistant 리드 변경 계획", () => {
 
   it("승인할 때도 출처를 확인: assistant 계획으로 허용 외 도구는 실행하지 않는다", async () => {
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO agent_actions (user_id, tool, args, plan, source) VALUES ($1, 'create_company', $2, $3, 'assistant') RETURNING id`,
-      [ME, JSON.stringify({ name: "우회회사" }), JSON.stringify({ title: "회사 등록", changes: [] })]
+      `INSERT INTO agent_actions (user_id, tool, args, plan, source) VALUES ($1, 'create_meeting_note', $2, $3, 'assistant') RETURNING id`,
+      [ME, JSON.stringify({ title: "우회 노트" }), JSON.stringify({ title: "미팅 노트 작성", changes: [] })]
     );
     expect(await decideAction(rows[0].id, ME, "approve")).toMatchObject({ ok: true, plan: { status: "failed", message: "지원하지 않는 작업입니다" } });
-    expect((await pool.query("SELECT count(*)::int AS n FROM companies WHERE name = '우회회사'")).rows[0].n).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS n FROM meeting_notes")).rows[0].n).toBe(0);
   });
 });

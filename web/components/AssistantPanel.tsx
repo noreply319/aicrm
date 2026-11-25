@@ -35,6 +35,7 @@ const SUGGESTIONS = [
   "오션핀테크 리드 변경 이력 보여줘",
   "현재 파이프라인 금액 합계는?",
   "오션핀테크 리드를 협상 단계로 옮겨줘",
+  "오션핀테크에 김민수 팀장 연락처 추가해줘",
 ];
 
 export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, chat, onOpenTarget, onLeadsChanged, onNotice }: Props) {
@@ -101,7 +102,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       <div className="assistant-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="assistant-empty">
-            <p>리드에 대해 물어보거나, 리드 추가·수정·단계 이동을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다.</p>
+            <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다.</p>
             <div className="assistant-suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} className="assistant-chip" onClick={() => submit(s)}>

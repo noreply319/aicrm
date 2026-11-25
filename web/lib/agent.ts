@@ -18,10 +18,12 @@ import { UUID_RE } from "./validate";
  * 2) decideAction: 요청한 본인만 승인/취소. 행을 잠그고 상태·만료·변경 충돌을 확인한 뒤 같은 트랜잭션에서 실행한다.
  */
 
-/** AI Assistant에서 쓸 수 있는 도구: 리드·회사·연락처 조회 + 리드 생성·수정·단계 이동·삭제 */
+/** AI Assistant에서 쓸 수 있는 도구: 리드·회사·연락처 조회 + 리드·회사·연락처 변경 (미팅 노트·일정·메일·문서는 Sales Agent만) */
 export const ASSISTANT_TOOL_NAMES = [
   "search_leads", "get_lead", "pipeline_summary", "search_companies", "get_company", "search_contacts", "get_contact",
   "create_lead", "update_lead", "move_lead_stage", "delete_lead",
+  "create_company", "update_company", "delete_company",
+  "create_contact", "update_contact", "delete_contact", "link_contact_to_lead",
 ] as const;
 
 /** 화면(출처)별로 쓸 수 있는 도구. 승인할 때도 계획의 출처로 다시 확인한다 */

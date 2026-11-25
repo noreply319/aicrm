@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { findContact, updateContact } from "@/lib/contactOps";
-import { unlinkLeads } from "@/lib/contacts";
+import { deleteContact, findContact, updateContact } from "@/lib/contactOps";
 import { pool } from "@/lib/db";
 import { withTransaction } from "@/lib/events";
 import { parseContactInput, UUID_RE } from "@/lib/validate";
@@ -35,12 +34,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
 export async function DELETE(_req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound();
-  const deleted = await withTransaction(async (client) => {
-    const { rows } = await client.query<{ name: string }>("SELECT name FROM contacts WHERE id = $1 FOR UPDATE", [id]);
-    if (!rows[0]) return false;
-    await unlinkLeads(client, id, rows[0].name);
-    await client.query("DELETE FROM contacts WHERE id = $1", [id]);
-    return true;
-  });
-  return deleted ? new NextResponse(null, { status: 204 }) : notFound();
+  const r = await withTransaction((client) => deleteContact(client, id));
+  return r.ok ? new NextResponse(null, { status: 204 }) : notFound();
 }

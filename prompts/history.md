@@ -957,3 +957,11 @@
 > (선택: OpenAI 이미지 분석 — 명함만 예외 / Agent도 같은 확인 카드 / 같은 이메일은 빈 항목만 채우기 / 기록은 태그·메모만 / 추천 설계안)
 
 - 결과: (진행 중) `main`(`2ebf914`)에서 worktree `worktress/business-card`(브랜치 `feat/business-card`), Jira AIC-10 → In Progress. `lib/businessCard.ts`(비전 분석·정규화·매칭·한 트랜잭션 저장), `POST /api/business-cards/extract`·`/api/business-cards`, `findCompanyMatch`·`findContactByEmail`·`findSamePerson` 공용화(Agent 중복 확인도 사용), `useBusinessCards`·`imageFile.ts`, `BusinessCardAttach`·`BusinessCardConfirm`을 AI Assistant 패널·Sales Agent에 연결, CLAUDE.md 명함 섹션·PII 예외. unit·integration·e2e 테스트 작성(미실행), build 통과. 코드 리뷰 2건(80% 이상 없음) 후 선택한 3건 반영(+82 휴대폰, Safari createImageBitmap 옵션 제거, 카드 위치 보정·중복 채우기에 고친 값 사용). Jira AIC-10 코멘트, 커밋 안 함
+
+## 133. 2026-11-25 — AIC-12·AIC-13 구현 후 commit·push (feature-dev)
+
+> /feature-dev:feature-dev Jira의 AIC-12, AIC-13 분석해서 새로운 브랜치에서 구현 시작해줘. 구현 완료후에 commit, push해줘. 이슈 생기면 수정하고, 다시 commit, push 해줘.
+
+> (선택: 없는 회사 연락처는 카드 하나 / 기능 브랜치만 push / 회사·연락처 삭제 포함)
+
+- 결과: 브랜치 `feat/assistant-lead-write` → `feat/assistant-crm-write`로 변경, AIC-12 커밋. AIC-13: Assistant 허용 도구에 회사·연락처 등록·수정·담당 지정 추가, 새 도구 `delete_company`(연결 리드 있으면 거부)·`delete_contact`(연결만 끊음, Sales Agent에도), 삭제 로직 `deleteCompany`·`deleteContact`로 API와 공용, `create_contact` `newCompany`(회사+연락처 한 트랜잭션), 전파 이력 출처(`via`/`by`), 프롬프트 `CRM_RULES`·`PLAN_RULES` 공용. build·tsc 통과, integration 테스트 작성·미실행

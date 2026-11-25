@@ -90,11 +90,11 @@ export async function syncLeadCopies(
  * 연락처 삭제 전: 연결 리드의 연결만 끊고(사본은 유지) 리드마다 이력을 남긴다.
  * (FK가 ON DELETE SET NULL이지만 이력을 남기려고 먼저 직접 처리)
  */
-export async function unlinkLeads(client: PoolClient, contactId: string, name: string): Promise<number> {
+export async function unlinkLeads(client: PoolClient, contactId: string, name: string, meta: Record<string, unknown> = {}): Promise<number> {
   const { rows } = await client.query<{ id: string; company: string }>(
     "UPDATE leads SET contact_id = NULL, updated_at = now() WHERE contact_id = $1 RETURNING id, company",
     [contactId]
   );
-  for (const l of rows) await recordEvent(client, l.id, l.company, "updated", { contactLink: { from: name, to: null }, via: "contact_deleted" });
+  for (const l of rows) await recordEvent(client, l.id, l.company, "updated", { contactLink: { from: name, to: null }, via: "contact_deleted", ...meta });
   return rows.length;
 }

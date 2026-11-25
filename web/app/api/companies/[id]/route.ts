@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findCompany, updateCompany } from "@/lib/companyOps";
+import { deleteCompany, findCompany, updateCompany } from "@/lib/companyOps";
 import { pool } from "@/lib/db";
 import { withTransaction } from "@/lib/events";
 import { parseCompanyInput, UUID_RE } from "@/lib/validate";
@@ -31,21 +31,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
 export async function DELETE(_req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound();
-  const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM leads WHERE company_id = $1", [id]);
-  if (rows[0].n > 0) {
-    return NextResponse.json(
-      { error: `연결된 리드 ${rows[0].n}건이 있어 삭제할 수 없습니다. 리드를 다른 회사로 옮기거나 삭제해 주세요` },
-      { status: 409 }
-    );
-  }
-  try {
-    const { rowCount } = await pool.query("DELETE FROM companies WHERE id = $1", [id]);
-    return rowCount ? new NextResponse(null, { status: 204 }) : notFound();
-  } catch (e) {
-    // 확인과 삭제 사이에 리드가 연결된 경우 (FK RESTRICT)
-    if ((e as { code?: string }).code === "23503") {
-      return NextResponse.json({ error: "연결된 리드가 있어 삭제할 수 없습니다" }, { status: 409 });
-    }
-    throw e;
-  }
+  const r = await withTransaction((client) => deleteCompany(client, id));
+  return r.ok ? new NextResponse(null, { status: 204 }) : NextResponse.json({ error: r.error }, { status: r.status });
 }

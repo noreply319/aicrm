@@ -1,12 +1,12 @@
 import "server-only";
 import type { Pool, PoolClient } from "pg";
 import {
-  checkContactRefs, CONTACT_COLUMNS, contactConflict, contactParams, syncLeadCopies, toContact, type ContactConflict, type ContactRow,
+  checkContactRefs, CONTACT_COLUMNS, contactConflict, contactParams, syncLeadCopies, toContact, unlinkLeads, type ContactConflict, type ContactRow,
 } from "./contacts";
 import type { Contact, ContactInput } from "./types";
 
 /**
- * 연락처 생성·수정 로직 (Route Handler와 Sales Agent가 같은 코드를 쓴다). 호출한 쪽의 트랜잭션 client로 실행.
+ * 연락처 생성·수정·삭제 로직 (Route Handler와 Sales Agent가 같은 코드를 쓴다). 호출한 쪽의 트랜잭션 client로 실행.
  * 같은 이메일(유니크 위반)은 SAVEPOINT로 되돌린 뒤 409 결과로 돌려준다.
  * meta는 담당자 사본이 바뀐 리드 이력에 남길 값 (기본 { via: "contact" }).
  */
@@ -70,4 +70,15 @@ export async function updateContact(
   const contact = toContact(row);
   await syncLeadCopies(client, id, contact, meta);
   return { ok: true, contact };
+}
+
+export type ContactDeleteResult = { ok: true; name: string; unlinked: number } | { ok: false; status: 404; error: string };
+
+/** 연락처 삭제: 담당 리드는 연결만 끊고 담당자 사본은 남긴다(리드마다 이력). meta는 그 이력에 함께 남길 값 (예: { by: "agent" }) */
+export async function deleteContact(client: PoolClient, id: string, meta: Record<string, unknown> = {}): Promise<ContactDeleteResult> {
+  const row = (await client.query<{ name: string }>("SELECT name FROM contacts WHERE id = $1 FOR UPDATE", [id])).rows[0];
+  if (!row) return { ok: false, status: 404, error: "연락처를 찾을 수 없습니다" };
+  const unlinked = await unlinkLeads(client, id, row.name, meta);
+  await client.query("DELETE FROM contacts WHERE id = $1", [id]);
+  return { ok: true, name: row.name, unlinked };
 }

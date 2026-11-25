@@ -1,11 +1,12 @@
 import "server-only";
 import {
-  diffFields, idArg, leadTarget, parseFields, pick, stale, str, text, unchanged, VIA,
+  diffFields, idArg, leadTarget, parseFields, pick, stale, str, text, unchanged,
   type AgentTool, type Args, type ReadTool, type WriteTool,
 } from "./agentToolKit";
 import { COMPANY_SIZES, COMPANY_TIERS, CONTACT_ROLE_LABEL, CONTACT_ROLES, STAGES } from "./constants";
-import { companyInputOf, createCompany, findCompany, updateCompany } from "./companyOps";
-import { contactInputOf, createContact, findContact, updateContact } from "./contactOps";
+import { resolveLeadCompany } from "./companies";
+import { companyInputOf, companyLeadCount, createCompany, deleteCompany, findCompany, leadsBlockMessage, updateCompany } from "./companyOps";
+import { contactInputOf, createContact, deleteContact, findContact, updateContact } from "./contactOps";
 import { pool } from "./db";
 import { findLead, linkContact } from "./leadOps";
 import { maskPii } from "./openai";
@@ -40,9 +41,9 @@ async function companyName(id: string | null): Promise<string | undefined> {
   return (await pool.query<{ name: string }>("SELECT name FROM companies WHERE id = $1", [id])).rows[0]?.name;
 }
 
-const countLeads = async (sql: string, id: string) => (await pool.query<{ n: number }>(sql, [id])).rows[0].n;
-const companyLeadCount = (id: string) => countLeads("SELECT count(*)::int AS n FROM leads WHERE company_id = $1", id);
-const contactLeadCount = (id: string) => countLeads("SELECT count(*)::int AS n FROM leads WHERE contact_id = $1", id);
+const countRows = async (sql: string, id: string) => (await pool.query<{ n: number }>(sql, [id])).rows[0].n;
+const contactLeadCount = (id: string) => countRows("SELECT count(*)::int AS n FROM leads WHERE contact_id = $1", id);
+const companyContactCount = (id: string) => countRows("SELECT count(*)::int AS n FROM contacts WHERE company_id = $1", id);
 
 /* ───────── 모델에 보내는 값 (개인정보 제외) ───────── */
 
@@ -281,7 +282,7 @@ const updateCompanyTool: WriteTool = {
       const dup = await duplicateCompany(p.data, id);
       if (dup) return duplicateError(dup);
     }
-    const leads = fields.includes("name") ? await companyLeadCount(id) : 0;
+    const leads = fields.includes("name") ? await companyLeadCount(pool, id) : 0;
     return {
       title: "회사 정보 수정",
       changes: fields.map((f) => companyChange(f, c[f], set[f])),
@@ -290,7 +291,7 @@ const updateCompanyTool: WriteTool = {
       args: { companyId: id, ...set, expect },
     };
   },
-  async execute(client, _userId, a) {
+  async execute(client, _userId, a, { meta }) {
     const id = idArg(a, "companyId");
     if (!id) return { ok: false, message: "회사 id가 올바르지 않습니다" };
     const c = await findCompany(client, id, { lock: true });
@@ -298,7 +299,7 @@ const updateCompanyTool: WriteTool = {
     if (!unchanged(c, a.expect)) return { ok: false, message: stale("회사 정보가") };
     const p = parseCompanyFields(a, companyInputOf(c));
     if (!p.ok) return { ok: false, message: p.error };
-    const r = await updateCompany(client, id, p.data, VIA);
+    const r = await updateCompany(client, id, p.data, meta);
     return r.ok ? { ok: true, message: "회사 정보를 수정했습니다", target: companyTarget(r.company) } : { ok: false, message: r.error };
   },
 };
@@ -351,7 +352,11 @@ const createContactTool: WriteTool = {
       "같은 회사에 같은 이름이 있으면 기존 연락처를 제안하고, 사용자가 다른 사람이라고 하면 allowSameName: true로 다시 호출하세요.",
     parameters: {
       type: "object",
-      properties: { ...CONTACT_PROPS, allowSameName: { type: "boolean", description: "같은 이름의 연락처가 있어도 새로 등록" } },
+      properties: {
+        ...CONTACT_PROPS,
+        newCompany: { type: "string", description: "CRM에 없는 회사명 (companyId 대신 — 승인하면 회사도 함께 등록)" },
+        allowSameName: { type: "boolean", description: "같은 이름의 연락처가 있어도 새로 등록" },
+      },
       required: ["name"],
     },
   },
@@ -359,23 +364,37 @@ const createContactTool: WriteTool = {
     const p = parseContactFields(a, null);
     if (!p.ok) return { error: p.error };
     if (p.data.companyId && !(await companyName(p.data.companyId))) return { error: "회사를 찾을 수 없습니다" };
-    const dup = a.allowSameName === true ? null : await samePerson(p.data);
+    // 없는 회사면 이 계획에서 회사도 함께 등록 (이미 있으면 그 회사 id로 다시 요청하게 한다)
+    const newCompany = p.data.companyId ? "" : str(a.newCompany, 200).replace(/\s+/g, " ");
+    if (newCompany) {
+      const dupCompany = await duplicateCompany({ name: newCompany, emailDomain: null });
+      if (dupCompany) return { error: `이미 등록된 회사입니다: ${dupCompany.name} (id ${dupCompany.id}). companyId로 지정하세요` };
+    }
+    const dup = a.allowSameName === true || newCompany ? null : await samePerson(p.data);
     if (dup) {
       return { error: `같은 회사에 같은 이름의 연락처가 이미 있습니다: ${dup.name} (id ${dup.id}). 같은 사람이면 기존 연락처를 쓰도록 안내하세요` };
     }
     const changes = await Promise.all(
       p.keys.filter((k) => text(p.data[k]) !== undefined).map((k) => contactChange(k, undefined, p.data[k]))
     );
+    if (newCompany) changes.splice(1, 0, { field: CONTACT_LABEL.companyId, after: `${newCompany} (새 회사로 등록)` });
     return {
-      title: "연락처 등록",
+      title: newCompany ? "회사·연락처 등록" : "연락처 등록",
       changes,
       notice: { tone: "info", text: "이메일·전화번호는 등록 후 연락처 화면에서 입력하세요" },
-      args: pick(p.data, p.keys),
+      args: { ...pick(p.data, p.keys), ...(newCompany ? { newCompany } : {}) },
     };
   },
   async execute(client, userId, a) {
     const p = parseContactFields(a, null);
     if (!p.ok) return { ok: false, message: p.error };
+    // 새 회사: 같은 트랜잭션에서 이름으로 찾거나 만든다 (그 사이 누가 등록했으면 그 회사로)
+    const newCompany = p.data.companyId ? "" : str(a.newCompany, 200);
+    if (newCompany) {
+      const company = await resolveLeadCompany(client, null, newCompany, userId);
+      if (!company) return { ok: false, message: "회사를 등록하지 못했습니다" };
+      p.data.companyId = company.id;
+    }
     const r = await createContact(client, userId, p.data);
     return r.ok ? { ok: true, message: "연락처를 등록했습니다", target: contactTarget(r.contact) } : { ok: false, message: r.error };
   },
@@ -410,7 +429,7 @@ const updateContactTool: WriteTool = {
       args: { contactId: id, ...set, expect },
     };
   },
-  async execute(client, _userId, a) {
+  async execute(client, _userId, a, { meta }) {
     const id = idArg(a, "contactId");
     if (!id) return { ok: false, message: "연락처 id가 올바르지 않습니다" };
     const c = await findContact(client, id, { lock: true });
@@ -418,7 +437,7 @@ const updateContactTool: WriteTool = {
     if (!unchanged(c, a.expect)) return { ok: false, message: stale("연락처가") };
     const p = parseContactFields(a, contactInputOf(c));
     if (!p.ok) return { ok: false, message: p.error };
-    const r = await updateContact(client, id, p.data, { via: "contact", by: "agent" });
+    const r = await updateContact(client, id, p.data, { via: "contact", by: meta.via });
     return r.ok ? { ok: true, message: "연락처를 수정했습니다", target: contactTarget(r.contact) } : { ok: false, message: r.error };
   },
 };
@@ -458,19 +477,92 @@ const linkContactTool: WriteTool = {
       args: { leadId, contactId, expect: { contactId: lead.contactId } },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, { meta }) {
     const leadId = idArg(a, "leadId");
     const contactId = idArg(a, "contactId");
     if (!leadId || !contactId) return { ok: false, message: "리드·연락처 id가 올바르지 않습니다" };
     const lead = await findLead(client, leadId, { lock: true });
     if (!lead) return { ok: false, message: "리드를 찾을 수 없습니다 (이미 삭제됐을 수 있습니다)" };
     if (!unchanged(lead, a.expect)) return { ok: false, message: stale("리드가") };
-    const r = await linkContact(client, userId, leadId, contactId, VIA);
+    const r = await linkContact(client, userId, leadId, contactId, meta);
     return r.ok ? { ok: true, message: "담당자를 연결했습니다", target: leadTarget(r.lead) } : { ok: false, message: r.error };
+  },
+};
+
+/* ───────── 삭제 도구 (되돌릴 수 없음 → danger) ───────── */
+
+const deleteCompanyTool: WriteTool = {
+  kind: "write",
+  label: "회사 삭제",
+  def: {
+    name: "delete_company",
+    description: "회사를 삭제하는 실행 계획을 작성합니다(사용자 승인 후 실행). 연결된 리드가 있으면 삭제할 수 없습니다. 소속 연락처는 소속 없음이 되며 되돌릴 수 없습니다.",
+    parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"] },
+  },
+  async prepare(a) {
+    const id = idArg(a, "companyId");
+    if (!id) return { error: "회사 id가 올바르지 않습니다" };
+    const c = await findCompany(pool, id);
+    if (!c) return { error: "회사를 찾을 수 없습니다" };
+    const [leads, contacts] = await Promise.all([companyLeadCount(pool, id), companyContactCount(id)]);
+    if (leads > 0) return { error: leadsBlockMessage(leads) };
+    return {
+      title: "회사 삭제",
+      changes: [companyChange("name", c.name, undefined)],
+      target: companyTarget(c),
+      danger: true,
+      approveLabel: "삭제 승인",
+      ...(contacts > 0 ? { notice: { tone: "warning" as const, text: `소속 연락처 ${contacts}명은 소속 없음으로 바뀝니다` } } : {}),
+      args: { companyId: id, expect: { name: c.name } },
+    };
+  },
+  async execute(client, _userId, a) {
+    const id = idArg(a, "companyId");
+    if (!id) return { ok: false, message: "회사 id가 올바르지 않습니다" };
+    const c = await findCompany(client, id, { lock: true });
+    if (!c) return { ok: false, message: "회사를 찾을 수 없습니다 (이미 삭제됐을 수 있습니다)" };
+    if (!unchanged(c, a.expect)) return { ok: false, message: stale("회사 정보가") };
+    const r = await deleteCompany(client, id);
+    return r.ok ? { ok: true, message: "회사를 삭제했습니다" } : { ok: false, message: r.error };
+  },
+};
+
+const deleteContactTool: WriteTool = {
+  kind: "write",
+  label: "연락처 삭제",
+  def: {
+    name: "delete_contact",
+    description: "연락처를 삭제하는 실행 계획을 작성합니다(사용자 승인 후 실행). 담당 리드는 연결만 끊기고 담당자 정보는 남습니다. 되돌릴 수 없습니다.",
+    parameters: { type: "object", properties: { contactId: { type: "string" } }, required: ["contactId"] },
+  },
+  async prepare(a) {
+    const id = idArg(a, "contactId");
+    if (!id) return { error: "연락처 id가 올바르지 않습니다" };
+    const c = await findContact(pool, id);
+    if (!c) return { error: "연락처를 찾을 수 없습니다" };
+    const leads = await contactLeadCount(id);
+    return {
+      title: "연락처 삭제",
+      changes: [await contactChange("name", c.name, undefined)],
+      target: contactTarget(c),
+      danger: true,
+      approveLabel: "삭제 승인",
+      ...(leads > 0 ? { notice: { tone: "warning" as const, text: `담당 리드 ${leads}건은 연결만 끊기고 담당자 정보는 그대로 남습니다` } } : {}),
+      args: { contactId: id, expect: { name: c.name } },
+    };
+  },
+  async execute(client, _userId, a, { meta }) {
+    const id = idArg(a, "contactId");
+    if (!id) return { ok: false, message: "연락처 id가 올바르지 않습니다" };
+    const c = await findContact(client, id, { lock: true });
+    if (!c) return { ok: false, message: "연락처를 찾을 수 없습니다 (이미 삭제됐을 수 있습니다)" };
+    if (!unchanged(c, a.expect)) return { ok: false, message: stale("연락처가") };
+    const r = await deleteContact(client, id, { by: meta.via });
+    return r.ok ? { ok: true, message: "연락처를 삭제했습니다" } : { ok: false, message: r.error };
   },
 };
 
 export const AGENT_CRM_TOOLS: AgentTool[] = [
   searchCompanies, getCompany, searchContacts, getContact,
-  createCompanyTool, updateCompanyTool, createContactTool, updateContactTool, linkContactTool,
+  createCompanyTool, updateCompanyTool, createContactTool, updateContactTool, linkContactTool, deleteCompanyTool, deleteContactTool,
 ];
