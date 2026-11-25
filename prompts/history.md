@@ -655,3 +655,25 @@
 > commit 하고 main에 merge하고 push해줘.
 
 - 결과: main에서 직접 작업해 머지할 브랜치 없음. 90·92번 작업(globals.css·AssistantPanel·CrmApp, CLAUDE.md 모바일 설명, history 정리)을 main에 커밋 후 `origin/main`에 push
+
+## 94. 2026-11-24 — worktree 정리 (contracts·companies)
+
+> worktree 아래 정리해줘.
+> -'/Users/j-mac-16-intel/프로젝트/aicrm/worktress/aicrm-contracts'
+> -'/Users/j-mac-16-intel/프로젝트/aicrm/worktress/companies'
+
+- 결과: 두 worktree 모두 변경 없음·main에 병합 완료 확인 후 `git worktree remove`, 브랜치 `feature/contracts`·`feature/companies` 삭제(`git branch -d`)
+
+## 95. 2026-11-24 — AI Assistant 첫 화면 · 모바일 햄버거 메뉴 · 견적서 대화 탭
+
+> 모바일의 경우 하단 메뉴를 상단 왼쪽에 햄버거 메뉴로 옮기고, 메뉴 누르면 전체 화면으로 메뉴가 보이게 해줘. 그리고 처음 화면은 AI Assistant 대화 창이 나오게 해주고, 대화창에서 일반 대화 또는 견적서 관련 대화 탭으로 선택해서 대화 하도록 구현해줘. 새로운 워크트리에서 구현해줘.
+> (선택: 첫 화면 모바일·데스크톱 모두 / 탭 모바일·데스크톱 모두 / 견적서 탭 = 견적서 작성 대화)
+> 완료되면 commit, main merge하고, worktree 정리하고, github에 push해줘.
+
+- 결과: worktree `worktress/ai-home`(브랜치 `feature/ai-home`)에서 구현. `/` = AI Assistant 전체 화면 대화(`.app-shell.home`), 파이프라인은 `/pipeline`. 모바일 하단 탭 → 상단 왼쪽 햄버거 + 전체 화면 메뉴(`.sidebar.menu-open`). Assistant 패널 탭 `일반 대화`/`견적서`(`QuoteChat`: 견적서 템플릿으로 문서 작성 대화, 문서 보기 모달·PDF·메일), 문서 작성 상태를 `lib/useDocDraft.ts`로 분리(ContractsView 공용). e2e 스펙·CLAUDE.md 갱신. build 통과(테스트 생략). 이후 commit·main 병합·worktree 정리·push 완료
+
+## 96. 2026-11-25 — 회사·연락처 목록 표가 전체 폭을 쓰지 않는 문제
+
+> 현재 회사 / 연락처 메뉴는 반응형으로 테이블이 전체 화면에 나오지 않는데 해당 이슈 분석해서 새로운 워크트리에서 수정해줘.
+
+- 결과: 원인은 목록·상세가 함께 쓰는 `.companies` 컨테이너의 `max-width: 1200px` — 넓은 화면에서 표가 1200px에서 멈추고 오른쪽이 비었음(다른 메뉴는 전체 폭). worktree `worktress/table-width`(브랜치 `fix/table-width`)에서 목록은 전체 폭, 상세(`.company-detail`)만 1200px 유지. 회사 표에도 연락처처럼 가로 스크롤 래퍼(`.table-wrap`, 기존 `.contact-table-wrap` 대체)를 씌워 메뉴·Assistant로 좁아져도 메인 밖으로 넘치지 않게 함. build 통과(테스트 생략)
