@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { MOBILE_QUERY } from "@/lib/constants";
 import type { DocAction, DocMessage, DocTemplate, DocumentRecord } from "@/lib/types";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import DocBadge from "./DocBadge";
 import { Alert, Badge, Button, Input, Textarea } from "./ui";
 
@@ -35,6 +37,8 @@ export default function DocAssistant(p: Props) {
   /** 템플릿 선택 단계에서 이름으로 찾은 결과 */
   const [startReply, setStartReply] = useState<{ text: string; matches: DocTemplate[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 모바일: 좁은 입력칸에 안내가 다 보이도록 키보드 안내(Enter 전송)는 뺀다
+  const mobile = useMediaQuery(MOBILE_QUERY);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -161,7 +165,7 @@ export default function DocAssistant(p: Props) {
             !doc ? "버튼을 누르거나 ‘견적서’처럼 입력하세요"
               : doc.status === "sent" ? "발송한 문서는 수정할 수 없어요"
                 : doc.status === "completed" ? "수정할 내용을 말씀하세요 (예: 계약 기간 2년으로 바꿔줘)"
-                  : "답변 입력… ‘완료’라고 하면 지금 상태로 완성 (Enter 전송)"
+                  : `답변 입력… ‘완료’라고 하면 지금 상태로 완성${mobile ? "" : " (Enter 전송)"}`
           }
           disabled={doc?.status === "sent"}
           onChange={(e) => setInput(e.target.value)}

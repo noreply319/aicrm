@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY } from "@/lib/constants";
+import { MOBILE_QUERY, SIDEBAR_AUTO_RAIL_QUERY, SIDEBAR_KEY } from "@/lib/constants";
 import { useOpenSettings } from "@/lib/settingsModal";
 import type { Me } from "@/lib/types";
 import { Avatar, Badge, Icon, IconButton, type IconName } from "./ui";
@@ -23,7 +23,9 @@ interface Props {
   view: View;
   me: Me | null;
   onLogout: () => void;
-  /** 모바일(640px 이하): 상단 햄버거로 여는 전체 화면 메뉴 */
+  /** 메뉴를 골랐을 때 (모바일: 전체 화면 메뉴·AI 채팅 닫기) */
+  onNavigate: () => void;
+  /** 모바일(640px 이하): 상단 바 햄버거 버튼으로 여는 전체 화면 메뉴 */
   menuOpen: boolean;
   onCloseMenu: () => void;
 }
@@ -62,27 +64,47 @@ function useSidebarCollapse() {
 }
 
 /**
- * 왼쪽 메뉴: 브랜드 · 메뉴 · 접기 · 프로필. 1024px 이하 자동 아이콘 레일.
- * 640px 이하는 평소 숨기고, 상단 바 햄버거를 누르면 화면 전체를 덮는 메뉴(.menu-open)로 연다.
+ * 모바일 전체 화면 메뉴가 열려 있는 동안: Esc로 닫기, 뒤 화면 스크롤 막기, 닫기 버튼에 포커스.
+ * 화면이 넓어져(641px 이상) 일반 사이드바가 되면 닫고, 닫힐 때 포커스를 햄버거 버튼으로 되돌린다.
  */
-export default function Sidebar({ view, me, onLogout, menuOpen, onCloseMenu }: Props) {
+function useMobileMenu(open: boolean, onClose: () => void, menuRef: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    root.classList.add("menu-open");
+    menuRef.current?.querySelector<HTMLButtonElement>(".side-close")?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const mq = window.matchMedia(MOBILE_QUERY);
+    const onMq = (e: MediaQueryListEvent) => !e.matches && onClose();
+    window.addEventListener("keydown", onKey);
+    mq.addEventListener("change", onMq);
+    return () => {
+      root.classList.remove("menu-open");
+      window.removeEventListener("keydown", onKey);
+      mq.removeEventListener("change", onMq);
+      // 메뉴 안에 포커스가 남아 있으면(닫기 버튼·Esc) 연 버튼으로 되돌린다. 메뉴 이동은 새 화면에 맡긴다
+      if (menuRef.current?.contains(document.activeElement)) opener?.focus();
+    };
+  }, [open, onClose, menuRef]);
+}
+
+/**
+ * 왼쪽 메뉴: 브랜드 · 메뉴 · 접기 · 프로필. 1024px 이하 자동 아이콘 레일.
+ * 640px 이하(모바일)는 평소 숨기고, 상단 바 왼쪽 햄버거 버튼으로 화면 전체를 덮는 메뉴로 연다.
+ */
+export default function Sidebar({ view, me, onLogout, onNavigate, menuOpen, onCloseMenu }: Props) {
   const { collapsed, toggle } = useSidebarCollapse();
   const toggleLabel = collapsed ? "메뉴 펼치기" : "메뉴 접기";
-
-  // 전체 화면 메뉴: Esc로 닫기
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseMenu();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen, onCloseMenu]);
-
+  const menuRef = useRef<HTMLElement>(null);
+  useMobileMenu(menuOpen, onCloseMenu, menuRef);
   return (
-    <aside id="app-menu" className={`sidebar${menuOpen ? " menu-open" : ""}`}>
+    <aside id="app-menu" ref={menuRef} className={`sidebar${menuOpen ? " menu-open" : ""}`}>
       <div className="brand">
         <div className="logo" aria-hidden>◆</div>
         <span className="brand-text">Pipeline CRM</span>
-        <IconButton className="menu-close" icon="close" label="메뉴 닫기" onClick={onCloseMenu} />
+        {/* 모바일 전체 화면 메뉴 닫기 */}
+        <IconButton className="side-close" icon="close" label="메뉴 닫기" onClick={onCloseMenu} />
       </div>
       <div className="side-section">메뉴</div>
       <nav className="side-nav" aria-label="메뉴">
@@ -93,7 +115,7 @@ export default function Sidebar({ view, me, onLogout, menuOpen, onCloseMenu }: P
             className={`side-link${view === n.view ? " on" : ""}`}
             aria-current={view === n.view ? "page" : undefined}
             title={n.label}
-            onClick={onCloseMenu}
+            onClick={onNavigate}
           >
             <Icon name={n.icon} size={18} />
             <span className="side-label">{n.label}</span>
@@ -112,7 +134,7 @@ export default function Sidebar({ view, me, onLogout, menuOpen, onCloseMenu }: P
           <Icon name={collapsed ? "panelLeftOpen" : "panelLeft"} size={18} />
           <span className="side-label" aria-hidden>{toggleLabel}</span>
         </button>
-        <UserMenu me={me} onLogout={onLogout} />
+        <UserMenu me={me} onLogout={onLogout} onOpenSettings={onCloseMenu} />
       </div>
     </aside>
   );
@@ -122,7 +144,7 @@ export const STATE_LABEL = { connected: "연동됨", expired: "연동 만료", n
 export const STATE_TONE = { connected: "success", expired: "warning", none: "neutral" } as const;
 
 /** 프로필 버튼 → 계정·연동 상태·설정(모달)·로그아웃 (위쪽으로 열림) */
-function UserMenu({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
+function UserMenu({ me, onLogout, onOpenSettings }: { me: Me | null; onLogout: () => void; onOpenSettings: () => void }) {
   const [open, setOpen] = useState(false);
   const openSettings = useOpenSettings();
   const ref = useRef<HTMLDivElement>(null);
@@ -161,6 +183,7 @@ function UserMenu({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
             role="menuitem"
             onClick={() => {
               setOpen(false);
+              onOpenSettings();
               openSettings();
             }}
           >

@@ -656,7 +656,80 @@
 
 - 결과: main에서 직접 작업해 머지할 브랜치 없음. 90·92번 작업(globals.css·AssistantPanel·CrmApp, CLAUDE.md 모바일 설명, history 정리)을 main에 커밋 후 `origin/main`에 push
 
-## 94. 2026-11-24 — worktree 정리 (contracts·companies)
+## 94. 2026-11-24 — 구글 로그인·캘린더·Gmail 연동 준비 방법 질문
+
+> 현재 AI CRM 로그인 부터 구글 캘린더 및 이메일 연동 가능하게 하려면 어떻게 해야해? 구글 클라우드에 테스트 계정으로 등록해야햐ㅐ?
+
+- 결과: 코드 변경 없음. Google Cloud 준비 절차(API 사용 설정, 동의 화면 외부·테스트 + 범위, 테스트 사용자 등록, OAuth 클라이언트·리디렉션 URI, 환경 변수 `ALLOWED_EMAILS` 등)와 테스트 상태의 한계(7일 토큰 만료, 미확인 앱 경고)를 안내
+
+## 95. 2026-11-24 — 등록되지 않은 사람도 가입해서 쓰게 하는 방법 질문
+
+> 가능하면 익명의 사람들도 가입해서 쓰게 하고 싶은데 어떻게 해야 하는지 알려줘.
+> 즉 등록돼지 않은 이메일도 쓰게 하고 싶어.
+
+- 결과: 코드 변경 없음. Google 쪽(앱 프로덕션 게시, 범위별 검증 — 로그인 기본 범위는 심사 거의 없음, 캘린더·gmail.send는 민감 범위 검증, gmail.readonly는 제한 범위라 보안 심사(CASA) 필요)과 앱 쪽(현재 `ALLOWED_EMAILS` 허용 목록 + 로그인 사용자 전체가 데이터 공유 → 워크스페이스별 데이터 분리, 가입·초대, OpenAI 사용량 제한, 개인정보처리방침·탈퇴)을 단계별로 안내
+
+## 96. 2026-11-24 — 검증 전 프로덕션 게시 방법 질문
+
+> 검증 전에 프로덕션 게시 방법 알려줘.
+
+- 결과: 코드 변경 없음. Google Auth Platform → 대상 → "앱 게시"로 프로덕션 전환하는 절차, 게시 후 기존 연동 다시 받기(7일 토큰 해소), 미확인 앱 경고·민감 범위 100명 한도, `ALLOWED_EMAILS`는 계속 앱에서 로그인을 막는다는 점(테스트 사용자 등록 없이 허용 목록만 관리)을 안내
+
+## 97. 2026-11-24 — 전체 데모 슬라이드 PDF (화면 캡처 + 설명, AI 실습 안내)
+
+> 현재까지 구현한 AI CRM을 바탕으로 해당 전체 데모 slide pdf로 만들어줘. 화면 캡쳐와 그리고 간략한 설명이 들어간 장표 만들어줘. 해당 내용을 AI 때 같이 실습으로 구현 한다고 알려주는 내용이야.
+>
+> '/Users/jaerimee/프로젝트/AI CRM/docs' 폴더 추가로 만들어서 작성해줘.
+>
+> 3000포트 서버는 내렸어.
+
+- 결과: `docs/demo-slides/` — 16장 슬라이드(`slides.html`, 1920×1080) → `Pipeline-CRM-demo.pdf`, 화면 캡처 `screens/*.png`(임시 데모 DB 샘플 데이터 + 구글·OpenAI 응답은 가짜로 촬영), PDF 재생성 스크립트 `build-pdf.mjs`. 표지·각 기능 장표 하단에 "실습" 표시, 실습 로드맵·마무리 장표 포함. 촬영용 worktree·데모 DB는 정리
+
+## 98. 2026-11-24 — 모바일 AI 전체 폭·햄버거 메뉴·화면 전수검사 (워크트리)
+
+> 모바일 화면에서 AI Assistant width가 전체로 안나오는데 전체 width 가 되도록 수정해줘. 그리고 아래 메뉴 최적화 해줘. 아래 메뉴 상단 왼쪽에 햄버거 메뉴로 넣고, 메뉴 누르면 전체 화면으로 보이도록 수정해줘. 그리고 모바일에서 모든 입력 그리고 화면들 모바일에서 화면에 맞게 나오도록 전수검사해줘. 해당 부분 새로운 워크트리에서 수정해줘.
+
+- 결과: 워크트리 `worktress/mobile-ux`(브랜치 `mobile-ux`). AI 채팅이 데스크톱 고정 폭(flex-basis 300px)에 묶여 있던 것을 풀어 전체 폭. 하단 탭 바 제거 → 상단 바 왼쪽 햄버거 버튼으로 화면 전체를 덮는 메뉴(AI Assistant·메뉴·프로필, 메뉴 선택·닫기·Esc로 닫힘, 뒤 화면 inert), 상단 바에 작은 AI 버튼. 412·375·360·320px로 전 화면·모달 전수검사 후 수정: 회사 상세 금액이 넘쳐 페이지 폭 자체가 넓어지던 것(모달까지 화면 밖으로 밀림, 400px 이하 억·만 단위), 알림 문구가 링크 기준으로 쪼개지던 것(Alert), 작성한 문서 표 → 카드, 목록 필터 선택칸 잘림, 입력 안내 문구 잘림(모바일은 단축키 안내 생략), 계약서 대화 높이, 파이프라인 지표 2열, 캘린더 FAB 여백. e2e 모바일 테스트 갱신·추가(360px 가로 넘침 검사 포함). build·vitest 127·e2e 33 통과. 참고: 파일을 고친 뒤 남은 `web/.next/dev` 캐시로 `next dev`를 띄우면 컴파일·새로고침이 반복돼 e2e가 대량 타임아웃 → `.next/dev` 삭제 후 재실행하면 정상
+
+## 99. 2026-11-24 — 모바일 작업 커밋·merge·push
+
+> commit, merge 그리고 github에 push해줘.
+
+- 결과: 커밋(`f3db9fc`)과 워크트리 제거는 이미 되어 있었고, main 작업 트리에 있는 다른 세션의 history 기록(94~97, 미커밋) 때문에 merge만 막혀 있었음. 같은 코드에서 history.md 변경만 뺀 커밋(`5d49630`)으로 main에 fast-forward merge, 모바일 작업 기록은 98번으로 옮겨 이 기록과 함께 별도 커밋(다른 세션의 94~97은 커밋하지 않고 작업 트리에 그대로 둠), `origin/main`에 push(Vercel 자동 배포), `mobile-ux` 브랜치 삭제
+
+## 100. 2026-11-24 — 로컬 "구글 로그인 설정 없음" 오류 확인
+
+> local 에서 아래처럼 에러가 나는데 해당 부분 확인해줘.
+>
+> 서버의 구글 로그인 설정이 없습니다 (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).
+
+- 결과: 코드 문제 아님. `web/.env.local`(11-23 23:12 수정)에 `DATABASE_URL`과 Vercel CLI가 넣은 `VERCEL_OIDC_TOKEN`만 있고 `GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET`이 없어 `/api/auth/google`이 `/login?error=config`로 보냄(`ALLOWED_EMAILS`·`TOKEN_ENCRYPTION_KEY`·`OPENAI_API_KEY`도 없음). 추가할 값·구글 콘솔 확인 항목(리디렉션 URI, 테스트 사용자, 보안 비밀 재발급)·3000 포트 재시작을 안내. `.env.local`은 수정하지 않음
+
+## 101. 2026-11-25 — 새 기기마다 구글 캘린더 인증이 필요한지 질문
+
+> google calendar의 경우 새로운 디바이스 들어갈때마다 인증해야해?
+
+- 결과: 코드 변경 없음. 캘린더 연동(리프레시 토큰)은 기기가 아니라 사용자 계정에 서버 DB(`users.google_refresh_token`)로 저장되므로 새 기기에서는 구글 로그인만 하면 됨(로그인 흐름은 토큰을 건드리지 않음). 다시 연동이 필요한 경우는 테스트 상태 앱의 7일 토큰 만료·연동 해제·구글에서 권한 제거뿐이라고 안내
+
+## 102. 2026-11-25 — 데모 보기(로그인 없이 데모 계정) 요청 → 중단
+
+> 현재 제품은 데모용인데, 로그인에 구글 로그인 말고 데모 보기 하면 로그인하지 않고 바로 noreply@supercoder.co 계정으로  들어가 볼 수 있도록 수정해줘.
+
+- 결과: 코드 변경 없음. 데모 세션의 구글 연동(Gmail·캘린더 노출)·데이터 수정 허용 범위를 질문하던 중 사용자가 중단하고 다음 요청으로 넘어감
+
+## 103. 2026-11-25 — 모바일 단계 탭을 밀면 위아래로도 흔들리는 문제
+
+> 모바일에서 파이프라인 메뉴에서 신규리드, 첫 컨택 탭 부분이 슬라이드 하면 슬라이드 상하 위치는 고정되고 좌우로만 움직여야 하는데 지금 아래위로도 움직이면서 움직이는데 해당 UI 부분 수정해줘. 해답 component를 모바일에서 드래그하면 움직여. 물론 다시 돌아가. 이슈 설명해주고 수정해줘.
+
+- 결과: 원인 — `.seg-tabs.scroll`이 `overflow-x: auto`만 지정해 세로도 auto가 되고, 탭 버튼 `margin-bottom: -1px`(밑줄을 테두리에 겹치기)로 1px 세로 스크롤 여지가 생겨 끌면 위아래로 움직였다 튕겨 돌아옴. `globals.css` — 세로 `overflow-y: hidden`, `overscroll-behavior-x: contain`, 아래 테두리를 inset 그림자로 바꾸고 버튼 음수 마진 제거(넘침 자체 제거). `e2e/mobile.spec.ts`에 세로 스크롤 불가 확인 추가. 모바일 e2e 8개·build 통과
+
+## 104. 2026-11-25 — 모바일 단계 탭 수정 커밋·push
+
+> commit 하고 push해줘
+
+- 결과: 103번(모바일 단계 탭 세로 흔들림 수정 + e2e)과 프롬프트 기록(번호 겹침 정리: 101~103)을 main에 커밋 후 `origin/main`에 push
+
+## 103. 2026-11-24 — worktree 정리 (contracts·companies)
 
 > worktree 아래 정리해줘.
 > -'/Users/j-mac-16-intel/프로젝트/aicrm/worktress/aicrm-contracts'
@@ -664,16 +737,22 @@
 
 - 결과: 두 worktree 모두 변경 없음·main에 병합 완료 확인 후 `git worktree remove`, 브랜치 `feature/contracts`·`feature/companies` 삭제(`git branch -d`)
 
-## 95. 2026-11-24 — AI Assistant 첫 화면 · 모바일 햄버거 메뉴 · 견적서 대화 탭
+## 104. 2026-11-24 — AI Assistant 첫 화면 · 모바일 햄버거 메뉴 · 견적서 대화 탭
 
 > 모바일의 경우 하단 메뉴를 상단 왼쪽에 햄버거 메뉴로 옮기고, 메뉴 누르면 전체 화면으로 메뉴가 보이게 해줘. 그리고 처음 화면은 AI Assistant 대화 창이 나오게 해주고, 대화창에서 일반 대화 또는 견적서 관련 대화 탭으로 선택해서 대화 하도록 구현해줘. 새로운 워크트리에서 구현해줘.
 > (선택: 첫 화면 모바일·데스크톱 모두 / 탭 모바일·데스크톱 모두 / 견적서 탭 = 견적서 작성 대화)
 > 완료되면 commit, main merge하고, worktree 정리하고, github에 push해줘.
 
-- 결과: worktree `worktress/ai-home`(브랜치 `feature/ai-home`)에서 구현. `/` = AI Assistant 전체 화면 대화(`.app-shell.home`), 파이프라인은 `/pipeline`. 모바일 하단 탭 → 상단 왼쪽 햄버거 + 전체 화면 메뉴(`.sidebar.menu-open`). Assistant 패널 탭 `일반 대화`/`견적서`(`QuoteChat`: 견적서 템플릿으로 문서 작성 대화, 문서 보기 모달·PDF·메일), 문서 작성 상태를 `lib/useDocDraft.ts`로 분리(ContractsView 공용). e2e 스펙·CLAUDE.md 갱신. build 통과(테스트 생략). 이후 commit·main 병합·worktree 정리·push 완료
+- 결과: worktree `worktress/ai-home`(브랜치 `feature/ai-home`)에서 구현. `/` = AI Assistant 전체 화면 대화(`.app-shell.home`), 파이프라인은 `/pipeline`. 모바일 하단 탭 → 상단 왼쪽 햄버거 + 전체 화면 메뉴(`.sidebar.menu-open`). Assistant 패널 탭 `일반 대화`/`견적서`(`QuoteChat`: 견적서 템플릿으로 문서 작성 대화, 문서 보기 모달·PDF·메일), 문서 작성 상태를 `lib/useDocDraft.ts`로 분리(ContractsView 공용). e2e 스펙·CLAUDE.md 갱신. build 통과(테스트 생략). 이후 commit·main 병합·worktree 정리(106번에서 원격과 병합 후 push)
 
-## 96. 2026-11-25 — 회사·연락처 목록 표가 전체 폭을 쓰지 않는 문제
+## 105. 2026-11-25 — 회사·연락처 목록 표가 전체 폭을 쓰지 않는 문제
 
 > 현재 회사 / 연락처 메뉴는 반응형으로 테이블이 전체 화면에 나오지 않는데 해당 이슈 분석해서 새로운 워크트리에서 수정해줘.
 
 - 결과: 원인은 목록·상세가 함께 쓰는 `.companies` 컨테이너의 `max-width: 1200px` — 넓은 화면에서 표가 1200px에서 멈추고 오른쪽이 비었음(다른 메뉴는 전체 폭). worktree `worktress/table-width`(브랜치 `fix/table-width`)에서 목록은 전체 폭, 상세(`.company-detail`)만 1200px 유지. 회사 표에도 연락처처럼 가로 스크롤 래퍼(`.table-wrap`, 기존 `.contact-table-wrap` 대체)를 씌워 메뉴·Assistant로 좁아져도 메인 밖으로 넘치지 않게 함. build 통과(테스트 생략)
+
+## 106. 2026-11-25 — 커밋·main 병합·worktree 정리·push (원격 모바일 작업과 병합)
+
+> 완료되면 commit, main merge하고, worktree 정리하고, github에 push해줘.
+
+- 결과: `feature/ai-home`·`fix/table-width`를 커밋해 main에 병합하고 worktree·브랜치 삭제. push가 거부돼 확인하니 다른 기기에서 올린 같은 성격의 모바일 작업(98번 `5d49630` 햄버거 메뉴·화면 전수검사)이 있어 병합: 메뉴·모바일 AI 전체 화면(`ai-open`)·좁은 화면 수정은 원격 구현을 따르고, 그 위에 첫 화면 AI Assistant(`/`, `.app-shell.home`)·견적서 탭·`/pipeline`·회사/연락처 표 전체 폭을 얹음. 메뉴의 별도 `AI Assistant` 버튼은 NAV 첫 항목(`/`)으로 대체, 첫 화면에서는 상단 바 AI 버튼 숨김. history 번호는 원격(94~102) 뒤로 103~106으로 옮김. build 통과(테스트 생략)

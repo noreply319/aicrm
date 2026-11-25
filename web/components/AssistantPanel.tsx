@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MOBILE_QUERY } from "@/lib/constants";
 import type { ChatMessage, Me } from "@/lib/types";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import QuoteChat from "./QuoteChat";
 import { Alert, Badge, Button, Icon, IconButton, Tabs, Textarea } from "./ui";
 
@@ -36,6 +38,8 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
+  const mobile = useMediaQuery(MOBILE_QUERY);
 
   // 새 메시지가 오면 맨 아래로 스크롤
   useEffect(() => {
@@ -77,6 +81,8 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
     <>
     <aside className={`assistant${open ? "" : " closed"}${home ? " assistant-home" : ""}`} aria-label="AI Assistant" aria-hidden={!open} inert={!open}>
       <div className="assistant-head">
+        {/* 모바일 전체 화면 채팅(첫 화면 외): 왼쪽 뒤로 가기로 원래 화면 복귀 */}
+        {!home && <IconButton className="assistant-back" icon="chevronLeft" label="채팅 닫기" size="sm" onClick={onClose} />}
         <Badge tone="brand">AI</Badge>
         <Tabs
           className="assistant-tabs"
@@ -136,7 +142,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       >
         <Textarea
           value={input}
-          placeholder="리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"
+          placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
           rows={2}
           maxLength={2000}
           onChange={(e) => setInput(e.target.value)}

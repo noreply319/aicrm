@@ -116,12 +116,12 @@ AI CRM/                      # git 저장소 루트
 - 문서: `docs/design-system/design-system.html`(토큰·컴포넌트 카탈로그, 앱 `globals.css`를 그대로 불러옴), `wireframe.html`(사이드바 레이아웃).
 - 버튼·배지·입력·탭·알림·모달·빈 상태·아바타는 `@/components/ui`만 사용. `<button className="btn …">`, 새 `.xxx-pill` 클래스 등 직접 마크업 금지. 모달의 Esc·바깥 클릭은 `Modal`이 처리.
 - 우선순위 색은 `PRIORITY_TONE`, 연동 상태는 `STATE_TONE`(Sidebar.tsx) → Badge tone. e2e가 쓰는 클래스(`.card`, `.note-badge`, `.unassigned-pill`, `.autosave-note` 등)는 className으로 유지.
-- 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하 평소 숨김 → 상단 바 왼쪽 햄버거 `메뉴 열기`로 화면 전체를 덮는 메뉴 `.sidebar.menu-open`, 메뉴를 누르거나 Esc·닫기로 닫힘). 상단 바(`Header`)는 (모바일 햄버거)·제목·검색·테마·Assistant·추가 버튼.
+- 메뉴는 왼쪽 `Sidebar`의 `NAV`에만 추가(1024px 이하 아이콘 레일, 640px 이하는 상단 바 왼쪽 햄버거 버튼 → 화면 전체를 덮는 메뉴 `.sidebar.menu-open`, 하단 탭 없음). 상단 바(`Header`)는 (모바일 햄버거)·제목·검색·테마·Assistant·추가 버튼.
 - 메뉴 접기(`html.sb-collapsed`, `crm.sidebar`)·Assistant 숨기기(`.assistant.closed`, `crm.assistant`)는 localStorage에 저장, 첫 페인트 전 적용은 `layout.tsx` 스크립트. 전환 애니메이션은 `html.ui-anim`이 붙은 뒤에만.
 - `globals.css`의 CSS 변수(`--bg`, `--surface`, `--primary`, `--primary-soft`, `--success-*`/`--warning-*`/`--danger-*`/`--info-*`, `--sidebar-*` 등)만 사용. 색상 하드코딩 지양.
 - 새 색상 토큰은 라이트(`:root`)와 다크(`[data-theme="dark"]`) 모두에 정의. 다크는 테마 버튼으로만 켜짐(기기 다크 모드 안 따름).
-- 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐.
-- 첫 화면 `/`(view `assistant`, 메뉴 `AI Assistant`)는 같은 `AssistantPanel`이 메인 영역 전체를 쓰는 대화 화면(`.app-shell.home`, 숨기기 없음, 대화 내용은 가운데 880px). 파이프라인은 `/pipeline`. 패널은 언마운트하지 않으므로 첫 화면과 다른 화면 오른쪽 패널의 대화가 이어진다. 모바일은 첫 화면에서만 대화가 보인다(다른 화면에선 숨김).
+- 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일(640px 이하) 다른 화면에서는 상단 바 `AI` 버튼 → 상단 바·메인을 숨기고 채팅이 화면 전체를 쓰는 별도 화면(`.app-shell.ai-open`, 팝업·시트 아님), 상단 왼쪽 뒤로 가기로 닫음.
+- 첫 화면 `/`(view `assistant`, 메뉴 `AI Assistant`)는 같은 `AssistantPanel`이 메인 영역 전체를 쓰는 대화 화면(`.app-shell.home`, 숨기기·뒤로 가기 없음, 상단 바 유지, 대화 내용은 가운데 880px). 파이프라인은 `/pipeline`. 패널은 언마운트하지 않으므로 첫 화면과 다른 화면 패널의 대화가 이어진다.
 - Assistant 패널 상단 탭 `일반 대화`(조회형, `/api/assistant`) / `견적서`(`QuoteChat` — 계약서 메뉴의 `DocAssistant`를 견적서 템플릿만으로 재사용, `문서 보기` 모달로 미리보기·직접 수정, PDF·메일). 견적서 탭은 처음 누를 때 만들고 이후 탭을 바꿔도 유지.
 
 ### 데이터 / API

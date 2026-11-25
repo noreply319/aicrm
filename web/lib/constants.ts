@@ -40,6 +40,8 @@ export const SIDEBAR_KEY = "crm.sidebar";
 export const ASSISTANT_KEY = "crm.assistant";
 /** 이 너비 이하에서는 메뉴가 자동으로 아이콘 레일 (globals.css와 같게) */
 export const SIDEBAR_AUTO_RAIL_QUERY = "(max-width: 1024px)";
+/** 모바일 레이아웃(globals.css의 640px 이하): 햄버거 메뉴, AI 채팅 전체 화면 */
+export const MOBILE_QUERY = "(max-width: 640px)";
 
 /** 미팅 노트 제한 (서버 검증·DB CHECK와 동일하게 유지) */
 export const NOTE_BODY_MAX = 50000;

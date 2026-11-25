@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { SettingsModalContext } from "@/lib/settingsModal";
 import { statsByCompany } from "@/lib/company";
 import { statsByContact } from "@/lib/contact";
-import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, STAGES, stripCrmPrefix } from "@/lib/constants";
+import { ASSISTANT_KEY, CRM_DESCRIPTION_MARK, MOBILE_QUERY, STAGES, stripCrmPrefix } from "@/lib/constants";
 import { formatDateTime, fromLocalInput, memoFromDescription } from "@/lib/format";
 import { useCompanies } from "@/lib/useCompanies";
 import { useContacts } from "@/lib/useContacts";
@@ -137,7 +137,7 @@ export default function CrmApp() {
   const [suggestReason, setSuggestReason] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(true);
-  /** 모바일 전체 화면 메뉴 */
+  /** 모바일 전체 화면 메뉴 (햄버거 버튼) */
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [modal, setModal] = useState<ModalState>({ open: false });
@@ -152,7 +152,7 @@ export default function CrmApp() {
     try {
       saved = localStorage.getItem(ASSISTANT_KEY);
     } catch {}
-    if (saved === "closed") setAssistantOpen(false);
+    if (window.matchMedia(MOBILE_QUERY).matches || saved === "closed") setAssistantOpen(false);
     let id = requestAnimationFrame(() => {
       id = requestAnimationFrame(() => document.documentElement.classList.add("ui-anim"));
     });
@@ -582,10 +582,23 @@ export default function CrmApp() {
 
   return (
     <SettingsModalContext value={openSettings}>
-      {/* home: 첫 화면(/) — AI Assistant 대화가 메인 영역 전체를 쓴다 */}
-      <div className={`app-shell${view === "assistant" ? " home" : ""}${menuOpen ? " menu-open" : ""}`}>
-        <Sidebar view={view} me={auth.me} onLogout={auth.logout} menuOpen={menuOpen} onCloseMenu={closeMenu} />
-        <div className="app-main">
+      {/* home: 첫 화면(/) — AI Assistant 대화가 메인 영역 전체를 쓴다.
+          ai-open: 다른 화면의 모바일에서 AI 채팅이 메뉴·상단 바·메인 대신 화면 전체를 쓰는 별도 화면이 된다 */}
+      <div className={`app-shell${view === "assistant" ? " home" : assistantOpen && view !== "contracts" ? " ai-open" : ""}`}>
+        <Sidebar
+          view={view}
+          me={auth.me}
+          onLogout={auth.logout}
+          onNavigate={() => {
+            // 모바일: 메뉴를 고르면 전체 화면 메뉴를 닫고, AI 채팅이 열려 있었다면 함께 닫는다
+            setMenuOpen(false);
+            if (assistantOpen && window.matchMedia(MOBILE_QUERY).matches) changeAssistant(false);
+          }}
+          menuOpen={menuOpen}
+          onCloseMenu={closeMenu}
+        />
+        {/* 모바일 전체 화면 메뉴가 열려 있는 동안 뒤 화면은 포커스·클릭 불가 */}
+        <div className="app-main" inert={menuOpen}>
           <Header
             view={view}
             query={query}
