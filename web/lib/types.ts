@@ -98,6 +98,68 @@ export interface ChatMessage {
   content: string;
 }
 
+/* ───────── Sales Agent (/agent) ─────────
+ * POST /api/agent { messages: ChatMessage[] } → NDJSON 스트림 (한 줄에 AgentEvent 하나)
+ * 변경 작업은 바로 실행하지 않고 AgentPlan(승인 대기)으로 보내고, 승인/취소는
+ * POST /api/agent/actions/[id]/approve · /cancel → AgentPlan (실행 엔진은 AIC-3) */
+
+/** 도구 호출 등 진행 단계 */
+export interface AgentStep {
+  id: string;
+  label: string;
+  status: "running" | "done" | "failed";
+  /** 결과 한 줄 요약 (예: "일정 3건") */
+  detail?: string;
+}
+
+/** 실행 결과에서 이동할 대상 */
+export interface AgentTarget {
+  kind: "lead" | "company" | "contact" | "document" | "event";
+  id: string;
+  label: string;
+}
+
+/** 계획 카드의 변경 한 줄 (생성이면 before 없음, 삭제면 after 없음) */
+export interface AgentChange {
+  field: string;
+  before?: string;
+  after?: string;
+}
+
+export type AgentPlanStatus = "pending" | "running" | "done" | "failed" | "canceled";
+
+/** 실행 계획: 무엇을 어떤 값으로 바꾸는지. 사용자가 승인해야 실행된다 */
+export interface AgentPlan {
+  id: string;
+  title: string;
+  changes: AgentChange[];
+  target?: AgentTarget;
+  status: AgentPlanStatus;
+  /** 실행 결과 또는 실패 사유 */
+  message?: string;
+  /** 실행되면 리드가 바뀌는 작업 (보드 새로고침용) */
+  affectsLeads?: boolean;
+}
+
+export type AgentEvent =
+  | { type: "step"; step: AgentStep }
+  | { type: "reply"; content: string }
+  | { type: "plan"; plan: AgentPlan }
+  | { type: "error"; error: string }
+  | { type: "done" };
+
+/** Sales Agent 화면의 대화 메시지 (화면 전용 — 서버에는 role·content만 보낸다) */
+export interface AgentMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  steps?: AgentStep[];
+  plans?: AgentPlan[];
+  error?: string;
+  /** 답변 스트림을 받는 중 */
+  streaming?: boolean;
+}
+
 /** 미팅 노트 입력 방식: 직접 입력/붙여넣기, 녹음 전사, 둘 다 */
 export type NoteSource = "manual" | "recording" | "mixed";
 

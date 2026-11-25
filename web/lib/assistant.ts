@@ -7,7 +7,7 @@ import { findRelevantEmails, searchStoredEmails, summarizePending, syncLeadEmail
 import { leadTarget } from "./gmail";
 import { addDays, fromKst, kstDate, kstDateTime, listEvents } from "./calendar";
 import { chatCompletion, chatWithTools, maskPii, type ToolDef } from "./openai";
-import type { ChatMessage, ContactRole } from "./types";
+import type { AgentStep, ChatMessage, ContactRole } from "./types";
 import { parseDateRange, UUID_RE } from "./validate";
 
 export { AiError as AssistantError } from "./openai";
@@ -400,11 +400,16 @@ async function runEmailTool(user: SessionUser, args: unknown): Promise<unknown> 
  * 대화 내역을 받아 OpenAI로 답변을 생성한다.
  * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 쓸 수 있다.
  */
-export async function askAssistant(messages: ChatMessage[]): Promise<string> {
+export async function askAssistant(
+  messages: ChatMessage[],
+  /** 진행 알림 (Sales Agent 스트림용): onContext는 CRM 데이터를 다 읽었을 때, onStep은 도구 호출마다 */
+  opts: { onContext?: () => void; onStep?: (step: AgentStep) => void } = {}
+): Promise<string> {
   const question = messages.at(-1)?.content ?? "";
   const user = await getSessionUser();
   const emails = user ? await findRelevantEmails(user, question) : [];
   const context = await buildContext(question, emails);
+  opts.onContext?.();
   const state = featureState(user, "calendar");
   const gmail = featureState(user, "gmail");
   const chat = [
@@ -414,15 +419,46 @@ export async function askAssistant(messages: ChatMessage[]): Promise<string> {
   const tools = [...(state === "connected" ? [CALENDAR_TOOL] : []), ...(gmail === "connected" ? [EMAIL_TOOL] : [])];
   if (!user || tools.length === 0) return chatCompletion(chat, { maxTokens: 1200 });
 
+  const runTool = (name: string, args: unknown): Promise<unknown> =>
+    name === CALENDAR_TOOL.name && state === "connected"
+      ? runCalendarTool(user, args)
+      : name === EMAIL_TOOL.name && gmail === "connected"
+        ? runEmailTool(user, args)
+        : Promise.resolve({ error: "알 수 없는 도구" });
+
+  let stepNo = 0;
   return chatWithTools(
     chat,
     tools,
-    (name, args) =>
-      name === CALENDAR_TOOL.name && state === "connected"
-        ? runCalendarTool(user, args)
-        : name === EMAIL_TOOL.name && gmail === "connected"
-          ? runEmailTool(user, args)
-          : Promise.resolve({ error: "알 수 없는 도구" }),
+    async (name, args) => {
+      const { onStep } = opts;
+      if (!onStep) return runTool(name, args);
+      const step: AgentStep = { id: `tool-${++stepNo}`, label: TOOL_LABELS[name] ?? name, status: "running" };
+      onStep(step);
+      try {
+        const result = await runTool(name, args);
+        onStep({ ...step, status: "done", detail: toolDetail(result) });
+        return result;
+      } catch (e) {
+        onStep({ ...step, status: "failed" });
+        throw e;
+      }
+    },
     { maxTokens: 1200, maxRounds: 3, timeoutMs: 40_000 }
   );
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  [CALENDAR_TOOL.name]: "캘린더 일정 조회",
+  [EMAIL_TOOL.name]: "리드 이메일 검색",
+};
+
+/** 도구 결과 → 진행 단계에 보여줄 한 줄 (개수만, 내용은 화면에 내보내지 않음) */
+function toolDetail(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const r = result as Record<string, unknown>;
+  if (typeof r.error === "string") return r.error;
+  if (Array.isArray(r.events)) return `일정 ${r.events.length}건`;
+  if (typeof r.count === "number") return `메일 ${r.count}건`;
+  return undefined;
 }

@@ -849,6 +849,61 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
   .panel { padding: 14px; }
 }
 
+/* ───────── Sales Agent (/agent) ───────── */
+/* 대화 화면이 상단 바 아래 남은 높이 전체를 쓰고, 메시지 목록만 스크롤한다. 내용은 가운데 880px */
+.app-shell.agent-screen .app-main { height: 100vh; height: 100dvh; }
+.app-shell.agent-screen .workspace, .app-shell.agent-screen .workspace-main { min-height: 0; }
+.agent { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+.agent-head, .agent-messages, .agent-input {
+  padding-left: max(16px, calc((100% - 880px) / 2)); padding-right: max(16px, calc((100% - 880px) / 2));
+}
+.agent-head { display: flex; align-items: center; gap: 10px; padding-top: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.agent-head > .badge { flex-shrink: 0; }
+.agent-desc { flex: 1; min-width: 0; font-size: 12.5px; }
+.agent-messages { flex: 1; overflow-y: auto; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
+.agent-messages > .empty-state { margin: auto 0; }
+.agent-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+/* Agent 답변 한 번: 진행 단계 → 답변 → 실행 계획 카드 */
+.agent-turn { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.agent-turn > .alert { align-self: stretch; }
+.agent-steps {
+  list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;
+  width: min(360px, 88%); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); font-size: 12.5px;
+}
+.agent-step { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.agent-step-label { flex: 1; min-width: 0; }
+.agent-step-running .agent-step-label::after { content: "…"; }
+.agent-step-detail { color: var(--text-3); }
+.plan-card {
+  align-self: stretch; max-width: 640px; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px;
+  border: 1px solid var(--border); border-left: 3px solid var(--warning-fg); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.plan-running { border-left-color: var(--primary); }
+.plan-done { border-left-color: var(--success-fg); }
+.plan-failed { border-left-color: var(--danger-fg); }
+.plan-canceled { border-left-color: var(--border); opacity: 0.75; }
+.plan-head { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.plan-head > .badge { flex-shrink: 0; }
+.plan-title { flex: 1; min-width: 0; font-size: 14px; color: var(--text); }
+.plan-diff { width: 100%; border-collapse: collapse; font-size: 13px; }
+.plan-diff th, .plan-diff td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; word-break: break-word; }
+.plan-diff thead th { border-top: 0; color: var(--text-3); font-size: 12px; font-weight: 600; }
+.plan-diff tbody th { width: 28%; color: var(--text-2); font-weight: 600; }
+.plan-before { color: var(--text-3); text-decoration: line-through; }
+.plan-before .muted { text-decoration: none; }
+.plan-after { color: var(--success-fg); font-weight: 600; }
+.plan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.agent-input { display: flex; gap: 8px; align-items: flex-end; padding-top: 12px; padding-bottom: 12px; border-top: 1px solid var(--border); }
+.agent-input .control { flex: 1; resize: none; min-height: 0; font-size: 13.5px; }
+@media (max-width: 640px) {
+  .agent-desc { display: none; }
+  .agent-head { justify-content: space-between; }
+  .agent-input { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .plan-card { padding: 10px 12px; }
+  .plan-actions .spacer { flex-basis: 100%; }
+}
+
 /* ───────── 계약서·견적서 ───────── */
 /* 조회형 Assistant 감싸기: 평소엔 레이아웃에 영향 없음, 계약서 화면에서만 [hidden]으로 숨김 */
 .assistant-slot { display: contents; }

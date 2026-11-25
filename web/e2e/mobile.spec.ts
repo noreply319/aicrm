@@ -164,7 +164,7 @@ test("모바일: 화면마다 가로로 넘치는 요소가 없다 (360px)", asy
   await page.setViewportSize({ width: 360, height: 800 });
   const company = await createCompany(request, { name: "블루웨이브테크놀로지스" });
   await request.post("/api/leads", { data: { companyId: company.id, value: 1_250_000_000 } });
-  for (const path of ["/", "/pipeline", "/companies", `/companies/${company.id}`, "/contacts", "/meetings", "/calendar", "/contracts"]) {
+  for (const path of ["/", "/pipeline", "/companies", `/companies/${company.id}`, "/contacts", "/meetings", "/calendar", "/contracts", "/agent"]) {
     await page.goto(path);
     await expect(page.locator(".page-title")).toBeVisible();
     const width = await page.evaluate(() => ({ inner: window.innerWidth, scroll: document.scrollingElement!.scrollWidth }));
