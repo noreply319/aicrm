@@ -61,6 +61,10 @@ test("Sales Agent: 메뉴 이동 → 요청 → 진행 단계·답변·실행 �
   await expect(card.getByRole("button", { name: "승인" })).toHaveCount(0);
   const moved = await (await request.get("/api/leads")).json();
   expect(moved.find((l: { id: string }) => l.id === lead.id).stage).toBe("negotiation");
+  // 파이프라인 보드에도 반영 (승인 후 화면 데이터를 다시 불러온다)
+  await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "파이프라인" }).click();
+  await expect(page.locator(".column").filter({ hasText: "협상" }).locator(".card").filter({ hasText: "오션핀테크" })).toBeVisible();
+  await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "Sales Agent" }).click();
 
   // 이미 처리한 계획은 다시 승인할 수 없다
   const again = await request.post(`/api/agent/actions/${plan.id}/approve`);
@@ -93,4 +97,22 @@ test("Sales Agent: 수정 요청 → 계획 취소 + 입력창에 안내 문구"
   // 취소한 계획은 실행되지 않는다
   const leads = await (await request.get("/api/leads")).json();
   expect(leads.find((l: { id: string }) => l.id === lead.id).stage).toBe("qualified");
+});
+
+test("Sales Agent: 취소하면 실행하지 않고 보드도 그대로", async ({ page, request }) => {
+  const lead = await createLead(request, "오션핀테크", "qualified");
+  await fakeAgentStream(page, await createMovePlan(lead, "qualified", "negotiation"));
+
+  await page.goto("/agent");
+  const input = page.getByRole("textbox", { name: "Sales Agent에게 요청" });
+  await input.fill("오션핀테크 리드를 협상 단계로 옮겨줘");
+  await input.press("Enter");
+
+  const card = page.getByRole("region", { name: "실행 계획: 리드 단계 이동" });
+  await card.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(card.getByText("취소됨")).toBeVisible();
+  await expect(card.getByRole("button", { name: "승인" })).toHaveCount(0);
+
+  await page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "파이프라인" }).click();
+  await expect(page.locator(".column").filter({ hasText: "니즈 확인" }).locator(".card").filter({ hasText: "오션핀테크" })).toBeVisible();
 });

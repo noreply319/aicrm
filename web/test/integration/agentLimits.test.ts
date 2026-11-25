@@ -22,7 +22,7 @@ beforeEach(async () => {
   await resetDb();
   await pool.query(
     `INSERT INTO users (id, google_sub, email, name, google_refresh_token, gmail_enabled, google_scopes)
-     VALUES ($1, 'limit-me', 'me@nomargin.kr', '홍길동', 'enc', true, 'https://www.googleapis.com/auth/gmail.send')
+     VALUES ($1, 'limit-me', 'agent-limits@test.local', '홍길동', 'enc', true, 'https://www.googleapis.com/auth/gmail.send')
      ON CONFLICT (id) DO NOTHING`,
     [ME]
   );
