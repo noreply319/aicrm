@@ -1,20 +1,22 @@
 "use client";
 
 import { useRef, type DragEvent } from "react";
-import { IconButton } from "./ui";
+import { IconButton, type IconName } from "./ui";
 
 /**
  * 입력창 옆 명함 첨부 버튼. 사진 여러 장 선택 가능.
  * capture 속성을 쓰지 않는다 → 모바일에서 "사진 찍기 / 사진 보관함" 중에서 고를 수 있다.
  */
-export default function BusinessCardAttach({ onFiles, disabled }: { onFiles: (files: File[]) => void; disabled?: boolean }) {
+export default function BusinessCardAttach({
+  onFiles, disabled, icon = "camera", className,
+}: { onFiles: (files: File[]) => void; disabled?: boolean; icon?: IconName; className?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
       <IconButton
-        icon="camera"
+        icon={icon}
         label="명함 사진 올리기"
-        className="card-attach"
+        className={className ? `card-attach ${className}` : "card-attach"}
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
       />

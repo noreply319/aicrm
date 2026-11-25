@@ -34,28 +34,21 @@ interface Props {
 
 type Mode = "chat" | "quote";
 
-const SUGGESTIONS = [
-  "이번 주에 생성된 리드 알려줘",
-  "최근 단계가 바뀐 리드는?",
-  "오션핀테크 리드 변경 이력 보여줘",
-  "현재 파이프라인 금액 합계는?",
-  "오션핀테크 리드를 협상 단계로 옮겨줘",
-  "오션핀테크에 김민수 팀장 연락처 추가해줘",
-];
-
 export default function AssistantPanel({ open: openProp, onOpen, onClose, home, me, chat, onOpenTarget, onLeadsChanged, onNotice, cardHost }: Props) {
   const open = home || openProp;
   const [mode, setMode] = useState<Mode>("chat");
   /** 견적서 탭은 처음 고를 때 만들고(템플릿 조회), 그 뒤에는 탭을 바꿔도 대화를 유지한다 */
   const [quoteSeen, setQuoteSeen] = useState(false);
-  const { messages, busy, send, approve, approveAll, cancel, reset } = chat;
+  const { messages, busy, send, stop, approve, approveAll, cancel, reset } = chat;
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   // 입력칸: 기본 한 줄, 내용에 맞춰 최대 5줄까지 늘어남
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  useAutoGrow(inputRef, input);
-  // 모바일 키보드에는 Shift+Enter가 없어 단축키 안내를 빼고, 좁은 입력칸에 안내 문구가 다 보이게 한다
   const mobile = useMediaQuery(MOBILE_QUERY);
+  // 좁은 입력칸(오른쪽 패널·모바일)에서는 안내 문구가 한 줄에 다 보이게 짧게
+  const placeholder = home && !mobile ? "리드에 대해 질문하거나 추가·변경을 요청하세요…" : "리드에 대해 질문하세요…";
+  // 빈 입력칸 높이는 안내 문구 줄 수를 따르므로 문구가 바뀌어도(첫 렌더 뒤 모바일 판정) 다시 맞춘다
+  useAutoGrow(inputRef, input || placeholder);
 
   /** 명함 카드: 화면 전용 (OpenAI로 보내는 대화에는 넣지 않는다) */
   const cards = useBusinessCards();
@@ -117,13 +110,6 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
         {messages.length === 0 && cards.cards.length === 0 && (
           <div className="assistant-empty">
             <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
-            <div className="assistant-suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="assistant-chip" onClick={() => submit(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         )}
         {cardsAt(0)}
@@ -146,33 +132,38 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
         ))}
       </div>
 
+      {/* 입력창: 둥근 알약 모양 안에 첨부(+) · 입력 · 보내기/멈추기 */}
       <form
-        className="assistant-input"
+        className="assistant-input composer-wrap"
         onSubmit={(e) => {
           e.preventDefault();
           submit(input);
         }}
       >
-        <BusinessCardAttach onFiles={addCards} />
-        <Textarea
-          ref={inputRef}
-          value={input}
-          aria-label="AI Assistant에게 질문·요청"
-          placeholder={mobile ? "리드에 대해 질문하세요…" : "리드에 대해 질문하거나 추가·변경을 요청하세요… (Enter 전송, Shift+Enter 줄바꿈)"}
-          rows={1}
-          maxLength={2000}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            // 한글 조합 중 Enter는 무시 (마지막 글자 중복 전송 방지)
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              submit(input);
-            }
-          }}
-        />
-        <Button variant="primary" type="submit" disabled={busy || !input.trim()}>
-          전송
-        </Button>
+        <div className="composer">
+          <BusinessCardAttach onFiles={addCards} icon="plus" className="composer-btn" />
+          <Textarea
+            ref={inputRef}
+            value={input}
+            aria-label="AI Assistant에게 질문·요청"
+            placeholder={placeholder}
+            rows={1}
+            maxLength={2000}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // 한글 조합 중 Enter는 무시 (마지막 글자 중복 전송 방지)
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                submit(input);
+              }
+            }}
+          />
+          {busy ? (
+            <IconButton icon="stop" label="답변 멈추기" className="composer-btn composer-stop" onClick={stop} />
+          ) : (
+            <IconButton icon="arrowUp" label="전송" variant="primary" type="submit" className="composer-btn composer-send" disabled={!input.trim()} />
+          )}
+        </div>
       </form>
       </div>
     </aside>

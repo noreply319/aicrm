@@ -159,6 +159,20 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
     [decide]
   );
 
+  /** 멈추기: 받는 중인 답변을 끊는다 (그때까지 온 답변·계획 카드는 남긴다) */
+  const stop = useCallback(() => {
+    const ctrl = abortRef.current;
+    if (!ctrl) return;
+    ctrl.abort();
+    abortRef.current = null;
+    setBusy(false);
+    setMessages((list) =>
+      list.map((m) =>
+        m.streaming ? { ...m, streaming: false, error: m.content || m.plans?.length ? m.error : "답변을 멈췄습니다" } : m
+      )
+    );
+  }, []);
+
   /** 새 대화: 받는 중인 답변은 중단 */
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -167,7 +181,7 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
     setMessages([]);
   }, []);
 
-  return { messages, busy, send, approve, approveAll, cancel, reset };
+  return { messages, busy, send, stop, approve, approveAll, cancel, reset };
 }
 
 export type AgentChat = ReturnType<typeof useAgentChat>;
