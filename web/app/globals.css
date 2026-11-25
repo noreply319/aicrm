@@ -747,6 +747,9 @@ textarea.control { resize: vertical; min-height: 72px; line-height: 1.55; }
     position: relative; top: auto; width: 100%; height: 100vh; height: 100dvh; margin: 0;
     border-width: 0; border-radius: 0; padding-top: env(safe-area-inset-top);
   }
+  /* 닫힌 패널은 자리를 차지하지 않게 완전히 뺀다.
+     (위의 flex-grow: 1이 .closed의 flex-basis: 0과 합쳐져 보이지 않는 패널이 메인과 폭을 반씩 나눠 갖던 문제) */
+  .assistant.closed { display: none; }
   .ui-anim .assistant, .ui-anim .assistant.closed { transition: none; }
   .assistant-input { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .assistant-head .assistant-hide { display: none; }
