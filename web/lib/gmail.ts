@@ -28,7 +28,7 @@ async function gfetch(user: TokenUser, path: string, attempt = 0): Promise<unkno
     signal: AbortSignal.timeout(10_000),
   }).catch((e: unknown) => {
     const timeout = e instanceof Error && e.name === "TimeoutError";
-    throw new GoogleError(timeout ? "Gmail 응답 시간이 초과되었습니다" : "Gmail에 연결할 수 없습니다", 502);
+    throw new GoogleError(timeout ? "Gmail 응답 시간이 초과되었습니다" : "Gmail에 연결할 수 없습니다", 502, timeout ? "timeout" : "");
   });
 
   if ((res.status === 401 || res.status === 429 || res.status >= 500) && attempt === 0) {
@@ -296,7 +296,7 @@ export async function sendRawMessage(user: TokenUser, raw: string, attempt = 0):
     signal: AbortSignal.timeout(30_000),
   }).catch((e: unknown) => {
     const timeout = e instanceof Error && e.name === "TimeoutError";
-    throw new GoogleError(timeout ? "Gmail 응답 시간이 초과되었습니다" : "Gmail에 연결할 수 없습니다", 502);
+    throw new GoogleError(timeout ? "Gmail 응답 시간이 초과되었습니다" : "Gmail에 연결할 수 없습니다", 502, timeout ? "timeout" : "");
   });
   if (res.status === 401 && attempt === 0) {
     forgetAccessToken(user.id);

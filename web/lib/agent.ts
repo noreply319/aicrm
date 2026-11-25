@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import type { PreparedPlan } from "./agentToolKit";
 import { AGENT_TOOLS } from "./agentTools";
 import { ASSISTANT_TOOL_LABELS, prepareAssistant, toolDetail } from "./assistant";
@@ -21,7 +22,7 @@ const PLAN_TTL_HOURS = 1;
 // 조회 후 계획까지 여러 번 도구를 쓸 수 있게 Assistant(3)보다 넉넉히
 const MAX_ROUNDS = 5;
 
-type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "notice">;
+type StoredPlan = Pick<AgentPlan, "title" | "changes" | "target" | "danger" | "approveLabel" | "notice">;
 
 interface ActionRow {
   id: string;
@@ -42,9 +43,13 @@ const toPlan = (r: Pick<ActionRow, "id" | "plan" | "status" | "message">): Agent
   ...(r.message ? { message: r.message } : {}),
 });
 
+const storedPlan = (p: PreparedPlan): StoredPlan => ({
+  title: p.title, changes: p.changes, target: p.target, danger: p.danger, approveLabel: p.approveLabel, notice: p.notice,
+});
+
 /** 계획 저장 (pending) → 화면에 보낼 AgentPlan */
 export async function savePlan(userId: string, tool: string, p: PreparedPlan): Promise<AgentPlan> {
-  const plan: StoredPlan = { title: p.title, changes: p.changes, target: p.target, danger: p.danger, notice: p.notice };
+  const plan = storedPlan(p);
   const { rows } = await pool.query<{ id: string }>(
     "INSERT INTO agent_actions (user_id, tool, args, plan) VALUES ($1, $2, $3, $4) RETURNING id",
     [userId, tool, JSON.stringify(p.args), JSON.stringify(plan)]
@@ -75,6 +80,11 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
 
     const prepared = await tool.prepare(a, user.id);
     if ("error" in prepared) return { error: prepared.error };
+    if (prepared.draft) {
+      // 초안은 저장하지 않고 카드로만 보여준다
+      emit({ type: "plan", plan: { id: randomUUID(), ...storedPlan(prepared), status: "draft" } });
+      return { status: "draft_shown", note: "초안을 카드로 보여줬습니다. 보내려면 사용자의 확인을 받은 뒤 같은 내용으로 발송 도구를 호출하세요." };
+    }
     const key = `${name}:${JSON.stringify(prepared.args)}`;
     const existing = planned.get(key);
     if (existing) return { status: "pending_approval", planId: existing, note: "이미 같은 계획을 만들었습니다. " + PENDING_NOTE };
@@ -108,13 +118,14 @@ export async function runAgent(messages: ChatMessage[], user: SessionUser, emit:
   emit({ type: "reply", content: reply });
 }
 
-export type DecideResult = { ok: true; plan: AgentPlan } | { ok: false; status: number; error: string };
+export type DecideResult = { ok: true; plan: AgentPlan; followUps?: AgentPlan[] } | { ok: false; status: number; error: string };
 
 /** 실행 계획 승인/취소 (요청한 본인만, 한 번만). 커밋 후 후속 작업(after)이 있으면 실행하고 결과를 메시지에 덧붙인다 */
 export async function decideAction(id: string, userId: string, action: "approve" | "cancel"): Promise<DecideResult> {
   if (!UUID_RE.test(id)) return { ok: false, status: 404, error: "실행 계획을 찾을 수 없습니다" };
 
   let after: (() => Promise<string | undefined>) | undefined;
+  let next: { tool: string; args: Record<string, unknown> }[] = [];
   const result = await withTransaction(async (client): Promise<DecideResult> => {
     // 동시에 두 번 승인해도 한 번만 실행되도록 행을 잠근다
     const row = (
@@ -135,22 +146,40 @@ export async function decideAction(id: string, userId: string, action: "approve"
     if (row.expired) return finish("failed", `계획이 만료되었습니다 (${PLAN_TTL_HOURS}시간). 다시 요청하세요`);
 
     const tool = AGENT_TOOLS[row.tool];
-    if (!tool || tool.kind !== "write") return finish("failed", "지원하지 않는 작업입니다");
+    if (!tool || tool.kind !== "write" || !tool.execute) return finish("failed", "지원하지 않는 작업입니다");
     const r = await tool.execute(client, userId, row.args);
     if (!r.ok) return finish("failed", r.message);
     after = r.after;
+    next = r.next ?? [];
     // 실행에 성공하면 대상 링크를 결과로 바꾼다 (삭제는 링크 없음)
     return finish("done", r.message, { ...row.plan, target: r.target });
   });
 
-  if (!result.ok || !after) return result;
-  // 후속 작업은 실패해도 실행 결과(done)는 그대로 두고 안내만 덧붙인다
-  const extra = await after().catch((e: unknown) => {
-    console.error("[agent] after", e);
-    return "후속 작업은 실패했습니다";
-  });
-  if (!extra) return result;
-  const message = `${result.plan.message ?? ""} · ${extra}`;
-  await pool.query("UPDATE agent_actions SET message=$2 WHERE id=$1", [id, message]);
-  return { ok: true, plan: { ...result.plan, message } };
+  if (!result.ok) return result;
+  let plan = result.plan;
+  if (after) {
+    // 후속 작업은 실패해도 실행 결과(done)는 그대로 두고 안내만 덧붙인다
+    const extra = await after().catch((e: unknown) => {
+      console.error("[agent] after", e);
+      return "후속 작업은 실패했습니다";
+    });
+    if (extra) {
+      plan = { ...plan, message: `${plan.message ?? ""} · ${extra}` };
+      await pool.query("UPDATE agent_actions SET message=$2 WHERE id=$1", [id, plan.message]);
+    }
+  }
+  // 이어서 제안할 계획: 지금 값으로 다시 prepare (해당 없으면 만들지 않음)
+  const followUps: AgentPlan[] = [];
+  for (const n of next) {
+    const t = AGENT_TOOLS[n.tool];
+    if (t?.kind !== "write") continue;
+    // 후속 계획은 제안일 뿐이라 만들지 못해도 실행 결과(done)는 그대로 돌려준다
+    try {
+      const p = await t.prepare(n.args, userId);
+      if (!("error" in p)) followUps.push(await savePlan(userId, n.tool, p));
+    } catch (e) {
+      console.error("[agent] follow-up", e);
+    }
+  }
+  return { ok: true, plan, ...(followUps.length ? { followUps } : {}) };
 }

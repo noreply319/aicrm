@@ -8,7 +8,7 @@ import {
   SCHEDULE_COLUMNS, SCHEDULE_FROM, scheduleSnapshot, toSchedule, type ScheduleRow,
 } from "./calendar";
 import { pool } from "./db";
-import { recordEvent, withTransaction } from "./events";
+import { inSavepoint, recordEvent, withTransaction } from "./events";
 import { GoogleError } from "./google";
 import { AiError, chatCompletion, maskPii } from "./openai";
 import type { CalendarEvent, CalendarEventInput, ExtractResult, ScheduledMeeting } from "./types";
@@ -186,19 +186,6 @@ export function eventDescription(
     .filter(Boolean)
     .join("\n\n")
     .slice(0, 8000);
-}
-
-/** 호출한 쪽 트랜잭션 안에서 SAVEPOINT로 감싸 실행 (실패하면 그 부분만 되돌리고 예외를 다시 던진다) */
-export async function inSavepoint<T>(client: PoolClient, fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  await client.query("SAVEPOINT schedule_step");
-  try {
-    const r = await fn(client);
-    await client.query("RELEASE SAVEPOINT schedule_step");
-    return r;
-  } catch (e) {
-    await client.query("ROLLBACK TO SAVEPOINT schedule_step");
-    throw e;
-  }
 }
 
 /** 일정 등록 실패 (사용자에게 보여줄 메시지 + 상태 코드) */

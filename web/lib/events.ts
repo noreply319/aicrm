@@ -8,7 +8,7 @@ export type LeadEventType =
   | "created" | "updated" | "moved" | "deleted"
   | "note_created" | "note_updated" | "note_deleted"
   | "meeting_scheduled" | "meeting_rescheduled" | "meeting_canceled"
-  | "document_sent";
+  | "document_sent" | "email_sent";
 
 export type FieldChange = { from: unknown; to: unknown };
 
@@ -88,5 +88,18 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
     throw e;
   } finally {
     client.release();
+  }
+}
+
+/** 호출한 쪽 트랜잭션 안에서 SAVEPOINT로 감싸 실행 (실패하면 그 부분만 되돌리고 예외를 다시 던진다) */
+export async function inSavepoint<T>(client: PoolClient, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  await client.query("SAVEPOINT schedule_step");
+  try {
+    const r = await fn(client);
+    await client.query("RELEASE SAVEPOINT schedule_step");
+    return r;
+  } catch (e) {
+    await client.query("ROLLBACK TO SAVEPOINT schedule_step");
+    throw e;
   }
 }

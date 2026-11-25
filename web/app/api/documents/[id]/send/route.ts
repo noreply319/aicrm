@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { afterSendMessages } from "@/lib/docChat";
-import { documentPdf, getDocument, kindLabel, publicDocument, saveState, stateOf } from "@/lib/documents";
-import { recordEvent, withTransaction } from "@/lib/events";
+import { recordDocumentSend, sentLink } from "@/lib/docOps";
+import { documentPdf, getDocument } from "@/lib/documents";
+import { withTransaction } from "@/lib/events";
 import { sendRawMessage } from "@/lib/gmail";
 import { canSendGmail, googleErrorResponse, unauthorized } from "@/lib/google";
-import { buildMime } from "@/lib/mime";
-import type { DocChatResult, StageId } from "@/lib/types";
+import { buildMime, MAIL_TOO_LARGE, MAX_MAIL_BYTES } from "@/lib/mime";
+import type { DocChatResult } from "@/lib/types";
 import { parseSendInput, UUID_RE } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
-
-/** 첨부 포함 메일 크기 상한 */
-const MAX_MAIL_BYTES = 10 * 1024 * 1024;
 
 /**
  * 완성한 문서를 내 Gmail로 발송: { to[], cc[], subject, body, fileName }
@@ -41,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     to: m.to, cc: m.cc, subject: m.subject, body: m.body,
     attachment: { fileName: m.fileName, contentType: "application/pdf", data: bytes },
   });
-  if (raw.length > MAX_MAIL_BYTES) return NextResponse.json({ error: "첨부 파일이 너무 큽니다 (10MB 이하)" }, { status: 413 });
+  if (raw.length > MAX_MAIL_BYTES) return NextResponse.json({ error: MAIL_TOO_LARGE }, { status: 413 });
 
   let sent: { id: string; threadId: string };
   try {
@@ -49,32 +46,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch (e) {
     return googleErrorResponse(e);
   }
-  const link = `https://mail.google.com/mail/u/${encodeURIComponent(user.email)}/#sent/${sent.threadId || sent.id}`;
+  const link = sentLink(user.email, sent);
 
-  const result = await withTransaction(async (c): Promise<DocChatResult> => {
-    await c.query("SELECT 1 FROM documents WHERE id = $1 FOR UPDATE", [id]);
-    const cur = (await getDocument(id, c))!;
-    const lead = cur.leadId
-      ? (await c.query<{ company: string; stage: StageId }>("SELECT company, stage FROM leads WHERE id = $1", [cur.leadId])).rows[0] ?? null
-      : null;
-    const s = stateOf(cur);
-    afterSendMessages(s, cur.kind, m.to, link, lead);
-    s.status = "sent";
-    s.step = { type: "done" };
-    await saveState(c, id, cur.rev, s);
-    await c.query("UPDATE documents SET sent_at = now() WHERE id = $1", [id]);
-    await c.query(
-      `INSERT INTO document_sends (document_id, user_id, to_addrs, cc_addrs, subject, file_name, gmail_message_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, user.id, m.to, m.cc, m.subject, m.fileName, sent.id]
-    );
-    if (cur.leadId && lead) {
-      await recordEvent(c, cur.leadId, lead.company, "document_sent", {
-        kind: cur.kind, kindLabel: kindLabel(cur.kind), title: cur.title, docNumber: cur.docNumber,
-        documentId: id, recipients: m.to.length + m.cc.length,
-      });
-    }
-    return { document: publicDocument((await getDocument(id, c))!), changed: [] };
-  });
+  const result = await withTransaction(async (c): Promise<DocChatResult> =>
+    (await recordDocumentSend(c, id, user.id, m, { id: sent.id, link })).result
+  );
   return NextResponse.json(result);
 }

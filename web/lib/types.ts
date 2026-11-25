@@ -126,7 +126,8 @@ export interface AgentChange {
   after?: string;
 }
 
-export type AgentPlanStatus = "pending" | "running" | "done" | "failed" | "canceled";
+/** draft: 초안만 보여주는 카드 (저장·승인 없음, 메일 초안 등) */
+export type AgentPlanStatus = "pending" | "running" | "done" | "failed" | "canceled" | "draft";
 
 /** 실행 계획: 무엇을 어떤 값으로 바꾸는지. 사용자가 승인해야 실행된다 */
 export interface AgentPlan {
@@ -139,9 +140,14 @@ export interface AgentPlan {
   message?: string;
   /** 되돌릴 수 없는 작업 (삭제) — 승인 버튼을 위험 색으로 */
   danger?: boolean;
+  /** 승인 버튼 문구 (기본 "승인", 예: "삭제 승인"·"발송 승인") */
+  approveLabel?: string;
   /** 승인 전에 알아야 할 점 (예: 연결 리드도 함께 바뀜, 다른 회사 소속 연락처) */
   notice?: { tone: "info" | "warning"; text: string };
 }
+
+/** 승인/취소 API 응답: 바뀐 계획 + 실행 뒤 이어서 제안하는 계획 (예: 견적서 발송 후 단계 이동) */
+export type AgentDecision = AgentPlan & { followUps?: AgentPlan[] };
 
 export type AgentEvent =
   | { type: "step"; step: AgentStep }

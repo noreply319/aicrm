@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { decideAction } from "@/lib/agent";
 import { requestUserId } from "@/lib/auth";
+import type { AgentDecision } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,5 +11,7 @@ export async function POST(_req: Request, { params }: Ctx) {
   const userId = await requestUserId();
   if (!userId) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
   const r = await decideAction(id, userId, "cancel");
-  return r.ok ? NextResponse.json(r.plan) : NextResponse.json({ error: r.error }, { status: r.status });
+  return r.ok
+    ? NextResponse.json({ ...r.plan, ...(r.followUps ? { followUps: r.followUps } : {}) } satisfies AgentDecision)
+    : NextResponse.json({ error: r.error }, { status: r.status });
 }

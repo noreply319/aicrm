@@ -1,4 +1,5 @@
 import "server-only";
+import type { PoolClient } from "pg";
 import { idArg, stale, str, text, unchanged, VIA, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
 import { featureState, findUserById, type SessionUser } from "./auth";
 import { addDays, fromKst, kstDate, kstDateTime } from "./calendar";
@@ -341,6 +342,7 @@ const createEventTool: WriteTool = {
       title: "캘린더 일정 등록",
       changes: eventChanges(v.data, lead?.label, invite),
       danger: invite,
+      ...(invite ? { approveLabel: "등록·초대 승인" } : {}),
       notice: invite
         ? { tone: "warning", text: `승인하면 리드 담당자(${lead?.contact || "담당자"})에게 구글 캘린더 초대 메일이 발송됩니다` }
         : { tone: "info", text: "내 구글 캘린더에 [AI CRM] 일정으로 등록됩니다" },
@@ -372,7 +374,7 @@ const scheduleState = (r: OwnedSchedule) => ({
 const scheduleTarget = (r: OwnedSchedule): AgentTarget => ({ kind: "event", id: r.id, label: r.title });
 
 /** 승인 때: 내 일정 다시 찾고(잠금) 계획 이후 바뀌지 않았는지 확인 */
-async function lockedOwned(client: Parameters<WriteTool["execute"]>[0], userId: string, a: Args) {
+async function lockedOwned(client: PoolClient, userId: string, a: Args) {
   const id = idArg(a, "scheduleId");
   if (!id) return { ok: false as const, message: "일정 id가 올바르지 않습니다" };
   const owned = await findOwnedSchedule(client, { scheduleId: id }, userId, { lock: true });
@@ -486,6 +488,7 @@ const cancelEventTool: WriteTool = {
       ],
       target: scheduleTarget(row),
       danger: true,
+      approveLabel: "취소 승인",
       ...(row.inviteSent ? { notice: { tone: "warning" as const, text: "초대한 참석자에게 취소 알림 메일이 발송됩니다" } } : {}),
       args: { scheduleId: id, expect: scheduleState(row) },
     };

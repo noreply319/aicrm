@@ -289,11 +289,13 @@ function applyItems(s: DocState, it: Pick<Interpretation, "addItems" | "updateIt
 
 // ───────── 리드 ─────────
 
-type LeadLite = Pick<Lead, "id" | "company" | "contact" | "email" | "phone" | "value" | "stage">;
+/** 문서 작성에 쓰는 리드 값 (회사·담당자·연락처 항목 채움, 발송 후 단계 제안) */
+export type LeadLite = Pick<Lead, "id" | "company" | "contact" | "email" | "phone" | "value" | "stage">;
+const LEAD_LITE_COLUMNS = "id, company, contact, email, phone, value, stage";
 
-async function findLead(id: string): Promise<LeadLite | null> {
+export async function findLeadLite(id: string, db: PoolClient | typeof pool = pool): Promise<LeadLite | null> {
   if (!UUID_RE.test(id)) return null;
-  const { rows } = await pool.query<LeadLite>("SELECT id, company, contact, email, phone, value, stage FROM leads WHERE id = $1", [id]);
+  const { rows } = await db.query<LeadLite>(`SELECT ${LEAD_LITE_COLUMNS} FROM leads WHERE id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -334,7 +336,7 @@ async function handleText(d: LoadedDocument, s: DocState, text: string, changed:
     }
     const q = text.replace(/[%_\\]/g, "\\$&").slice(0, 100);
     const { rows } = await pool.query<LeadLite>(
-      `SELECT id, company, contact, email, phone, value, stage FROM leads
+      `SELECT ${LEAD_LITE_COLUMNS} FROM leads
        WHERE company ILIKE '%' || $1 || '%' OR contact ILIKE '%' || $1 || '%' OR $2 ILIKE '%' || company || '%'
        ORDER BY (lower(company) = lower($2)) DESC, updated_at DESC LIMIT 6`,
       [q, text.slice(0, 200)]
@@ -454,7 +456,7 @@ export async function handleDocChat(id: string, input: ChatInput): Promise<DocCh
   } else if (action) {
     switch (action) {
       case "select_lead": {
-        const lead = await findLead(value);
+        const lead = await findLeadLite(value);
         if (!lead) throw new DocError("리드를 찾을 수 없습니다", 400);
         userSaid(s, lead.contact ? `${lead.company} · ${lead.contact}` : lead.company);
         selectLead(d, s, lead, changed);
@@ -593,20 +595,45 @@ export async function createDocument(template: DocTemplate, userId: string | nul
     kind: "question",
     quick: [...quick, { label: "리드 없이 작성", action: "no_lead" }],
   });
-  return withTransaction(async (c) => {
-    const docNumber = await nextDocNumber(c, template.kind);
-    const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO documents (template_id, kind, title, doc_number, body, fields, line_items_config, email_subject, email_body,
-                              messages, step, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-      [
-        template.id, template.kind, template.name, docNumber, template.body, JSON.stringify(template.fields),
-        template.lineItems ? JSON.stringify(template.lineItems) : null, template.emailSubject, template.emailBody,
-        JSON.stringify(s.messages), JSON.stringify(s.step), userId,
-      ]
-    );
-    return rows[0].id;
-  });
+  return withTransaction((c) => insertDocument(c, template, s, userId));
+}
+
+/** 템플릿 스냅샷 + 상태로 문서 행 만들기 (문서번호 발급 포함, 호출한 쪽 트랜잭션) */
+export async function insertDocument(c: PoolClient, template: DocTemplate, s: DocState, userId: string | null): Promise<string> {
+  const docNumber = await nextDocNumber(c, template.kind);
+  const { rows } = await c.query<{ id: string }>(
+    `INSERT INTO documents (template_id, kind, title, doc_number, lead_id, body, fields, line_items_config, email_subject, email_body,
+                            field_values, line_items, skipped, messages, step, status, completed_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, CASE WHEN $16 = 'completed' THEN now() END, $17) RETURNING id`,
+    [
+      template.id, template.kind, s.title, docNumber, s.leadId, template.body, JSON.stringify(template.fields),
+      template.lineItems ? JSON.stringify(template.lineItems) : null, template.emailSubject, template.emailBody,
+      JSON.stringify(s.values), JSON.stringify(s.lineItems), JSON.stringify(s.skipped), JSON.stringify(s.messages),
+      JSON.stringify(s.step), s.status, userId,
+    ]
+  );
+  return rows[0].id;
+}
+
+/**
+ * 구조화된 입력으로 문서 채우기 (Sales Agent): 리드 → 항목 값 → 품목 → 완성.
+ * OpenAI를 부르지 않는다. 이메일·전화번호 항목은 리드에서만 채운다(allowPrivate=false).
+ * 필수 항목이 비면 초안으로 두고 다음 질문을 남긴다 → 비어 있는 항목 이름
+ */
+export function fillFromInput(
+  d: DocShape, s: DocState,
+  input: { lead: LeadLite | null; values: Record<string, string>; lineItems: LineItem[] }
+): string[] {
+  if (input.lead) selectLead(d, s, input.lead, []);
+  applyValues(d, s, input.values, false);
+  if (itemsEnabled(d) && input.lineItems.length) {
+    s.lineItems = input.lineItems.slice(0, ITEM_LIMITS.count);
+    if (!s.skipped.includes(ITEMS_KEY)) s.skipped.push(ITEMS_KEY);
+  }
+  const missing = missingList(d, s);
+  if (missing.length === 0) complete(d, s, false);
+  else ask(d, s);
+  return missing;
 }
 
 /** 문서 복제 (발송한 문서를 고칠 때): 값·품목·리드를 그대로 두고 새 문서번호로 */
@@ -634,15 +661,20 @@ export async function duplicateDocument(src: LoadedDocument, userId: string | nu
   });
 }
 
+/** 발송 후 제안할 단계: 견적서 → 제안/견적, 계약서 → 협상 (이미 그 단계 이후거나 수주·실주면 없음) */
+export function suggestedStage(kind: DocKind, stage: StageId): StageId | null {
+  const target: StageId = kind === "quote" ? "proposal" : "negotiation";
+  const order = STAGES.map((x) => x.id);
+  return stage === "won" || stage === "lost" || order.indexOf(stage) >= order.indexOf(target) ? null : target;
+}
+
 /** 발송 후 Assistant 메시지 + 리드 단계 이동 제안 (견적서 → 제안/견적, 계약서 → 협상) */
 export function afterSendMessages(
   s: DocState, kind: DocKind, to: string[], link: string, lead: { company: string; stage: StageId } | null
 ) {
   say(s, `✓ ${to.join(", ")}에 ${KIND_LABEL[kind]}를 보냈어요.`, { kind: "sent", link });
-  if (!lead) return;
-  const target: StageId = kind === "quote" ? "proposal" : "negotiation";
-  const order = STAGES.map((x) => x.id);
-  if (lead.stage === "won" || lead.stage === "lost" || order.indexOf(lead.stage) >= order.indexOf(target)) return;
+  const target = lead ? suggestedStage(kind, lead.stage) : null;
+  if (!lead || !target) return;
   say(s, `${lead.company} 리드를 ‘${stageName(target)}’ 단계로 옮길까요? (현재: ${stageName(lead.stage)})`, {
     kind: "question",
     quick: [{ label: `${stageName(target)}로 이동`, action: "move_stage", value: target }, { label: "그대로 두기", action: "keep_stage" }],

@@ -32,6 +32,7 @@ const PLAN_BADGE: Record<AgentPlanStatus, { tone: BadgeTone; label: string }> = 
   done: { tone: "success", label: "완료" },
   failed: { tone: "danger", label: "실패" },
   canceled: { tone: "neutral", label: "취소됨" },
+  draft: { tone: "info", label: "초안" },
 };
 
 const TARGET_LABEL: Record<AgentTarget["kind"], string> = {
@@ -63,17 +64,20 @@ function StepList({ steps }: { steps: AgentStep[] }) {
 
 /** 실행 계획 카드: 바뀌는 값(전/후) + 승인·취소·수정 요청 */
 function PlanCard({
-  plan, onApprove, onCancel, onRevise, onOpenTarget,
+  plan, onApprove, onCancel, onRevise, onSendDraft, onOpenTarget,
 }: {
   plan: AgentPlan;
   onApprove: () => void;
   onCancel: () => void;
   onRevise: () => void;
+  /** 초안 카드: 이 내용으로 발송 계획을 만들어 달라고 요청 */
+  onSendDraft: () => void;
   onOpenTarget: (target: AgentTarget) => void;
 }) {
   const badge = PLAN_BADGE[plan.status];
   const pending = plan.status === "pending";
   const running = plan.status === "running";
+  const draft = plan.status === "draft";
   return (
     <section className={`plan-card plan-${plan.status}`} aria-label={`실행 계획: ${plan.title}`}>
       <div className="plan-head">
@@ -101,7 +105,7 @@ function PlanCard({
           </tbody>
         </table>
       )}
-      {plan.notice && plan.status === "pending" && (
+      {plan.notice && (pending || draft) && (
         <Alert tone={plan.notice.tone} plain>
           {plan.notice.text}
         </Alert>
@@ -111,7 +115,7 @@ function PlanCard({
           {plan.message}
         </Alert>
       )}
-      {(pending || running || plan.target) && (
+      {(pending || running || draft || plan.target) && (
         <div className="plan-actions">
           {plan.target && plan.status !== "canceled" && (
             <Button size="sm" variant="ghost" icon="link" onClick={() => onOpenTarget(plan.target!)}>
@@ -124,8 +128,15 @@ function PlanCard({
               <Button size="sm" variant="ghost" disabled={running} onClick={onCancel}>취소</Button>
               <Button size="sm" variant="secondary" icon="edit" disabled={running} onClick={onRevise}>수정 요청</Button>
               <Button size="sm" variant={plan.danger ? "danger" : "primary"} disabled={running} onClick={onApprove}>
-                {running ? "처리 중…" : plan.danger ? "삭제 승인" : "승인"}
+                {running ? "처리 중…" : (plan.approveLabel ?? "승인")}
               </Button>
+            </>
+          )}
+          {draft && (
+            <>
+              <span className="spacer" />
+              <Button size="sm" variant="secondary" icon="edit" onClick={onRevise}>수정 요청</Button>
+              <Button size="sm" variant="primary" icon="mail" onClick={onSendDraft}>이대로 보내기 요청</Button>
             </>
           )}
         </div>
@@ -153,9 +164,9 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
     await send(text);
   };
 
-  /** 수정 요청: 기존 계획은 취소하고, 입력창에 고칠 내용을 적게 한다 */
+  /** 수정 요청: 기존 계획은 취소하고(초안은 저장된 게 없어 그대로), 입력창에 고칠 내용을 적게 한다 */
   const revise = (messageId: string, plan: AgentPlan) => {
-    cancel(messageId, plan);
+    if (plan.status !== "draft") cancel(messageId, plan);
     setInput(`「${plan.title}」 계획 수정: `);
     requestAnimationFrame(() => {
       const el = inputRef.current;
@@ -209,6 +220,7 @@ export default function AgentView({ chat, onOpenTarget }: Props) {
                   onApprove={() => approve(m.id, p)}
                   onCancel={() => cancel(m.id, p)}
                   onRevise={() => revise(m.id, p)}
+                  onSendDraft={() => submit(`「${p.title}」 초안 그대로 메일을 보내줘`)}
                   onOpenTarget={onOpenTarget}
                 />
               ))}

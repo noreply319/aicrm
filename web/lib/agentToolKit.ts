@@ -20,6 +20,9 @@ export interface PreparedPlan {
   target?: AgentTarget;
   danger?: boolean;
   notice?: AgentPlan["notice"];
+  approveLabel?: string;
+  /** 초안 카드: 저장·승인 없이 보여주기만 한다 (메일 초안) */
+  draft?: boolean;
   /** 저장할 인자 (execute에 그대로 전달) */
   args: Args;
 }
@@ -31,6 +34,8 @@ export type ExecResult =
       target?: AgentTarget;
       /** 승인 트랜잭션이 커밋된 뒤 실행할 후속 작업 (AI 요약 등 오래 걸리는 일). 돌려준 문장을 결과 메시지에 덧붙인다 */
       after?: () => Promise<string | undefined>;
+      /** 실행 뒤 이어서 만들 계획 (예: 견적서 발송 → 리드 단계 이동). 커밋 후 prepare해 새 카드로 보여준다 */
+      next?: { tool: string; args: Args }[];
     }
   | { ok: false; message: string };
 
@@ -47,7 +52,8 @@ export interface WriteTool {
   def: ToolDef;
   label: string;
   prepare: (args: Args, userId: string) => Promise<PreparedPlan | { error: string }>;
-  execute: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
+  /** 승인 때 실행. 초안만 보여주는 도구(prepare가 draft)는 없다 */
+  execute?: (client: PoolClient, userId: string, args: Args) => Promise<ExecResult>;
 }
 
 export type AgentTool = ReadTool | WriteTool;
@@ -77,6 +83,10 @@ export function parseFields<T, K extends string>(
   const v = parse({ ...base, ...Object.fromEntries(keys.map((k) => [k, a[k]])) });
   return v.ok ? { ok: true, data: v.data, keys } : v;
 }
+
+/** args[key]의 UUID 목록 (UUID가 아닌 값은 버린다) */
+export const idListArg = (a: Args, key: string): string[] =>
+  Array.isArray(a[key]) ? (a[key] as unknown[]).filter((x): x is string => typeof x === "string" && UUID_RE.test(x)) : [];
 
 /** args[key]가 UUID면 그 값 */
 export const idArg = (a: Args, key: string): string | null =>

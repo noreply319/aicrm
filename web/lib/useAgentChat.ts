@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import type { AgentEvent, AgentMessage, AgentPlan, AgentStep } from "./types";
+import type { AgentDecision, AgentEvent, AgentMessage, AgentPlan, AgentStep } from "./types";
 
 let seq = 0;
 const newId = () => `m${Date.now().toString(36)}-${++seq}`;
@@ -130,8 +130,10 @@ export function useAgentChat({ onChanged }: { onChanged: () => void }) {
       const setPlan = (p: AgentPlan) => patchMessage(messageId, (m) => ({ ...m, plans: upsertPlan(m.plans, p) }));
       setPlan({ ...plan, status: "running", message: undefined });
       try {
-        const next = await api<AgentPlan>(`/api/agent/actions/${encodeURIComponent(plan.id)}/${action}`, { method: "POST" });
+        const { followUps, ...next } = await api<AgentDecision>(`/api/agent/actions/${encodeURIComponent(plan.id)}/${action}`, { method: "POST" });
         setPlan(next);
+        // 실행 뒤 이어서 제안하는 계획 카드 (예: 발송 후 단계 이동)
+        if (followUps?.length) patchMessage(messageId, (m) => ({ ...m, plans: followUps.reduce(upsertPlan, m.plans ?? []) }));
         // 실행되면 리드·노트·일정·회사·연락처 화면 데이터를 새로 불러온다
         if (next.status === "done") onChanged();
       } catch (e) {

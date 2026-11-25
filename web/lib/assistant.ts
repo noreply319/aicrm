@@ -271,13 +271,14 @@ function calendarRules(state: CalendarState, userName: string): string {
 const READ_ONLY_RULES = `- 당신은 데이터를 조회만 할 수 있습니다. 수정·삭제 요청에는 보드에서 직접 하도록 안내하세요.
   일정 등록 요청에는 "캘린더 메뉴의 일정 추가" 또는 "미팅 노트 저장 시 다음 미팅 등록"을 안내하세요.`;
 
-const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact,
-  search_meeting_notes, get_meeting_note, 캘린더·이메일 조회)는 바로 실행됩니다.
+const agentRules = (userName: string) => `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact,
+  search_meeting_notes, get_meeting_note, list_templates, list_documents, 캘린더·이메일 조회)는 바로 실행됩니다.
   최신 값이 필요하면 먼저 조회하세요.
 - 리드 생성·수정·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead,
   회사 등록·수정은 create_company / update_company, 연락처 등록·수정은 create_contact / update_contact,
   리드에 담당 연락처 지정은 link_contact_to_lead, 미팅 노트 작성은 create_meeting_note,
-  캘린더 일정 등록·변경·취소는 create_calendar_event / update_calendar_event / cancel_calendar_event 도구를 호출하세요.
+  캘린더 일정 등록·변경·취소는 create_calendar_event / update_calendar_event / cancel_calendar_event,
+  견적서·계약서 작성·발송은 create_document / send_document, 일반 메일은 send_email(초안만 원하면 draft_email) 도구를 호출하세요.
   이 도구는 바로 실행되지 않고 "실행 계획" 카드로 사용자에게 보여지며, 사용자가 승인해야 실행됩니다.
   절대 "변경했습니다/옮겼습니다"라고 말하지 마세요. "아래 계획을 확인하고 승인하면 반영됩니다"처럼 안내하세요.
 - 리드·회사·연락처는 CRM 데이터의 id(leads.id, companies.id, contacts.id)로 지정하세요. 대상이 여럿이거나 불분명하면 도구를 호출하지 말고 되물으세요.
@@ -289,7 +290,10 @@ const AGENT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, s
   애매하면(오전/오후, 몇째 주) 되물으세요. 일정 변경·취소는 scheduledMeetings.id 또는 캘린더 조회 결과의 scheduleId로 지정하며, CRM에서 등록한 본인 일정만 가능합니다.
   초대 메일(invite)은 사용자가 리드 담당자에게 초대를 보내 달라고 명시했을 때만 true로 하세요.
 - 캘린더 도구가 "연동되지 않았습니다/만료되었습니다" error를 돌려주면 프로필 메뉴의 설정 → Google 연동에서 다시 연동하도록 안내하세요.
-- 회사·연락처·미팅 노트 삭제, 메일·문서 발송은 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
+- 메일: 받는 사람 주소는 서버가 리드 담당자로 정합니다(주소를 묻거나 넣지 마세요). 참조는 같은 회사 연락처 id(ccContactIds)로만 지정합니다.
+  본문은 정중한 한국어 업무 메일로 쓰고 끝에 ${userName || "보내는 사람"} 이름으로 서명하세요. 메일 발송은 되돌릴 수 없으니 사용자가 보내 달라고 했을 때만 send_*를 쓰세요.
+- 견적서·계약서: 먼저 list_templates로 템플릿·항목을 확인하고, 사용자가 말한 값·품목만 넣으세요(지어내지 마세요). 이메일·전화 항목은 리드에서 자동으로 채워집니다.
+- 회사·연락처·미팅 노트 삭제는 아직 지원하지 않습니다. 해당 화면에서 직접 하도록 안내하세요.`;
 
 /** assistant: 조회 전용 AI Assistant, agent: 변경은 실행 계획으로만 만드는 Sales Agent */
 export type PromptMode = "assistant" | "agent";
@@ -319,13 +323,14 @@ function systemPrompt(
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
   meeting_scheduled/meeting_rescheduled/meeting_canceled(다음 미팅 등록/변경/취소). by는 변경한 사용자입니다.
   document_sent(계약서·견적서 메일 발송: kind=contract 계약서/quote 견적서, title, docNumber, recipients=받는 사람 수).
+  email_sent(Sales Agent로 보낸 일반 메일: subject, recipients=받는 사람 수).
 - 이력은 최근 ${MAX_EVENTS}건까지만 포함됩니다.
 - scheduledMeetings는 CRM에서 잡은 다음 미팅입니다(팀 전체). status: scheduled(등록자 owner의 구글 캘린더에 등록됨),
   candidate(미팅 노트에서 찾았지만 아직 확정 안 됨, certainty=tentative면 시간 미정). 다른 팀원의 미팅은 여기서 답하세요.
   candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
 ${calendarRules(state, userName)}
 ${gmailRules(gmail, userName)}
-${mode === "agent" ? AGENT_RULES : READ_ONLY_RULES}
+${mode === "agent" ? agentRules(userName) : READ_ONLY_RULES}
 - 답변은 짧은 문장이나 "- " 목록으로 작성하고, 마크다운 강조(**, #)는 쓰지 마세요 (일반 텍스트로 표시됩니다).
 
 CRM 데이터(JSON):
@@ -485,6 +490,7 @@ export function toolDetail(result: unknown): string | undefined {
   const r = result as Record<string, unknown>;
   if (typeof r.error === "string") return r.error;
   if (r.status === "pending_approval") return "승인 대기";
+  if (r.status === "draft_shown") return "초안";
   if (Array.isArray(r.events)) return `일정 ${r.events.length}건`;
   if (Array.isArray(r.emails)) return `메일 ${r.emails.length}건`;
   if (Array.isArray(r.leads)) return `리드 ${typeof r.count === "number" ? r.count : r.leads.length}건`;

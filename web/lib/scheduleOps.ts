@@ -5,8 +5,8 @@ import {
   deleteEvent, EVENT_ID_RE, inputRange, patchEvent, scheduleSnapshot, SCHEDULE_COLUMNS, SCHEDULE_FROM, toSchedule, type ScheduleRow,
 } from "./calendar";
 import { pool } from "./db";
-import { recordEvent, withTransaction } from "./events";
-import { eventDescription, inSavepoint } from "./schedules";
+import { inSavepoint, recordEvent, withTransaction } from "./events";
+import { eventDescription } from "./schedules";
 import type { CalendarEvent, CalendarEventInput, ScheduledMeeting } from "./types";
 
 /**

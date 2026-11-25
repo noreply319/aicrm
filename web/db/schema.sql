@@ -61,7 +61,7 @@ WHERE NOT EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = l.id);
 ALTER TABLE lead_events DROP CONSTRAINT IF EXISTS lead_events_type_check;
 ALTER TABLE lead_events ADD CONSTRAINT lead_events_type_check
   CHECK (type IN ('created','updated','moved','deleted','note_created','note_updated','note_deleted',
-                  'meeting_scheduled','meeting_rescheduled','meeting_canceled','document_sent'));
+                  'meeting_scheduled','meeting_rescheduled','meeting_canceled','document_sent','email_sent'));
 
 -- 미팅 노트: 리드에 연결(나중에 지정 가능 → NULL 허용), 리드 삭제 시 함께 삭제
 -- 녹음 원본은 저장하지 않고 전사 텍스트만 body에 저장한다

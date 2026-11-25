@@ -460,6 +460,13 @@ function addressList(v: unknown): string[] | null {
   return list.every(isMailAddress) ? list : null;
 }
 
+/** 메일 제목(한 줄, 200자)·본문(10,000자) */
+export function parseMailText(b: Record<string, unknown>): { ok: true; data: { subject: string; body: string } } | { ok: false; error: string } {
+  const subject = oneLine(b.subject, 200);
+  if (!subject) return { ok: false, error: "메일 제목을 입력하세요" };
+  return { ok: true, data: { subject, body: longText(b.body, 10_000) } };
+}
+
 /** 문서 메일 발송: { to[], cc[], subject, body, fileName } */
 export function parseSendInput(body: unknown):
   { ok: true; data: { to: string[]; cc: string[]; subject: string; body: string; fileName: string } } | { ok: false; error: string } {
@@ -469,9 +476,9 @@ export function parseSendInput(body: unknown):
   if (!to || !cc) return { ok: false, error: "이메일 주소 형식을 확인하세요" };
   if (to.length === 0) return { ok: false, error: "받는 사람을 입력하세요" };
   if (to.length + cc.length > 20) return { ok: false, error: "받는 사람·참조는 합쳐서 20명 이하로 입력하세요" };
-  const subject = oneLine(b.subject, 200);
-  if (!subject) return { ok: false, error: "메일 제목을 입력하세요" };
-  const text = longText(b.body, 10_000);
+  const t = parseMailText(b);
+  if (!t.ok) return t;
+  const { subject, body: text } = t.data;
   let fileName = oneLine(b.fileName, 120).replace(/[\\/:*?"<>|]+/g, "_");
   if (!fileName) return { ok: false, error: "파일 이름을 입력하세요" };
   if (!/\.pdf$/i.test(fileName)) fileName += ".pdf";
