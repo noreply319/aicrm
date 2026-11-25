@@ -109,7 +109,7 @@ export default function ContactList({ contacts, companies, stats, team, meId, qu
         <EmptyState icon="🔍" title="조건에 맞는 연락처가 없어요" description="검색어나 필터를 바꿔 보세요." />
       ) : (
         <>
-          <div className="contact-table-wrap">
+          <div className="table-wrap">
           <table className="company-table contact-table">
             <thead>
               <tr>
