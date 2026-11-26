@@ -1117,3 +1117,15 @@
 > Commit 하고 push해줘.
 
 - 결과: 통합(150) 커밋, `feat/assistant-crm-write`·`main` push → Vercel 운영 배포
+
+## 152. 2026-11-26 — Vercel 미팅 녹음 에러 원인 분석·수정, 최대 1시간
+
+> Vercel에서 미팅 노트 녹음할때 에러가 났는데, 원인 분석해고 해결해줘. 그리고 미팅 녹음은 최대 1시간 가능하도록 수정해줘.
+
+- 결과: Vercel 로그는 권한(403)으로 못 봄 → 코드 분석. 마이크 녹음은 5분 구간을 화자 구분 전사(`gpt-4o-transcribe-diarize`)해 OpenAI 대기 55초·함수 60초를 넘기기 쉬움(파일 업로드는 약 1.5분 구간이라 정상) → 구간 2분(`RECORD_SEGMENT_SEC`), 시간 초과·5xx·연결 끊김은 자동 재시도 2회, JSON이 아닌 504·413 응답 한국어 안내. 녹음 최대 60분은 이미 적용돼 있어 유지(파일 업로드 90분 유지). build 통과(테스트 실행 안 함)
+
+## 153. 2026-11-26 — 커밋·push
+
+> Commit 하고 push해줘.
+
+- 결과: 녹음 수정(152) 커밋, `feat/assistant-crm-write`·`main` push → Vercel 운영 배포

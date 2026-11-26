@@ -21,7 +21,12 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => ({}));
     const msg = body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "";
-    throw new ApiError(msg || `요청 실패 (${res.status})`, res.status, body);
+    // JSON이 아닌 응답: Vercel 함수 시간 초과(504)·요청 크기 초과(413) 등 플랫폼 에러
+    const fallback =
+      res.status === 504 ? "서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도하세요"
+        : res.status === 413 ? "업로드 크기가 너무 큽니다"
+          : `요청 실패 (${res.status})`;
+    throw new ApiError(msg || fallback, res.status, body);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }

@@ -48,8 +48,11 @@ export const NOTE_BODY_MAX = 50000;
 export const NOTE_TITLE_MAX = 200;
 export const NOTE_SUMMARY_MAX = 5000;
 
-/** 녹음: 5분 구간마다 전사, 최대 60분 */
-export const RECORD_SEGMENT_SEC = 5 * 60;
+/**
+ * 녹음: 2분 구간마다 전사, 최대 60분.
+ * 화자 구분 전사(diarize)는 음성 길이에 비례해 오래 걸려 5분 구간은 Vercel 함수 시간(60초)을 넘길 수 있다 → 2분
+ */
+export const RECORD_SEGMENT_SEC = 2 * 60;
 export const RECORD_MAX_SEC = 60 * 60;
 export const RECORD_WARN_SEC = 55 * 60;
 /** 전사 업로드 1건 최대 크기 (Vercel 요청 본문 한도 4.5MB보다 작게) */

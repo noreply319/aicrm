@@ -3,7 +3,7 @@ import { AUDIO_MAX_BYTES } from "@/lib/constants";
 import { AiError, MAX_KNOWN_SPEAKERS, transcribeAudio, type KnownSpeaker } from "@/lib/openai";
 
 export const dynamic = "force-dynamic";
-// 5분 구간 전사 대기 시간 (Vercel 함수 실행 시간)
+// 2분 구간 전사 대기 시간 (Vercel 함수 실행 시간)
 export const maxDuration = 60;
 
 // 화자 참조 음성 1개 최대 크기 (16kHz WAV 10초 ≈ 320KB)

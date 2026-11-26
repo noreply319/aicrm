@@ -395,7 +395,7 @@ export default function MeetingNoteModal({
               className="note-body-input"
               value={body}
               maxLength={NOTE_BODY_MAX}
-              placeholder={tab === "record" ? "녹음을 시작하면 5분마다 전사 결과가 여기에 추가됩니다." : "회의록이나 메모를 입력하거나 붙여넣으세요."}
+              placeholder={tab === "record" ? "녹음을 시작하면 2분마다 전사 결과가 여기에 추가됩니다." : "회의록이나 메모를 입력하거나 붙여넣으세요."}
               onChange={(e) => {
                 setBody(e.target.value);
                 // 전사 결과를 고치는 것은 붙여넣기로 보지 않는다

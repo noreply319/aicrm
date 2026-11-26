@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { extractClip, splitAudioFile } from "@/lib/audioFile";
 import { AUDIO_MAX_BYTES, RECORD_MAX_SEC, RECORD_SEGMENT_SEC, RECORD_WARN_SEC } from "@/lib/constants";
 import { Alert, Button, Input, buttonClass } from "./ui";
 
 /**
  * 미팅 녹음
- *  - 본문: 5분 구간마다 화자 구분 전사(gpt-4o-transcribe-diarize)한 텍스트를 "화자 1: …" 형식으로 이어 붙임
+ *  - 본문: 2분 구간마다 화자 구분 전사(gpt-4o-transcribe-diarize)한 텍스트를 "화자 1: …" 형식으로 이어 붙임
  *    구간마다 따로 전사해도 같은 사람이 같은 이름을 갖도록, 처음 나온 화자의 2~8초 음성을 참조로 다음 구간에 보낸다
  *  - 화면 잠금·앱 전환으로 마이크가 끊기면 돌아왔을 때 자동으로 이어서 녹음
  *  - 잠금 중에도 녹음해야 하면 휴대폰 녹음 앱 파일을 업로드해 구간 전사
@@ -56,7 +56,7 @@ interface TranscribeResult {
 // 참조 음성을 함께 보낼 수 있는 화자 수 (OpenAI 제한)
 const MAX_KNOWN_SPEAKERS = 4;
 
-// 저비트레이트 음성 녹음 (5분 ≈ 1.2MB)
+// 저비트레이트 음성 녹음 (2분 ≈ 0.5MB)
 const AUDIO_BPS = 32_000;
 // 브라우저가 비트레이트를 무시해 구간이 커지면 업로드 한도 전에 구간을 넘긴다
 // (화자 참조 음성 최대 ≈1MB와 함께 Vercel 요청 한도 4.5MB 안에 들어가도록 3MB)
@@ -64,6 +64,24 @@ const ROTATE_BYTES = Math.min(3_000_000, AUDIO_MAX_BYTES);
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 // 화면이 이 시간 이상 가려졌는데 녹음 데이터가 늘지 않았으면 끊긴 것으로 본다
 const HIDDEN_CHECK_MS = 3000;
+
+// 일시적인 실패(시간 초과·서버 오류·연결 끊김)는 자동으로 다시 보낸다 (대기 ms)
+const RETRY_DELAYS = [2_000, 6_000];
+
+/** 일시적인 실패인지: 서버 5xx·429·네트워크 에러 (400·413 등 요청 자체 문제는 다시 보내지 않는다) */
+const isTransient = (e: unknown) =>
+  e instanceof ApiError ? e.status >= 500 || e.status === 429 : e instanceof TypeError;
+
+async function transcribeWithRetry(form: FormData): Promise<TranscribeResult> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api<TranscribeResult>("/api/meetings/transcribe", { method: "POST", body: form });
+    } catch (e) {
+      if (attempt >= RETRY_DELAYS.length || !isTransient(e)) throw e;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
 
 const pickMime = () =>
   MIME_CANDIDATES.find((m) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(m)) ?? "";
@@ -218,7 +236,7 @@ export default function MeetingRecorder({ disabled, onTranscript, onStatus, onRe
             form.append("speakerName", sp.name);
             form.append("speakerRef", sp.ref, "speaker.wav");
           }
-          const result = await api<TranscribeResult>("/api/meetings/transcribe", { method: "POST", body: form });
+          const result = await transcribeWithRetry(form);
           if (!mountedRef.current) return;
           const text = await formatSpeakers(result, seg.blob);
           // 전사가 끝난 구간의 음성은 메모리에서 버린다
