@@ -5,7 +5,7 @@ import type { AgentPlan } from "./types";
 
 /**
  * 실행 계획 카드의 "수정 요청": 계획은 취소하고(초안은 저장된 게 없어 그대로), 입력창에 고칠 내용을 적게 한다.
- * Sales Agent(AgentView)·AI Assistant(AssistantPanel) 공용.
+ * AI Assistant(AssistantPanel).
  */
 export function useReviseInput(
   inputRef: RefObject<HTMLTextAreaElement | null>,

@@ -7,7 +7,8 @@ import type { AgentMessage, AgentPlan, AgentStep, ChatMessage, ConversationDetai
 import { UUID_RE } from "./validate";
 
 /**
- * AI Assistant·Sales Agent 대화 기록 (chat_conversations·chat_messages). 사용자 본인 것만 읽고 쓴다.
+ * AI Assistant 대화 기록 (chat_conversations·chat_messages). 사용자 본인 것만 읽고 쓴다.
+ * source는 대화를 만든 화면(통합 전 Sales Agent 대화는 agent) — 목록·이어 쓰기는 source와 관계없이 하나로 본다.
  * 답변이 끝나면 서버가 질문·답변을 한 번에 저장한다 (화면을 닫거나 멈춰도 답변은 저장된다).
  * 계획 카드는 승인 상태가 바뀌므로 id만 저장하고 불러올 때 agent_actions에서 지금 상태로 읽는다.
  * 저장하지 않는 계획(메일 초안 카드)은 카드 내용을 그대로 저장한다.
@@ -33,22 +34,21 @@ export function conversationTitle(question: string): string {
   return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX)}…` : line || "새 대화";
 }
 
-export async function listConversations(userId: string, source: AgentSource): Promise<ConversationSummary[]> {
+export async function listConversations(userId: string): Promise<ConversationSummary[]> {
   const { rows } = await pool.query<ConversationRow>(
     `SELECT id, title, updated_at AS "updatedAt" FROM chat_conversations
-     WHERE user_id = $1 AND source = $2 ORDER BY updated_at DESC LIMIT ${LIST_LIMIT}`,
-    [userId, source]
+     WHERE user_id = $1 ORDER BY updated_at DESC LIMIT ${LIST_LIMIT}`,
+    [userId]
   );
   return rows.map(toSummary);
 }
 
-/** 본인 대화인지 확인 (source를 주면 같은 화면의 대화인지도) */
-export async function findConversation(userId: string, id: string, source?: AgentSource): Promise<ConversationSummary | null> {
+/** 본인 대화인지 확인 */
+export async function findConversation(userId: string, id: string): Promise<ConversationSummary | null> {
   if (!UUID_RE.test(id)) return null;
   const { rows } = await pool.query<ConversationRow>(
-    `SELECT id, title, updated_at AS "updatedAt" FROM chat_conversations
-     WHERE id = $1 AND user_id = $2 AND ($3::text IS NULL OR source = $3)`,
-    [id, userId, source ?? null]
+    `SELECT id, title, updated_at AS "updatedAt" FROM chat_conversations WHERE id = $1 AND user_id = $2`,
+    [id, userId]
   );
   return rows[0] ? toSummary(rows[0]) : null;
 }

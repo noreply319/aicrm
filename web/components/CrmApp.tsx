@@ -12,7 +12,6 @@ import { useContacts } from "@/lib/useContacts";
 import { useLeads } from "@/lib/useLeads";
 import { useAgentChat } from "@/lib/useAgentChat";
 import { useKeyboardViewport } from "@/lib/useKeyboardViewport";
-import { useBusinessCards } from "@/lib/useBusinessCards";
 import { useMe } from "@/lib/useMe";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useMeetings } from "@/lib/useMeetings";
@@ -35,7 +34,6 @@ import EventModal, { type EventModalMode } from "./EventModal";
 import ScheduleSuggestModal from "./ScheduleSuggestModal";
 import SettingsView from "./SettingsView";
 import ContractsView from "./ContractsView";
-import AgentView from "./AgentView";
 import type { CardHost } from "./BusinessCardConfirm";
 import CompanyList from "./CompanyList";
 import CompanyDetail from "./CompanyDetail";
@@ -85,8 +83,7 @@ type EventModalState =
 
 /** 첫 화면(/)은 AI Assistant 대화, 파이프라인은 /pipeline */
 const viewOf = (pathname: string): View =>
-  pathname.startsWith("/agent") ? "agent"
-  : pathname.startsWith("/pipeline") ? "pipeline"
+  pathname.startsWith("/pipeline") ? "pipeline"
   : pathname.startsWith("/companies") ? "companies"
   : pathname.startsWith("/contacts") ? "contacts"
   : pathname.startsWith("/meetings") ? "meetings"
@@ -319,7 +316,7 @@ export default function CrmApp() {
     router.push(`/contacts/${id}`);
   }, [router]);
 
-  /** 화면 데이터 전체 다시 불러오기 (Sales Agent 실행 후·에러 배너 "다시 불러오기") */
+  /** 화면 데이터 전체 다시 불러오기 (AI Assistant 실행 후·에러 배너 "다시 불러오기") */
   const { reload: reloadMeetings } = meetings;
   const { reload: reloadSchedules } = sched;
   const { reload: reloadCompanies } = companiesApi;
@@ -332,12 +329,10 @@ export default function CrmApp() {
     reloadContacts();
   }, [reload, reloadMeetings, reloadSchedules, reloadCompanies, reloadContacts]);
 
-  /** Sales Agent 대화: 화면을 옮겨도 유지되도록 여기서 가진다. 계획이 실행되면 바뀌었을 수 있는 데이터를 모두 새로 불러온다 */
-  const agent = useAgentChat({ onChanged: reloadAll });
-  /** AI Assistant 일반 대화 (Sales Agent와 따로): 리드 변경 계획이 승인되면 보드·통계를 바로 새로 불러온다 */
-  const assistantChat = useAgentChat({ onChanged: reloadAll, endpoint: "/api/assistant" });
+  /** AI Assistant 대화: 화면을 옮겨도 유지되도록 여기서 가진다. 계획이 실행되면 바뀌었을 수 있는 데이터를 모두 새로 불러온다 */
+  const assistantChat = useAgentChat({ onChanged: reloadAll });
 
-  /** Sales Agent·AI Assistant 실행 계획 카드의 대상으로 이동 */
+  /** AI Assistant 실행 계획 카드의 대상으로 이동 */
   const openAgentTarget = useCallback(
     (t: AgentTarget) => {
       if (t.kind === "lead") openLead(t.id);
@@ -351,8 +346,7 @@ export default function CrmApp() {
     [openLead, openCompany, openContact, openNote, router]
   );
 
-  /** 명함 → 회사·연락처 (Assistant 패널·Sales Agent 공용). Agent 화면의 카드는 화면을 옮겨도 남도록 여기서 가진다 */
-  const agentCards = useBusinessCards();
+  /** 명함 → 회사·연락처 (Assistant 패널의 확인 카드가 쓰는 저장·이동) */
   const { updateContact: updateContactApi } = contactsApi;
   const { addCompany } = companiesApi;
   const cardHost: CardHost = useMemo(
@@ -375,7 +369,7 @@ export default function CrmApp() {
   );
 
   /** 대화 화면이 따로 있는 화면은 조회형 Assistant 패널을 숨긴다 */
-  const hideAssistant = view === "contracts" || view === "agent";
+  const hideAssistant = view === "contracts";
   // 모바일 AI 채팅(첫 화면·전체 화면 채팅): 키보드가 열려도 상단은 그대로, 입력창만 키보드 위로
   const mobile = useMediaQuery(MOBILE_QUERY);
   useKeyboardViewport(mobile && (view === "assistant" || (assistantOpen && !hideAssistant)));
@@ -652,7 +646,7 @@ export default function CrmApp() {
     <SettingsModalContext value={openSettings}>
       {/* home: 첫 화면(/) — AI Assistant 대화가 메인 영역 전체를 쓴다.
           ai-open: 다른 화면의 모바일에서 AI 채팅이 메뉴·상단 바·메인 대신 화면 전체를 쓰는 별도 화면이 된다 */}
-      <div className={`app-shell${view === "assistant" ? " home" : view === "agent" ? " agent-screen" : assistantOpen && !hideAssistant ? " ai-open" : ""}`}>
+      <div className={`app-shell${view === "assistant" ? " home" : assistantOpen && !hideAssistant ? " ai-open" : ""}`}>
         <Sidebar
           view={view}
           me={auth.me}
@@ -795,8 +789,6 @@ export default function CrmApp() {
                   onDismissCandidate={dismissSchedule}
                   onExpired={auth.reload}
                 />
-              ) : view === "agent" ? (
-                <AgentView chat={agent} onOpenTarget={openAgentTarget} cards={agentCards} cardHost={cardHost} />
               ) : view === "contracts" ? (
                 <ContractsView me={auth.me} onLeadsChanged={reload} onMeChanged={auth.reload} onNotice={showToast} />
               ) : view === "meetings" ? (
@@ -811,7 +803,7 @@ export default function CrmApp() {
               ) : null}
             </div>
             {/* 닫아도 대화가 유지되도록 언마운트하지 않고 숨긴다 */}
-            {/* 계약서(문서 작성 Assistant)·Sales Agent 화면은 대화가 따로 있어 조회형 Assistant(다시 열기 탭 포함)를 숨긴다 */}
+            {/* 계약서(문서 작성 Assistant) 화면은 대화가 따로 있어 Assistant(다시 열기 탭 포함)를 숨긴다 */}
             <div className="assistant-slot" hidden={hideAssistant}>
               <AssistantPanel
                 open={assistantOpen}

@@ -11,7 +11,7 @@ import type { AgentEvent, AgentPlan, AgentStep } from "./types";
 import { parseChatInput, UUID_RE } from "./validate";
 
 /**
- * Sales Agent(/api/agent)·AI Assistant(/api/assistant) 공용: { messages } → NDJSON 스트림 (한 줄에 AgentEvent 하나, 마지막은 done)
+ * AI Assistant(/api/assistant): { messages } → NDJSON 스트림 (한 줄에 AgentEvent 하나, 마지막은 done)
  * 조회 도구는 바로 실행하고, 변경 도구는 실행 계획(plan)으로 보낸다 — 실행은 승인 API에서.
  * 대화 기록: { conversationId }가 있으면 그 대화에, 없으면 새 대화를 만들어(첫 이벤트로 알려줌) 답변이 끝나면 질문·답변을 저장한다.
  */
@@ -32,7 +32,7 @@ export async function agentStreamResponse(req: Request, source: AgentSource): Pr
     return NextResponse.json({ error: "잘못된 요청입니다" }, { status: 400 });
   }
   const conversation = requested
-    ? await findConversation(user.id, requested, source)
+    ? await findConversation(user.id, requested)
     : await createConversation(user.id, source, conversationTitle(question));
   if (!conversation) return NextResponse.json({ error: "대화를 찾을 수 없습니다" }, { status: 404 });
   // 이어 쓰는 대화는 저장된 기록(다른 기기에서 쓴 것 포함)에서 최근 + 이번 질문과 관련된 이전 대화를 골라 보낸다

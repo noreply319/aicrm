@@ -5,7 +5,7 @@ import { Alert, Badge, Button, Icon, type BadgeTone } from "./ui";
 
 /**
  * 실행 엔진의 답변 한 턴: 진행 단계 + 답변 + 실행 계획 카드(승인·취소·수정 요청) + 모두 승인.
- * Sales Agent(AgentView)·AI Assistant(AssistantPanel) 공용.
+ * AI Assistant(AssistantPanel) 답변 한 번.
  */
 interface Props {
   message: AgentMessage;

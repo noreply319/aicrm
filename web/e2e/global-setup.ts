@@ -36,7 +36,7 @@ export default async function setup() {
 async function warmUp() {
   const port = process.env.E2E_PORT ?? "3100";
   const headers = { cookie: `crm_session=${E2E_SESSION_TOKEN}` };
-  for (const path of ["/", "/pipeline", "/agent", "/companies", "/contacts", "/meetings", "/contracts", "/calendar"]) {
+  for (const path of ["/", "/pipeline", "/companies", "/contacts", "/meetings", "/contracts", "/calendar"]) {
     await fetch(`http://localhost:${port}${path}`, { headers, signal: AbortSignal.timeout(120_000) }).catch(() => undefined);
   }
 }

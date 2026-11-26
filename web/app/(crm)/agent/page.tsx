@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Sales Agent · Pipeline CRM" };
-
-// Sales Agent 화면 — 렌더링은 (crm)/layout.tsx의 CrmApp이 담당
+// Sales Agent는 AI Assistant(첫 화면)로 통합 — 예전 주소·북마크는 첫 화면으로 보낸다
 export default function AgentPage() {
-  return null;
+  redirect("/");
 }

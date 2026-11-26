@@ -140,7 +140,7 @@ export interface ChatMessage {
   content: string;
 }
 
-/* ───────── Sales Agent (/agent) ─────────
+/* ───────── AI Assistant 실행 엔진 (agent) ─────────
  * POST /api/agent { messages: ChatMessage[] } → NDJSON 스트림 (한 줄에 AgentEvent 하나)
  * 변경 작업은 바로 실행하지 않고 AgentPlan(승인 대기)으로 보내고, 승인/취소는
  * POST /api/agent/actions/[id]/approve · /cancel → AgentPlan (실행 결과 done/failed/canceled) */
@@ -200,7 +200,7 @@ export type AgentEvent =
   | { type: "conversation"; conversation: ConversationSummary }
   | { type: "done" };
 
-/** 저장된 대화 목록 한 줄 (AI Assistant·Sales Agent, 본인 것만) */
+/** 저장된 대화 목록 한 줄 (AI Assistant, 본인 것만 — 통합 전 Sales Agent 대화 포함) */
 export interface ConversationSummary {
   id: string;
   title: string;
@@ -212,7 +212,7 @@ export interface ConversationDetail extends ConversationSummary {
   messages: AgentMessage[];
 }
 
-/** AI Assistant·Sales Agent 대화 메시지 (보낼 때는 role·content만, 답변은 서버가 대화 기록에 저장한다) */
+/** AI Assistant 대화 메시지 (보낼 때는 role·content만, 답변은 서버가 대화 기록에 저장한다) */
 export interface AgentMessage {
   id: string;
   role: "user" | "assistant";

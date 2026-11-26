@@ -47,7 +47,7 @@ describe("Sales Agent 실행 계획", () => {
     expect(r).toMatchObject({ ok: true, plan: { status: "done", message: "협상 단계로 옮겼습니다", target: { kind: "lead", id: l.id } } });
     expect((await lead(l.id)).stage).toBe("negotiation");
     const ev = await events(l.id);
-    expect(ev.at(-1)).toMatchObject({ type: "moved", changes: { stage: { from: "qualified", to: "negotiation" }, via: "agent" } });
+    expect(ev.at(-1)).toMatchObject({ type: "moved", changes: { stage: { from: "qualified", to: "negotiation" }, via: "assistant" } });
   });
 
   it("두 번 승인하면 409, 다른 사용자는 404 (실행 안 됨)", async () => {
@@ -97,7 +97,7 @@ describe("Sales Agent 실행 계획", () => {
     expect(await decideAction(p.id, USER, "approve")).toMatchObject({ ok: true, plan: { status: "done" } });
     expect(await lead(l.id)).toMatchObject({ value: "5000000", priority: "low", notes: "기존 메모" });
     const ev = await events(l.id);
-    expect(ev.at(-1)).toMatchObject({ type: "updated", changes: { value: { from: 1_000_000, to: 5_000_000 }, via: "agent" } });
+    expect(ev.at(-1)).toMatchObject({ type: "updated", changes: { value: { from: 1_000_000, to: 5_000_000 }, via: "assistant" } });
   });
 
   it("삭제: 승인하면 리드 삭제 + deleted 이력, 대상 링크는 없어진다", async () => {
@@ -109,7 +109,7 @@ describe("Sales Agent 실행 계획", () => {
     expect(r).toMatchObject({ ok: true, plan: { status: "done" } });
     if (r.ok) expect(r.plan.target).toBeUndefined();
     expect(await lead(l.id)).toBeUndefined();
-    expect((await events(l.id)).at(-1)).toMatchObject({ type: "deleted", changes: { via: "agent" } });
+    expect((await events(l.id)).at(-1)).toMatchObject({ type: "deleted", changes: { via: "assistant" } });
   });
 
   it("생성: 새 회사면 카드에 표시, 승인하면 리드 생성 + 대상 링크", async () => {
@@ -120,7 +120,7 @@ describe("Sales Agent 실행 계획", () => {
     expect(r).toMatchObject({ ok: true, plan: { status: "done", target: { kind: "lead", label: "에이전트상사 · 김민수" } } });
     if (!r.ok || !r.plan.target) throw new Error("no target");
     expect(await lead(r.plan.target.id)).toMatchObject({ stage: "contacted", value: "3000000" });
-    expect((await events(r.plan.target.id))[0]).toMatchObject({ type: "created", changes: { via: "agent" } });
+    expect((await events(r.plan.target.id))[0]).toMatchObject({ type: "created", changes: { via: "assistant" } });
   });
 
   it("잘못된 계획은 만들지 않는다 (같은 단계, 바뀌는 값 없음, 잘못된 id·단계)", async () => {

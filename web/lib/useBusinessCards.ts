@@ -8,7 +8,7 @@ import { conflictContact } from "./useContacts";
 import type { BusinessCardDraft, BusinessCardExtract, BusinessCardMatch, BusinessCardSaved, BusinessCardSaveInput, Contact } from "./types";
 
 /**
- * 대화 화면(AI Assistant 패널·Sales Agent)의 명함 카드 목록.
+ * AI Assistant 대화의 명함 카드 목록.
  * 카드는 화면 전용 항목이라 OpenAI로 보내는 대화에는 들어가지 않는다 (명함의 이메일·전화가 이후 대화로 새지 않게).
  * afterIndex: 카드를 올릴 때의 대화 메시지 수 → 그 메시지 뒤에 보여준다.
  */

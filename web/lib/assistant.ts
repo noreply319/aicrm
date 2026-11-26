@@ -3,8 +3,6 @@ import { CONTACT_ROLE_LABEL, PRIORITY_LABEL, STAGES } from "./constants";
 import { weekday } from "./format";
 import { LEAD_COLUMNS, pool, toLead, type LeadRow } from "./db";
 import type { LeadEvent } from "./events";
-/** mode: assistant = AI Assistant(조회 + 리드 변경 계획), agent = Sales Agent(모든 변경 계획). 변경은 실행 계획으로만 */
-import type { AgentSource } from "./agentToolKit";
 import { featureState, type ConnectionState, type SessionUser } from "./auth";
 import { findRelevantEmails, searchStoredEmails, summarizePending, syncLeadEmails, type EmailContext } from "./emailStore";
 import { leadTarget } from "./gmail";
@@ -323,7 +321,7 @@ const PLAN_RULES = `- 변경 도구는 바로 실행되지 않고 "실행 계획
 - 금액은 원 단위 정수("3천만" → 30000000), 날짜는 YYYY-MM-DD(상대 날짜는 위의 현재 시각 KST 기준으로 계산), 단계는 id(${STAGES.map((s) => `${s.id}=${s.name}`).join(", ")})로 넘기세요.
 - 도구가 error를 돌려주면 그 이유를 사용자에게 알리세요.`;
 
-/** 리드·회사·연락처 변경 규칙 (AI Assistant·Sales Agent 공용) */
+/** 리드·회사·연락처 변경 규칙  */
 const CRM_RULES = `- 회사 등록·수정·삭제는 create_company / update_company / delete_company,
   연락처 등록·수정·삭제는 create_contact / update_contact / delete_contact, 리드에 담당 연락처 지정은 link_contact_to_lead 도구를 호출하세요.
 - 계획 도구가 "이미 있습니다"(중복) error를 돌려주면 새로 만들지 말고 그 기존 회사·연락처를 쓰자고 제안하세요.
@@ -333,16 +331,7 @@ const CRM_RULES = `- 회사 등록·수정·삭제는 create_company / update_co
 - 회사는 연결된 리드가 있으면 삭제할 수 없습니다. 삭제 요청이 거절되면 그 이유를 알리세요.
 - 이메일·전화번호·주소·사업자번호·대표자명·LinkedIn은 입력·변경할 수 없습니다(개인정보는 받지 않음). 회사·연락처 화면에서 직접 입력하도록 안내하세요.`;
 
-/** AI Assistant: 조회 + 리드·회사·연락처 변경 (미팅 노트·일정·메일·문서는 안내) */
-const ASSISTANT_RULES = `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact, 캘린더·이메일 조회)는 바로 실행됩니다.
-  조회 질문은 CRM 데이터로 바로 답하고, 변경할 때 최신 값이 필요하면 먼저 조회하세요.
-- 리드 생성·수정(금액·예상 마감일·우선순위·메모)·단계 이동·삭제는 create_lead / update_lead / move_lead_stage / delete_lead 도구를 호출하세요.
-  한 요청에 여러 변경(예: 금액 수정 + 단계 이동)이 있으면 각각 도구를 호출하세요. 리드 생성에는 회사명이 필요합니다. 없으면 되물으세요.
-${PLAN_RULES}
-${CRM_RULES}
-- 미팅 노트 작성, 일정 등록·변경, 메일·견적서·계약서 작성·발송은 여기서 할 수 없습니다.
-  왼쪽 메뉴의 Sales Agent 또는 해당 화면에서 하도록 안내하세요.`;
-
+/** 조회·변경 도구 규칙 (리드·회사·연락처·미팅 노트·일정·메일·문서) */
 const agentRules = (userName: string) => `- 조회 도구(search_leads, get_lead, pipeline_summary, search_companies, get_company, search_contacts, get_contact,
   search_meeting_notes, get_meeting_note, list_templates, list_documents, 캘린더·이메일 조회)는 바로 실행됩니다.
   최신 값이 필요하면 먼저 조회하세요.
@@ -363,11 +352,9 @@ ${CRM_RULES}
 
 
 function systemPrompt(
-  context: string, state: CalendarState = "none", userName = "", gmail: ConnectionState = "none", mode: AgentSource = "assistant"
+  context: string, state: CalendarState = "none", userName = "", gmail: ConnectionState = "none"
 ): string {
-  return `${mode === "agent"
-    ? "당신은 Pipeline CRM의 Sales Agent입니다. 영업 담당자의 요청을 받아 조회하고, 데이터 변경은 실행 계획으로 제안합니다. 한국어로 간결하게 답합니다."
-    : "당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 리드 관련 질문에 답하고, 리드 추가·변경 요청은 실행 계획으로 제안합니다. 한국어로 간결하게 답합니다."}
+  return `당신은 Pipeline CRM의 AI Assistant입니다. 영업 담당자의 질문에 답하고, 리드·회사·연락처·미팅 노트·일정·메일·문서 작업 요청은 실행 계획으로 제안합니다. 한국어로 간결하게 답합니다.
 
 규칙:
 - 아래 CRM 데이터만 근거로 답하세요. 데이터에 없는 내용은 추측하지 말고 "기록이 없습니다"라고 답하세요.
@@ -387,7 +374,7 @@ function systemPrompt(
   changes.backfilled=true인 created 이벤트는 이력 기능 도입 전 리드로, 생성 시각만 정확하고 그 이전 변경 내역은 없습니다.
   meeting_scheduled/meeting_rescheduled/meeting_canceled(다음 미팅 등록/변경/취소). by는 변경한 사용자입니다.
   document_sent(계약서·견적서 메일 발송: kind=contract 계약서/quote 견적서, title, docNumber, recipients=받는 사람 수).
-  email_sent(Sales Agent로 보낸 일반 메일: subject, recipients=받는 사람 수).
+  email_sent(AI Assistant(통합 전 Sales Agent 포함)로 보낸 일반 메일: subject, recipients=받는 사람 수).
 - 이력은 질문·최근 대화에 나온 리드의 이력(최근 ${FOCUS_EVENTS}건) + 최근 ${RECENT_EVENT_DAYS}일 이력(최대 ${RECENT_EVENTS}건)만 포함됩니다.
   그보다 오래된 다른 리드의 이력은 없으니, 필요하면 search_leads·get_lead로 조회하거나 "최근 기록에는 없습니다"라고 답하세요.
 - scheduledMeetings는 CRM에서 잡은 다음 미팅입니다(팀 전체). status: scheduled(등록자 owner의 구글 캘린더에 등록됨),
@@ -395,7 +382,7 @@ function systemPrompt(
   candidate를 말할 때는 반드시 "아직 확정 전인 후보(미팅 노트 기준)"라고 밝히세요.
 ${calendarRules(state, userName)}
 ${gmailRules(gmail, userName)}
-${mode === "agent" ? agentRules(userName) : ASSISTANT_RULES}
+${agentRules(userName)}
 - 답변은 짧은 문장이나 "- " 목록으로 작성하고, 마크다운 강조(**, #)는 쓰지 마세요 (일반 텍스트로 표시됩니다).
 ${UNTRUSTED_DATA_RULE}
 
@@ -511,10 +498,10 @@ export interface AssistantSession {
 
 /**
  * 대화 준비: 질문과 관련된 CRM 컨텍스트를 모아 시스템 프롬프트를 만들고,
- * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 붙인다. (AI Assistant·Sales Agent 공용)
+ * 캘린더·Gmail이 연동돼 있으면 캘린더 조회·리드 이메일 조회 도구를 붙인다. 
  */
 export async function prepareAssistant(
-  messages: ChatMessage[], user: SessionUser | null, mode: AgentSource = "assistant"
+  messages: ChatMessage[], user: SessionUser | null
 ): Promise<AssistantSession> {
   // 관련 기록을 찾을 글: 이번 질문 + 최근 질문 몇 개 ("그 회사 금액은?" 같은 이어지는 질문도 같은 회사로)
   const focus = focusText(messages);
@@ -523,7 +510,7 @@ export async function prepareAssistant(
   const state = featureState(user, "calendar");
   const gmail = featureState(user, "gmail");
   const chat: ChatMessageParam[] = [
-    { role: "system", content: systemPrompt(context, state, user?.name ?? "", gmail, mode) },
+    { role: "system", content: systemPrompt(context, state, user?.name ?? "", gmail) },
     ...messages.map((m) => ({ ...m, content: maskPii(m.content) })),
   ];
   const calendarOn = !!user && state === "connected";

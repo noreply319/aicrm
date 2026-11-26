@@ -1,6 +1,6 @@
 import "server-only";
 import type { PoolClient } from "pg";
-import { idArg, stale, str, text, unchanged, VIA, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
+import { idArg, stale, str, text, unchanged, type AgentTool, type Args, type ReadTool, type WriteTool } from "./agentToolKit";
 import { featureState, findUserById, type SessionUser } from "./auth";
 import { addDays, fromKst, kstDate, kstDateTime } from "./calendar";
 import { DATE_RE, TIME_RE } from "./constants";
@@ -204,10 +204,10 @@ const createNoteTool: WriteTool = {
       args: { leadId: p.data.leadId, title: p.data.title, date: p.date, time: p.time, body: p.data.body },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const p = parseNoteArgs(a);
     if (!p.ok) return { ok: false, message: p.error };
-    const r = await createNote(client, userId, p.data, VIA);
+    const r = await createNote(client, userId, p.data, ctx.meta);
     if (!r.ok) return { ok: false, message: r.error };
     const id = r.note.id;
     return {
@@ -349,13 +349,13 @@ const createEventTool: WriteTool = {
       args: { input: v.data },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const cal = await calendarUser(userId);
     if (!cal.ok) return { ok: false, message: cal.error };
     const v = eventInputOf(a);
     if (!v.ok) return { ok: false, message: v.error };
     try {
-      const { schedule } = await registerSchedule(cal.user, v.data, { client, meta: VIA });
+      const { schedule } = await registerSchedule(cal.user, v.data, { client, meta: ctx.meta });
       return { ok: true, message: "캘린더에 일정을 등록했습니다", target: { kind: "event", id: schedule.id, label: schedule.title } };
     } catch (e) {
       if (e instanceof GoogleError || e instanceof ScheduleError) return calendarFailure(e);
@@ -446,7 +446,7 @@ const updateEventTool: WriteTool = {
       args: { scheduleId: id, input: d, expect: scheduleState(row) },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const cal = await calendarUser(userId);
     if (!cal.ok) return { ok: false, message: cal.error };
     const owned = await lockedOwned(client, userId, a);
@@ -454,7 +454,7 @@ const updateEventTool: WriteTool = {
     const v = eventInputOf(a);
     if (!v.ok) return { ok: false, message: v.error };
     try {
-      const r = await updateSchedule(cal.user, owned.row, v.data, { client, meta: VIA });
+      const r = await updateSchedule(cal.user, owned.row, v.data, { client, meta: ctx.meta });
       if (!r.ok) return { ok: false, message: r.error };
       return { ok: true, message: "일정을 변경했습니다", target: { kind: "event", id: r.schedule.id, label: r.schedule.title } };
     } catch (e) {
@@ -493,13 +493,13 @@ const cancelEventTool: WriteTool = {
       args: { scheduleId: id, expect: scheduleState(row) },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const cal = await calendarUser(userId);
     if (!cal.ok) return { ok: false, message: cal.error };
     const owned = await lockedOwned(client, userId, a);
     if (!owned.ok) return owned;
     try {
-      await cancelSchedule(cal.user, owned.row, { client, meta: VIA });
+      await cancelSchedule(cal.user, owned.row, { client, meta: ctx.meta });
       return { ok: true, message: "일정을 취소했습니다" };
     } catch (e) {
       return calendarFailure(e);

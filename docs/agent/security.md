@@ -1,17 +1,17 @@
-# Sales Agent 보안·개인정보·감사 기록
+# AI Assistant(통합 전 Sales Agent) 보안·개인정보·감사 기록
 
-Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 하고, **데이터를 바꾸는 작업은 항상 사용자가 승인해야 실행**된다.
+AI Assistant(첫 화면 `/`·다른 화면 옆 패널, 2026-11-26 Sales Agent와 통합 — `/agent`는 `/`로 보냄)는 대화로 CRM 작업을 대신한다. 조회는 바로 하고, **데이터를 바꾸는 작업은 항상 사용자가 승인해야 실행**된다.
 이 문서는 그 안전장치와 OpenAI로 보내는 데이터 규칙을 정리한다. 코드: `web/lib/agent.ts`(엔진), `web/lib/agentTools.ts`·`agentCrmTools.ts`·`agentMeetingTools.ts`·`agentMailTools.ts`(도구), `web/lib/agentLimits.ts`(제한), `web/lib/assistant.ts`(프롬프트·컨텍스트), `web/lib/openai.ts`(마스킹).
 
 ## 1. 승인 모델
 
 | 단계 | 하는 일 |
 |---|---|
-| 대화 (`POST /api/agent`, AI Assistant는 `POST /api/assistant`) | 조회 도구는 바로 실행. 변경 도구는 **실행하지 않고** `prepare`만 해 `agent_actions`에 `pending` 계획으로 저장 → 화면에 계획 카드 |
+| 대화 (`POST /api/assistant`) | 조회 도구는 바로 실행. 변경 도구는 **실행하지 않고** `prepare`만 해 `agent_actions`에 `pending` 계획으로 저장 → 화면에 계획 카드 |
 | 승인 (`POST /api/agent/actions/[id]/approve`) | `decideAction`: 계획 행을 `FOR UPDATE`로 잠그고 → **요청한 본인 것만**(다른 사람 계획은 404) → `pending`이 아니면 409(두 번 실행 안 함) → 1시간 지나면 만료 → 인자를 다시 검증하고 계획 이후 대상이 바뀌었으면(`expect`) 실행 안 함 → 같은 트랜잭션에서 실행·이력 기록 |
 | 취소 (`.../cancel`) | 본인 `pending` 계획만 `canceled` |
 
-- **AI Assistant**(`/api/assistant`)는 같은 엔진이지만 도구를 `ASSISTANT_TOOL_NAMES`(리드·회사·연락처 조회·생성·수정·삭제, 단계 이동·담당 연락처 지정)로 제한한다 — 미팅 노트·일정·메일·문서 도구는 Sales Agent만. 모델이 다른 Sales Agent 도구 이름을 불러도 실행·계획하지 않고, 계획에 저장한 출처(`agent_actions.source = 'assistant'`)로 **승인 때도** 허용 도구인지 다시 확인한다. 이력은 `via: "assistant"`(연락처 변경·삭제 전파는 `via: "contact"`/`"contact_deleted"`, `by: "assistant"`).
+- 도구는 하나의 목록(`AGENT_TOOLS` 전체 — 리드·회사·연락처·미팅 노트·일정·메일·문서). 새 계획의 출처는 `agent_actions.source = 'assistant'`, 이력은 출처대로 `via: "assistant"`(통합 전 계획·이력은 `agent`로 남아 있음, 연락처 변경·삭제 전파는 `via: "contact"`/`"contact_deleted"`, `by`).
 - 모델은 계획 카드·도구 인자를 보지 못한다. 계획 도구는 모델에 `{ status: "pending_approval", planId, note }`만 돌려준다.
 - 실행 후 이어서 제안하는 작업(예: 견적서 발송 → 리드 단계 이동)도 **새 `pending` 계획**으로만 만든다. 미팅 노트 후속 작업은 요약·후보 저장만 하고 캘린더에 자동 등록하지 않는다.
 - 메일 초안(`draft_email`)은 저장·실행하지 않는 카드다.
@@ -53,7 +53,7 @@ Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 
 
 | 항목 | 한도 | 넘으면 |
 |---|---|---|
-| `/api/agent`·`/api/assistant` 요청 (합계) | 사용자별 1분 20회 (`agent_requests`, 1시간 지난 기록 삭제) | 429 |
+| `/api/assistant` 요청 | 사용자별 1분 20회 (`agent_requests`, 1시간 지난 기록 삭제) | 429 |
 | 요청 한 번에 만드는 계획 | 5개 | 모델에 오류 → "나눠서 요청" 안내 |
 | 승인 대기 계획 | 사용자별 20개 (최근 1시간) | 모델에 오류 → "먼저 처리" 안내 |
 | 메일·문서 발송 | 사용자별 1시간 30건 (실행된 발송 시도, 실패 포함) | 승인 API 429, 계획은 승인 대기로 남음 |
@@ -81,7 +81,7 @@ Sales Agent(`/agent`)는 대화로 CRM 작업을 대신한다. 조회는 바로 
 
 ### 대화 기록 (`chat_conversations`·`chat_messages`)
 
-- AI Assistant·Sales Agent 대화(질문·답변·진행 단계)를 **사용자 본인만** 보도록 저장한다 — 목록·열기·이어 쓰기·삭제 모두 `user_id` 확인, 다른 화면(source)의 대화로 이어 쓰기도 막는다.
+- AI Assistant 대화(질문·답변·진행 단계)를 **사용자 본인만** 보도록 저장한다 — 목록·열기·이어 쓰기·삭제 모두 `user_id` 확인. 통합 전 Sales Agent 대화(source `agent`)도 같은 목록에서 열고 이어 쓴다.
 - **보관 기간 없음**(사용자가 대화 목록에서 삭제). 대화에는 사용자가 입력한 내용과 답변이 그대로 남으므로 이메일·전화번호는 대화로 입력하지 않도록 안내하는 기존 원칙을 유지한다.
 - 계획 카드는 **id만** 저장하고 불러올 때 `agent_actions`에서 읽는다 → 90일 지난 계획의 전/후 내용은 대화 기록에서도 지워진 상태로 보인다. 메일 초안 카드(`draft`)는 저장된 계획이 없어 카드 내용을 그대로 저장한다.
 - 명함 확인 카드는 저장하지 않는다(화면 전용).

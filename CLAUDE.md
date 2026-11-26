@@ -68,7 +68,7 @@ AI CRM/                      # git 저장소 루트
     │       ├── route.ts             # GET 목록, POST 생성
     │       ├── [id]/route.ts        # PATCH 수정, DELETE 삭제
     │       └── [id]/move/route.ts   # POST 카드 이동 (stage + 순서)
-    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → NDJSON 스트림 (Sales Agent 엔진, 리드·회사·연락처 도구만)
+    │   └── api/assistant/route.ts   # POST AI Assistant 질문 → NDJSON 스트림 (실행 엔진 `lib/agent.ts`, 모든 도구)
     │   └── api/meetings/            # 미팅 노트: route.ts(GET·POST), [id](GET·PATCH·DELETE), transcribe(음성→텍스트), summarize(AI 요약)
     ├── components/          # CrmApp, Sidebar(왼쪽 메뉴), Header(상단 바), StatsBar, Board, Column, LeadCard, LeadModal, Toast, AssistantPanel(일반 대화·견적서 탭), QuoteChat, MeetingList, NoteListItem, MeetingNoteModal, MeetingRecorder, ContractsView·DocAssistant·DocPaper·SendDocModal·TemplateEditor(계약서), CompanyList, CompanyDetail, CompanyModal, CompanyCombobox, ContactList, ContactDetail, ContactModal, ContactCombobox
     │   └── ui/              # 디자인 시스템 컴포넌트: Button·IconButton, Badge, Field·Input·Select·Textarea·Checkbox, Tabs, Alert, Panel, EmptyState, Avatar, Icon, Modal (index.ts에서 import)
@@ -123,7 +123,7 @@ AI CRM/                      # git 저장소 루트
 - 새 색상 토큰은 라이트(`:root`)와 다크(`[data-theme="dark"]`) 모두에 정의. 다크는 테마 버튼으로만 켜짐(기기 다크 모드 안 따름).
 - 설정은 메뉴가 아닌 모달: 프로필 메뉴 "설정" 또는 `useOpenSettings()`(`lib/settingsModal.ts`)로 연다. `/settings` 주소(OAuth 복귀)도 모달로 열림. AI Assistant는 상단 바 아래~화면 끝 고정 패널로 메인과 나란히(641px 이상, 겹치지 않음) — 메인(`.workspace-main`)은 메뉴·Assistant를 뺀 남은 폭 전체를 쓰고 숨기거나 접으면 넓어짐. 모바일(640px 이하) 다른 화면에서는 상단 바 `AI` 버튼 → 상단 바·메인을 숨기고 채팅이 화면 전체를 쓰는 별도 화면(`.app-shell.ai-open`, 팝업·시트 아님), 상단 왼쪽 뒤로 가기로 닫음. 모바일 채팅 화면(첫 화면·전체 화면 채팅)은 `useKeyboardViewport`가 페이지 스크롤을 잠그고(`html.chat-screen`) 키보드가 열린 동안 보이는 영역에 맞춘다(`html.kb-open`: 상단 바 숨김·탭 줄 축소, 입력칸을 누른 뒤 0.7초간 매 프레임 보정). 대화 목록은 `useStickToBottom`(맨 아래를 볼 때만 따라감, 목록 높이가 줄어도 마지막 대화 유지, 모바일 입력칸을 누르면 맨 아래로).
 - 첫 화면 `/`(view `assistant`, 메뉴 `AI Assistant`)는 같은 `AssistantPanel`이 메인 영역 전체를 쓰는 대화 화면(`.app-shell.home`, 숨기기·뒤로 가기 없음, 상단 바 유지, 대화 내용은 가운데 880px). 파이프라인은 `/pipeline`. 패널은 언마운트하지 않으므로 첫 화면과 다른 화면 패널의 대화가 이어진다.
-- Assistant 패널 상단 탭 `일반 대화`(`/api/assistant` — 조회 + 리드·회사·연락처 생성·수정·삭제는 실행 계획 카드로 승인, Sales Agent와 대화는 따로) / `문서`(`QuoteChat` — 계약서 메뉴의 `DocAssistant` 재사용: 견적서·계약서 템플릿(견적서 먼저)으로 새 문서, 작성한 문서는 처음엔 보이지 않고 대화로 "작성한 견적서 보여줘"·"엔에스 계약서 찾아줘"처럼 물으면(`lib/docQuery.ts` `docListQuery` — 종류·검색어, "견적서"만 입력하면 템플릿 고르기) `RecentDocs`로 목록 → 열어 이어 쓰기, `문서 보기` 모달로 미리보기·직접 수정, PDF·메일). 문서 탭은 처음 누를 때 만들고 이후 탭을 바꿔도 유지.
+- Assistant 패널 상단 탭 `일반 대화`(`/api/assistant` — 조회는 바로, 리드·회사·연락처·미팅 노트·일정·메일·문서 작업은 실행 계획 카드로 승인) / `문서`(`QuoteChat` — 계약서 메뉴의 `DocAssistant` 재사용: 견적서·계약서 템플릿(견적서 먼저)으로 새 문서, 작성한 문서는 처음엔 보이지 않고 대화로 "작성한 견적서 보여줘"·"엔에스 계약서 찾아줘"처럼 물으면(`lib/docQuery.ts` `docListQuery` — 종류·검색어, "견적서"만 입력하면 템플릿 고르기) `RecentDocs`로 목록 → 열어 이어 쓰기, `문서 보기` 모달로 미리보기·직접 수정, PDF·메일). 문서 탭은 처음 누를 때 만들고 이후 탭을 바꿔도 유지.
 
 ### 데이터 / API
 - 모든 API 입력은 `lib/validate.ts`로 검증. id는 `UUID_RE`로 확인.
@@ -132,7 +132,7 @@ AI CRM/                      # git 저장소 루트
 - 카드 순서는 `position`(double precision) — 이웃 카드 position의 중간값으로 이동 (`move/route.ts`).
 - 클라이언트 변경은 낙관적 업데이트 → 실패 시 `reload()`로 서버 상태 복구 + 에러 배너.
 - 리드를 변경하는 API는 같은 트랜잭션에서 `lead_events`에 이력을 남김 (`lib/events.ts`의 `withTransaction` + `recordEvent`). 새 변경 API도 동일하게.
-- AI Assistant의 데이터 변경은 리드·회사·연락처만, 실행 계획 승인 후 반영(아래 Sales Agent). 명함 확인 카드는 사용자가 `생성`을 누를 때 회사·연락처 저장. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음 — **유일한 예외는 명함 이미지 분석**(아래 "명함").
+- AI Assistant의 데이터 변경은 실행 계획 승인 후 반영(아래 "AI Assistant 실행 엔진"). 명함 확인 카드는 사용자가 `생성`을 누를 때 회사·연락처 저장. OpenAI는 SDK 없이 `fetch`로 호출, 기본 모델 `gpt-6-luna`(`OPENAI_MODEL`로 변경). 이메일·전화번호는 OpenAI로 보내지 않음 — **유일한 예외는 명함 이미지 분석**(아래 "명함").
 
 ## 환경 변수 / DB 연결
 
@@ -265,21 +265,21 @@ npm run test:e2e          # Playwright: 테스트 DB에 연결한 dev 서버(310
 - 화면: 사이드바 `연락처`(`/contacts` ContactList, `/contacts/[id]` ContactDetail), ContactModal, 리드 모달 ContactCombobox(회사 연락처 먼저, 간이 생성 폼, `연락처 수정`은 리드 모달 위에 ContactModal), 회사 상세 소속 연락처.
 - AI Assistant 컨텍스트 `contacts`: 이름·회사·부서·직함·역할·태그·담당 영업, 메모는 질문에 이름이 나온 사람만. 이메일·전화·LinkedIn은 보내지 않음.
 
-## Sales Agent
+## AI Assistant 실행 엔진 (2026-11-26 Sales Agent 통합)
 
 - 문서: `docs/agent/security.md`(승인 모델·OpenAI로 보내는 데이터·인젝션 대비·사용량 제한·감사 기록)
-- 화면: 사이드바 `Sales Agent`(`/agent`, `AgentView`·`useAgentChat`) — NDJSON 스트림(진행 단계·답변·실행 계획 카드), 승인·취소·수정 요청, 초안 카드, 발송 후 단계 이동 같은 후속 계획 카드.
+- Sales Agent 메뉴·`AgentView`·`/api/agent`는 없앴다(`/agent`는 `/`로 redirect). 화면은 `AssistantPanel`·`useAgentChat` — NDJSON 스트림(진행 단계·답변·실행 계획 카드), 승인·취소·수정 요청, 초안 카드, 발송 후 단계 이동 같은 후속 계획 카드.
 - 엔진 `lib/agent.ts`: 조회 도구는 바로, 변경 도구는 `agent_actions`에 `pending`으로 저장 → `decideAction`(본인만·한 번만·1시간 만료·`expect` 충돌 확인·같은 트랜잭션 실행, 커밋 후 `after`·`next`). 도구는 `lib/agentToolKit.ts` 형식(prepare/execute)으로 `agentTools.ts`(리드)·`agentCrmTools.ts`(회사·연락처)·`agentMeetingTools.ts`(노트·캘린더)·`agentMailTools.ts`(메일·문서)에 추가.
-- 변경 로직은 Route Handler와 공용(`leadOps`·`companyOps`·`contactOps`·`noteOps`·`scheduleOps`·`docOps`) — 이력은 `via: "agent"`.
-- AI Assistant(`/api/assistant`)도 같은 엔진(`runAgent(..., "assistant")`): 도구는 `ASSISTANT_TOOL_NAMES`(리드·회사·연락처 조회·생성·수정·삭제, 리드 단계 이동·담당 연락처 지정 — 미팅 노트·일정·메일·문서 제외)만, 프롬프트는 `ASSISTANT_RULES`. 계획에 출처 `agent_actions.source`(agent/assistant)를 저장하고 승인 때도 출처의 허용 도구인지 다시 확인, 이력은 `via: "assistant"`. 화면 공용 카드는 `AgentTurn`, 대화는 `useAgentChat({ endpoint: "/api/assistant" })`(CrmApp).
+- 변경 로직은 Route Handler와 공용(`leadOps`·`companyOps`·`contactOps`·`noteOps`·`scheduleOps`·`docOps`) — 이력은 계획 출처 `via: "assistant"`(통합 전 기록은 `agent`).
+- 도구는 하나(`AGENT_TOOLS` 전체), 프롬프트도 하나(`agentRules`). `agent_actions.source`·`chat_conversations.source`는 DB 호환용으로 남기고 새 기록은 `assistant`. 화면 카드는 `AgentTurn`, 대화는 `useAgentChat`(CrmApp, `/api/assistant`).
 - 회사·연락처 도구: `create_contact`의 `newCompany`(없는 회사명)면 카드 하나로 회사+연락처를 한 트랜잭션에 등록, `delete_company`(연결 리드가 있으면 계획 거부)·`delete_contact`(담당 리드 연결만 끊음)는 `danger`. 삭제 로직은 API와 공용 `deleteCompany`·`deleteContact`. 회사명·연락처 변경 전파 이력에도 출처(`via`/`by`).
-- 대화 기록(AI Assistant·Sales Agent, 사용자 본인만, 기한 없이 보관): `chat_conversations`(source agent/assistant)·`chat_messages`, `lib/chatStore.ts`. 스트림 요청에 `conversationId`(없으면 새 대화 → 첫 이벤트 `conversation`), 답변이 끝나면 서버가 질문·답변을 한 번에 저장(화면을 닫거나 멈춰도 저장). 계획 카드는 id만 저장하고 불러올 때 `loadPlans`로 지금 승인 상태(만료 표시), 초안 카드는 내용 그대로, 승인 후 후속 계획은 `attachFollowUps`. API `/api/conversations?source=`(목록 50개)·`/api/conversations/[id]`(GET·DELETE). 화면: `useAgentChat`이 처음에 최근 대화를 불러오고 탭으로 돌아오면 다시 불러옴, 헤더 `대화 목록`(`ConversationList`). 명함 확인 카드는 저장 안 함(화면 전용).
+- 대화 기록(사용자 본인만, 기한 없이 보관, 통합 전 Sales Agent 대화도 한 목록): `chat_conversations`(source agent/assistant)·`chat_messages`, `lib/chatStore.ts`. 스트림 요청에 `conversationId`(없으면 새 대화 → 첫 이벤트 `conversation`), 답변이 끝나면 서버가 질문·답변을 한 번에 저장(화면을 닫거나 멈춰도 저장). 계획 카드는 id만 저장하고 불러올 때 `loadPlans`로 지금 승인 상태(만료 표시), 초안 카드는 내용 그대로, 승인 후 후속 계획은 `attachFollowUps`. API `/api/conversations`(목록 50개, source 무관)·`/api/conversations/[id]`(GET·DELETE). 화면: `useAgentChat`이 처음에 최근 대화를 불러오고 탭으로 돌아오면 다시 불러옴, 헤더 `대화 목록`(`ConversationList`). 명함 확인 카드는 저장 안 함(화면 전용).
 - AI에 보내는 컨텍스트(`lib/chatContext.ts`·`buildContext`): 대화는 저장된 기록에서 최근 12개 + 이번 질문과 낱말이 겹치는 이전 질문·답변 최대 3쌍(`selectHistory`, 1.2만 자 상한). CRM 데이터는 이번 질문 + 최근 질문 2개(`focusText`)에 나온 회사·연락처·리드(`companyKey`·`personKey`로 (주)·공백 무시)를 찾아 그 리드의 이력 최근 300건·노트 30건(본문 포함)·회사/연락처 메모를 넣고, 나머지는 최근 60일 이력(200건)·90일 노트(50건)만. 리드·회사·연락처 목록은 전부.
 - 새 도구 규칙: 개인정보(이메일·전화 등)는 인자로 받지도 결과로 보내지도 않는다, 메일 받는 사람은 서버가 정한다, 되돌릴 수 없는 작업은 `danger`, 발송 도구는 `sends`(시간당 제한). 한도는 `lib/agentLimits.ts`.
 
 ## 명함 → 회사·연락처 (AIC-10)
 
-- 화면: AI Assistant 패널(`일반 대화`)·Sales Agent 입력창 왼쪽 카메라 버튼(`BusinessCardAttach`, `capture` 속성 없이 사진 찍기/보관함 선택, 여러 장 → 장마다 카드), 대화 영역 드래그 앤 드롭. 대화 안 확인 카드 `BusinessCardConfirm`(읽는 중 → 확인·수정 → 생성 → 연락처·회사 보기·`이 담당자로 리드 만들기`, `뒷면 추가`로 2장 함께 다시 분석). 카드는 **화면 전용**(`useBusinessCards`, `afterIndex`로 메시지 사이에 표시) — OpenAI 대화·Agent 도구로 보내지 않는다. Agent 화면 카드는 CrmApp이 가짐(화면 이동 후에도 유지).
+- 화면: AI Assistant 입력창 왼쪽 카메라 버튼(`BusinessCardAttach`, `capture` 속성 없이 사진 찍기/보관함 선택, 여러 장 → 장마다 카드), 대화 영역 드래그 앤 드롭. 대화 안 확인 카드 `BusinessCardConfirm`(읽는 중 → 확인·수정 → 생성 → 연락처·회사 보기·`이 담당자로 리드 만들기`, `뒷면 추가`로 2장 함께 다시 분석). 카드는 **화면 전용**(`useBusinessCards`, `afterIndex`로 메시지 사이에 표시) — OpenAI 대화·Agent 도구로 보내지 않는다.
 - 클라이언트: `lib/imageFile.ts` `shrinkImage`(긴 변 2000px JPEG, 1장 2MB 이하 — Vercel 요청 4.5MB 한도).
 - API: `POST /api/business-cards/extract`(multipart `image` 1~2장, 매직 바이트 `sniffImage`로 JPEG·PNG·WebP만, DB 저장·이미지 보관 없음 → `{ draft, match }`, 이름·회사명을 못 읽으면 422), `POST /api/business-cards`(`{ companyId | company, contact }` → `withTransaction`으로 회사 생성(같은 이름·도메인 회사가 있으면 연결) + 연락처 생성, 같은 이메일이면 409 + `{ error, contact }`이고 회사 생성도 되돌림).
 - 서버 `lib/businessCard.ts`: 비전 호출(`ChatContentPart` `image_url` data URL), `parseCardJson`(전화 표시 제거·휴대폰/유선 정리, 회사 도메인 = 회사 메일 → 웹사이트, 무료 메일 제외), `findCardMatch`(`findCompanyMatch`·`findContactByEmail`·`findSamePerson` — Agent 중복 확인과 공용), `saveBusinessCard`(연락처 태그 `명함`·메모 `명함으로 등록 (날짜)`, 별도 이력 테이블 없음).

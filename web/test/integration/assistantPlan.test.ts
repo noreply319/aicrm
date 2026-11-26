@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as CREATE_LEAD } from "@/app/api/leads/route";
-import { ASSISTANT_TOOL_NAMES, decideAction, runAgent } from "@/lib/agent";
+import { decideAction, runAgent } from "@/lib/agent";
+import { AGENT_TOOLS } from "@/lib/agentTools";
 import { findUserById } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import type { AgentEvent, AgentPlan, Lead } from "@/lib/types";
@@ -50,10 +51,10 @@ const toolNames = (body: Record<string, unknown>) =>
   ((body.tools ?? []) as { function: { name: string } }[]).map((t) => t.function.name);
 
 describe("AI Assistant 리드 변경 계획", () => {
-  it("모델에는 리드 도구만 보내고, Assistant 프롬프트를 쓴다", async () => {
+  it("모델에는 모든 도구(미팅 노트·일정·메일·문서 포함)를 보내고, AI Assistant 프롬프트를 쓴다", async () => {
     const bodies = fakeOpenAi([{ content: "파이프라인 합계는 ₩0입니다" }]);
     await run("파이프라인 합계는?");
-    expect(toolNames(bodies[0]).sort()).toEqual([...ASSISTANT_TOOL_NAMES].sort());
+    expect(toolNames(bodies[0]).sort()).toEqual(expect.arrayContaining(Object.keys(AGENT_TOOLS)));
     const system = (bodies[0].messages as { role: string; content: string }[])[0].content;
     expect(system).toContain("AI Assistant");
     expect(system).not.toContain("조회만 할 수 있습니다");
@@ -102,21 +103,11 @@ describe("AI Assistant 리드 변경 계획", () => {
     expect((await events(l.id)).at(-1)).toMatchObject({ type: "deleted", changes: { via: "assistant" } });
   });
 
-  it("허용하지 않은 Sales Agent 도구(미팅 노트·메일 등)는 모델이 불러도 계획을 만들지 않는다", async () => {
-    const bodies = fakeOpenAi([calls([{ name: "create_meeting_note", args: { title: "킥오프" } }]), { content: "Sales Agent를 이용하세요." }]);
-    const out = await run("킥오프 미팅 노트 써줘");
-    expect(plans(out)).toHaveLength(0);
-    expect((await pool.query("SELECT count(*)::int AS n FROM agent_actions")).rows[0].n).toBe(0);
-    const tool = (bodies[1].messages as { role: string; content: string }[]).find((m) => m.role === "tool");
-    expect(tool!.content).toContain("Sales Agent");
-  });
-
-  it("승인할 때도 출처를 확인: assistant 계획으로 허용 외 도구는 실행하지 않는다", async () => {
-    const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO agent_actions (user_id, tool, args, plan, source) VALUES ($1, 'create_meeting_note', $2, $3, 'assistant') RETURNING id`,
-      [ME, JSON.stringify({ title: "우회 노트" }), JSON.stringify({ title: "미팅 노트 작성", changes: [] })]
-    );
-    expect(await decideAction(rows[0].id, ME, "approve")).toMatchObject({ ok: true, plan: { status: "failed", message: "지원하지 않는 작업입니다" } });
+  it("미팅 노트 작성(통합 전 Sales Agent 도구)도 실행 계획으로 만든다 (출처 assistant)", async () => {
+    fakeOpenAi([calls([{ name: "create_meeting_note", args: { title: "킥오프", date: "2026-11-20", body: "킥오프 미팅" } }]), { content: "승인하면 작성됩니다." }]);
+    const [p] = plans(await run("킥오프 미팅 노트 써줘"));
+    expect(p).toMatchObject({ status: "pending" });
+    expect((await pool.query("SELECT source FROM agent_actions WHERE id=$1", [p.id])).rows[0].source).toBe("assistant");
     expect((await pool.query("SELECT count(*)::int AS n FROM meeting_notes")).rows[0].n).toBe(0);
   });
 });

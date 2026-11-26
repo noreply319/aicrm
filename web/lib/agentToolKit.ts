@@ -60,7 +60,7 @@ export interface WriteTool {
 
 export type AgentTool = ReadTool | WriteTool;
 
-/** 계획을 만든 화면: Sales Agent(/agent) / AI Assistant (agent_actions.source, 이력의 via) */
+/** 계획을 만든 화면 (agent_actions.source, 이력의 via): 지금은 assistant만, agent는 통합 전 Sales Agent 기록 */
 export type AgentSource = "agent" | "assistant";
 
 /** 승인 실행 때 넘기는 값 */
@@ -68,9 +68,6 @@ export interface ExecContext {
   /** 변경 이력 changes에 함께 남길 출처 표시 */
   meta: { via: AgentSource };
 }
-
-/** 변경 이력에 남기는 표시 (Sales Agent) */
-export const VIA = { via: "agent" } as const;
 
 /** 계획 이후 대상이 바뀌었을 때 (subject: 조사까지, 예: "리드가") */
 export const stale = (subject: string) => `계획을 만든 뒤 ${subject} 바뀌었습니다. 최신 내용으로 다시 요청하세요`;

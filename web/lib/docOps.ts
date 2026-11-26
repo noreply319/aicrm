@@ -19,7 +19,7 @@ export function buildFilledState(
   const s: DocState = {
     leadId: null, title: input.title || template.name, values: {}, lineItems: [], skipped: [], messages: [], step: { type: "lead" }, status: "draft",
   };
-  s.messages.push({ role: "assistant", text: `Sales Agent로 ${KIND_LABEL[template.kind]}를 작성했어요.`, at: new Date().toISOString(), kind: "info" });
+  s.messages.push({ role: "assistant", text: `AI Assistant로 ${KIND_LABEL[template.kind]}를 작성했어요.`, at: new Date().toISOString(), kind: "info" });
   const missing = fillFromInput({ ...template, lineItemsConfig: template.lineItems, status: "draft" }, s, {
     lead, values: input.values, lineItems: input.lineItems,
   });

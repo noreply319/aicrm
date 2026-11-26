@@ -114,7 +114,7 @@ describe("Sales Agent 견적서·계약서", () => {
     expect((await pool.query("SELECT status FROM documents WHERE id=$1", [docId])).rows[0].status).toBe("sent");
     expect((await pool.query("SELECT to_addrs, cc_addrs FROM document_sends")).rows[0]).toEqual({ to_addrs: ["kim@ace.co.kr"], cc_addrs: ["boss@ace.co.kr"] });
     const ev = (await events(l.id)).find((e) => e.type === "document_sent");
-    expect(ev?.changes).toMatchObject({ recipients: 2, via: "agent" });
+    expect(ev?.changes).toMatchObject({ recipients: 2, via: "assistant" });
     expect(JSON.stringify(ev?.changes)).not.toContain("@"); // 이력에 주소 없음
 
     // 이미 보낸 문서는 다시 계획을 만들지 않는다
@@ -147,7 +147,7 @@ describe("Sales Agent 일반 메일", () => {
     expect(gmail.sent[0]).toContain("Content-Type: text/plain");
     expect(gmail.sent[0]).not.toContain("multipart");
     const ev = (await events(l.id)).at(-1);
-    expect(ev).toMatchObject({ type: "email_sent", changes: { subject: "미팅 감사드립니다", recipients: 1, via: "agent" } });
+    expect(ev).toMatchObject({ type: "email_sent", changes: { subject: "미팅 감사드립니다", recipients: 1, via: "assistant" } });
   });
 
   it("Gmail 실패면 failed, 다시 승인해도 409 (두 번 보내지 않음)", async () => {

@@ -85,7 +85,7 @@ describe("대화 기록", () => {
     });
 
     // 다른 기기: 목록 → 대화 열기
-    const list = (await (await LIST(req("GET", undefined, "http://test.local/api?source=assistant"))).json()) as ConversationSummary[];
+    const list = (await (await LIST()).json()) as ConversationSummary[];
     expect(list.map((c) => c.id)).toEqual([conv.id]);
     const detail = (await (await getConv(conv.id)).json()) as ConversationDetail;
     expect(detail.messages.map((m) => [m.role, m.content])).toEqual([
@@ -94,8 +94,6 @@ describe("대화 기록", () => {
       ["user", "이번 주 리드는?"],
       ["assistant", "이번 주 리드는 없습니다"],
     ]);
-    // Sales Agent 목록에는 없다 (화면별로 따로)
-    expect(await (await LIST(req("GET", undefined, "http://test.local/api?source=agent"))).json()).toEqual([]);
   });
 
   it("계획 카드는 id로 저장하고, 불러올 때 지금 승인 상태로 (다른 기기에서 승인한 결과)", async () => {
@@ -154,7 +152,7 @@ describe("대화 기록", () => {
   it("다른 사용자의 대화는 목록·열기·이어 쓰기·삭제 모두 안 된다", async () => {
     const conv = await createConversation(ME, "assistant", "내 대화");
     auth.userId = OTHER;
-    expect(await (await LIST(req("GET", undefined, "http://test.local/api?source=assistant"))).json()).toEqual([]);
+    expect(await (await LIST()).json()).toEqual([]);
     expect((await getConv(conv.id)).status).toBe(404);
     expect((await DELETE_CONV(req("DELETE"), ctx(conv.id))).status).toBe(404);
     fakeOpenAi([{ content: "x" }]);
@@ -176,9 +174,14 @@ describe("대화 기록", () => {
     );
   });
 
-  it("Sales Agent 대화를 AI Assistant 요청으로 이어 쓸 수 없다", async () => {
-    const conv = await createConversation(ME, "agent", "에이전트 대화");
-    fakeOpenAi([{ content: "x" }]);
-    expect((await ask({ conversationId: conv.id, messages: [{ role: "user", content: "질문" }] })).status).toBe(404);
+  it("통합 전 Sales Agent 대화도 같은 목록에 보이고 AI Assistant로 이어 쓸 수 있다", async () => {
+    const old = await createConversation(ME, "agent", "에이전트 대화");
+    await saveTurn(old.id, "예전 질문", { content: "예전 답변", steps: [], plans: [] });
+    const list = (await (await LIST()).json()) as ConversationSummary[];
+    expect(list.map((c) => c.id)).toEqual([old.id]);
+    fakeOpenAi([{ content: "이어서 답변" }]);
+    expect((await ask({ conversationId: old.id, messages: [{ role: "user", content: "이어서 질문" }] })).status).toBe(200);
+    const detail = (await (await getConv(old.id)).json()) as ConversationDetail;
+    expect(detail.messages.map((m) => m.content)).toEqual(["예전 질문", "예전 답변", "이어서 질문", "이어서 답변"]);
   });
 });

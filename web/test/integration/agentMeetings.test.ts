@@ -93,7 +93,7 @@ describe("Sales Agent 미팅 노트", () => {
     const note = (await pool.query("SELECT id, met_at FROM meeting_notes WHERE lead_id=$1", [l.id])).rows[0];
     expect(new Date(note.met_at).toISOString()).toBe("2026-12-01T05:00:00.000Z");
     expect(ai.summarized).toEqual([note.id]);
-    expect((await events(l.id)).at(-1)).toMatchObject({ type: "note_created", changes: { via: "agent" } });
+    expect((await events(l.id)).at(-1)).toMatchObject({ type: "note_created", changes: { via: "assistant" } });
     expect(google.calls).toEqual([]); // 후보는 캘린더에 등록하지 않는다
   });
 
@@ -123,7 +123,7 @@ describe("Sales Agent 캘린더", () => {
     expect(google.calls).toEqual([{ op: "insert", eventId: "gev1", title: "제안 미팅", attendees: [] }]);
     const row = (await pool.query("SELECT status, user_id, google_event_id FROM scheduled_meetings WHERE lead_id=$1", [l.id])).rows[0];
     expect(row).toEqual({ status: "scheduled", user_id: ME, google_event_id: "gev1" });
-    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_scheduled", changes: { via: "agent" } });
+    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_scheduled", changes: { via: "assistant" } });
   });
 
   it("초대는 요청 시에만: 위험 표시 + 리드 이메일로 초대, 이메일 없으면 계획을 만들지 않는다", async () => {
@@ -155,7 +155,7 @@ describe("Sales Agent 캘린더", () => {
 
     expect(await decideAction(p.id, ME, "approve")).toMatchObject({ ok: true, plan: { status: "done" } });
     expect(google.calls.at(-1)).toMatchObject({ op: "patch", eventId: "gev1", notify: false });
-    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_rescheduled", changes: { via: "agent" } });
+    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_rescheduled", changes: { via: "assistant" } });
   });
 
   it("여러 날 종일·자정을 넘는 일정: 제목만 바꾸면 기간 유지, 날짜만 바꾸면 같은 길이로 이동", async () => {
@@ -200,6 +200,6 @@ describe("Sales Agent 캘린더", () => {
     expect(await decideAction(p.id, ME, "approve")).toMatchObject({ ok: true, plan: { status: "done" } });
     expect(google.calls.at(-1)).toEqual({ op: "delete", eventId: "gev1", notify: false });
     expect((await pool.query("SELECT status FROM scheduled_meetings WHERE id=$1", [id])).rows[0].status).toBe("canceled");
-    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_canceled", changes: { via: "agent" } });
+    expect((await events(l.id)).at(-1)).toMatchObject({ type: "meeting_canceled", changes: { via: "assistant" } });
   });
 });

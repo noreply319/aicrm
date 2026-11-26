@@ -1099,3 +1099,21 @@
 > commit 하고 push해줘.
 
 - 결과: 모바일 입력 화면 최적화·대화 순서 버그 수정(146)·문서 탭 물어볼 때 목록(147) 커밋, `feat/assistant-crm-write`·`main` push → Vercel 운영 배포
+
+## 149. 2026-11-26 — Sales Agent와 AI Assistant 차이 질문
+
+> Sales Agent와 AI assistant 차이가 있어?
+
+- 결과: 코드 변경 없음. 같은 엔진(`runAgent`)·승인 방식, 도구 범위 차이 설명 — Assistant는 리드·회사·연락처 조회/변경만, Agent는 미팅 노트·캘린더·메일·문서 작성·발송까지
+
+## 150. 2026-11-26 — Sales Agent와 AI Assistant 하나로 통합
+
+> 두개 에이전트 하나로 합쳐줘.
+
+- 결과: AI Assistant로 통합(선택). 도구 하나(`AGENT_TOOLS` 전체)·프롬프트 하나, Sales Agent 메뉴·`AgentView`·`/api/agent` 삭제(`/agent` → `/` redirect), 대화 목록은 source 구분 없이 하나(기존 Sales Agent 대화도 보이고 이어 쓰기), 미팅 노트·일정·메일 도구 이력도 계획 출처(`via`)로, 패널에 메일 초안 `이대로 보내기 요청`. 테스트·문서 수정, build 통과(테스트 실행 안 함)
+
+## 151. 2026-11-26 — 커밋·push
+
+> Commit 하고 push해줘.
+
+- 결과: 통합(150) 커밋, `feat/assistant-crm-write`·`main` push → Vercel 운영 배포

@@ -106,7 +106,7 @@ export async function hideDevIndicator(page: Page) {
  * 테스트 사용자(global-setup) 소유의 "리드 단계 이동" 계획을 저장하고 화면에 보낼 plan을 돌려준다.
  */
 export async function createMovePlan(
-  lead: { id: string; company: string }, from: string, to: string, source: "agent" | "assistant" = "agent"
+  lead: { id: string; company: string }, from: string, to: string, source: "agent" | "assistant" = "assistant"
 ) {
   assertSafeTestDb(TEST_DATABASE_URL);
   const c = new pg.Client({ connectionString: TEST_DATABASE_URL });

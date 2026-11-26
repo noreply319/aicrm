@@ -42,13 +42,14 @@ function applyEvent(m: AgentMessage, e: AgentEvent): AgentMessage {
 }
 
 /**
- * Sales Agent·AI Assistant 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다.
- * 답변은 endpoint(/api/agent, /api/assistant)의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
- * 승인·취소는 둘 다 /api/agent/actions (계획의 출처는 서버가 저장해 둔다).
+ * AI Assistant 대화 상태. CrmApp에서 호출해 화면을 옮겨도 대화가 유지된다.
+ * 답변은 /api/assistant의 NDJSON 스트림을 줄 단위로 읽어 진행 단계·답변·실행 계획을 바로 반영한다.
+ * 승인·취소는 /api/agent/actions.
  * 대화 기록은 서버에 저장된다: 처음에 가장 최근 대화를 불러오고(다른 기기에서 이어 보기), 이전 대화는 목록에서 연다.
  */
-export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged: () => void; endpoint?: "/api/agent" | "/api/assistant" }) {
-  const source = endpoint === "/api/assistant" ? "assistant" : "agent";
+const ENDPOINT = "/api/assistant";
+
+export function useAgentChat({ onChanged }: { onChanged: () => void }) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [busy, setBusy] = useState(false);
   /** 지금 보고 있는 저장된 대화 (null = 아직 저장 안 된 새 대화) */
@@ -89,7 +90,7 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
-        const res = await fetch(endpoint, {
+        const res = await fetch(ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: [...history, { role: "user", content }], conversationId: conversationRef.current }),
@@ -143,7 +144,7 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
       }
       return true;
     },
-    [patchMessage, endpoint]
+    [patchMessage]
   );
 
   /** 계획 승인/취소: 서버가 돌려준 계획으로 카드를 바꾼다. 실패하면 카드에 사유를 보여주고 다시 누를 수 있게 둔다 */
@@ -241,14 +242,14 @@ export function useAgentChat({ onChanged, endpoint = "/api/agent" }: { onChanged
   /** 목록 다시 불러오기 → first면 가장 최근 대화를 연다 (처음 불러오기는 실패하면 한 번 더) */
   const refresh = useCallback(
     async (first: boolean) => {
-      const load = () => api<ConversationSummary[]>(`/api/conversations?source=${source}`).catch(() => null);
+      const load = () => api<ConversationSummary[]>("/api/conversations").catch(() => null);
       let list = await load();
       if (!list && first) list = await new Promise<ConversationSummary[] | null>((r) => setTimeout(() => load().then(r), 1500));
       if (!list) return;
       setConversations(list);
       if (first && list[0] && !conversationRef.current && messagesRef.current.length === 0) await open(list[0].id);
     },
-    [source, open]
+    [open]
   );
 
   // 처음: 가장 최근 대화를 이어서 보여준다 (다른 기기에서 하던 대화 포함)

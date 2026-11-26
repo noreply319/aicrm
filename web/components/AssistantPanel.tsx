@@ -50,7 +50,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mobile = useMediaQuery(MOBILE_QUERY);
   // 좁은 입력칸(오른쪽 패널·모바일)에서는 안내 문구가 한 줄에 다 보이게 짧게
-  const placeholder = home && !mobile ? "리드에 대해 질문하거나 추가·변경을 요청하세요…" : "리드에 대해 질문하세요…";
+  const placeholder = home && !mobile ? "질문하거나 할 일을 요청하세요…" : "질문하거나 요청하세요…";
   // 빈 입력칸 높이는 안내 문구 줄 수를 따르므로 문구가 바뀌어도(첫 렌더 뒤 모바일 판정) 다시 맞춘다
   useAutoGrow(inputRef, input || placeholder);
 
@@ -125,7 +125,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
       <div className="assistant-messages" ref={listRef} hidden={showList} {...cardDropProps(addCards)}>
         {loaded && messages.length === 0 && cards.cards.length === 0 && (
           <div className="assistant-empty">
-            <p>리드에 대해 물어보거나, 리드·회사·연락처 추가·수정을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
+            <p>리드에 대해 물어보거나 리드·회사·연락처 추가·수정, 미팅 노트 작성, 일정 등록, 메일·견적서·계약서 발송을 요청하세요. 변경은 계획을 확인하고 승인하면 반영됩니다. 명함 사진을 올리면 회사·연락처로 등록해 드려요.</p>
           </div>
         )}
         {cardsAt(0)}
@@ -140,6 +140,7 @@ export default function AssistantPanel({ open: openProp, onOpen, onClose, home, 
                 onCancel={(p) => cancel(m.id, p)}
                 onApproveAll={() => approveAll(m.id)}
                 onRevise={(p) => revise(m.id, p)}
+                onSendDraft={(p) => submit(`「${p.title}」 초안 그대로 메일을 보내줘`)}
                 onOpenTarget={onOpenTarget}
               />
             )}

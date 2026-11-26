@@ -55,7 +55,7 @@ describe("Sales Agent 회사 도구", () => {
     expect(row).toEqual({ name: "에이스테크", industry: "IT", phone: "02-123-4567", address: "서울" });
     expect((await pool.query("SELECT company FROM leads WHERE id=$1", [l.id])).rows[0].company).toBe("에이스테크");
     expect((await events(l.id)).at(-1)).toMatchObject({
-      type: "updated", changes: { company: { from: "에이스상사", to: "에이스테크" }, via: "agent" },
+      type: "updated", changes: { company: { from: "에이스상사", to: "에이스테크" }, via: "assistant" },
     });
   });
 
@@ -140,7 +140,7 @@ describe("Sales Agent 연락처 도구", () => {
     const row = (await pool.query("SELECT contact_id, contact, title, email FROM leads WHERE id=$1", [l.id])).rows[0];
     expect(row).toEqual({ contact_id: c.id, contact: "최수진", title: "이사", email: "choi@b.com" });
     expect((await events(l.id)).at(-1)).toMatchObject({
-      type: "updated", changes: { contactLink: { from: null, to: "최수진" }, via: "agent" },
+      type: "updated", changes: { contactLink: { from: null, to: "최수진" }, via: "assistant" },
     });
     expect(await prepare("link_contact_to_lead", { leadId: l.id, contactId: c.id })).toEqual({ error: "이미 최수진 님이 담당자로 연결되어 있습니다" });
   });

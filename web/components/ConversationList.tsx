@@ -24,7 +24,7 @@ function when(iso: string): string {
 }
 
 /**
- * 저장된 대화 목록 (AI Assistant·Sales Agent 공용). 대화 영역 자리에 보여준다.
+ * 저장된 대화 목록 (AI Assistant). 대화 영역 자리에 보여준다.
  * 삭제는 한 번 더 눌러 확인한다 (브라우저 확인 창 대신).
  */
 export default function ConversationList({ conversations, currentId, onOpen, onDelete, onNew, onClose }: Props) {

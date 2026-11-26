@@ -7,11 +7,10 @@ import { useOpenSettings } from "@/lib/settingsModal";
 import type { Me } from "@/lib/types";
 import { Avatar, Badge, Icon, IconButton, type IconName } from "./ui";
 
-export type View = "assistant" | "agent" | "pipeline" | "companies" | "contacts" | "meetings" | "contracts" | "calendar";
+export type View = "assistant" | "pipeline" | "companies" | "contacts" | "meetings" | "contracts" | "calendar";
 
 export const NAV: { view: View; href: string; label: string; icon: IconName }[] = [
   { view: "assistant", href: "/", label: "AI Assistant", icon: "sparkle" },
-  { view: "agent", href: "/agent", label: "Sales Agent", icon: "agent" },
   { view: "pipeline", href: "/pipeline", label: "파이프라인", icon: "pipeline" },
   { view: "companies", href: "/companies", label: "회사", icon: "building" },
   { view: "contacts", href: "/contacts", label: "연락처", icon: "users" },

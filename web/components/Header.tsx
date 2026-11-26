@@ -70,8 +70,8 @@ export default function Header({ view, query, onQuery, onAdd, assistantOpen, onT
       <div className="header-actions">
         <IconButton icon="moon" label="테마 전환" onClick={toggleTheme} />
         {/* 모바일은 "AI" 배지만 보이는 작은 버튼 (누르면 채팅 전체 화면).
-            첫 화면(AI Assistant)은 대화가 메인이고, 계약서·Sales Agent는 대화 화면이 따로 있어 숨긴다 */}
-        {view !== "contracts" && view !== "assistant" && view !== "agent" && <Button
+            첫 화면(AI Assistant)은 대화가 메인이고, 계약서는 대화 화면이 따로 있어 숨긴다 */}
+        {view !== "contracts" && view !== "assistant" && <Button
           className="header-ai"
           active={assistantOpen}
           title="AI Assistant 열기/닫기"

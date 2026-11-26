@@ -1,6 +1,6 @@
 import "server-only";
 import type { PoolClient } from "pg";
-import { idArg, idListArg, leadTarget, str, text, VIA, type AgentTool, type Args, type ExecResult, type ReadTool, type WriteTool } from "./agentToolKit";
+import { idArg, idListArg, leadTarget, str, text, type AgentTool, type Args, type ExecResult, type ReadTool, type WriteTool } from "./agentToolKit";
 import { findUserById, type SessionUser } from "./auth";
 import { pool } from "./db";
 import { findLeadLite, suggestedStage } from "./docChat";
@@ -262,7 +262,7 @@ const createDocTool: WriteTool = {
       args: { templateId: t.id, leadId, title: p.data.title, values: p.data.values, lineItems: p.data.lineItems },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const p = await parseDocArgs(client, a);
     if (!p.ok) return { ok: false, message: p.error };
     const r = await createFilledDocument(client, p.data.template, userId, p.data);
@@ -354,7 +354,7 @@ const sendDocTool: WriteTool = {
       args: { documentId: doc.id, ccContactIds: ccArg(a), ...m.data, expect: { rev: doc.rev, status: doc.status } satisfies DocExpect },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const u = await mailUser(userId);
     if (!u.ok) return { ok: false, message: u.error };
     const v = await verifyPlannedDocument(client, a);
@@ -375,7 +375,7 @@ const sendDocTool: WriteTool = {
     }
     try {
       const { lead } = await inSavepoint(client, (c) =>
-        recordDocumentSend(c, doc.id, userId, m.data, { id: sent.id, link: sentLink(u.user.email, sent) }, VIA)
+        recordDocumentSend(c, doc.id, userId, m.data, { id: sent.id, link: sentLink(u.user.email, sent) }, ctx.meta)
       );
       // 발송 후 단계 이동은 별도 계획 카드로 제안 (견적서 → 제안/견적, 계약서 → 협상)
       const stage = lead ? suggestedStage(doc.kind, lead.stage) : null;
@@ -460,7 +460,7 @@ const sendMailTool: WriteTool = {
       args: { leadId: p.leadId, ccContactIds: ccArg(a), to: p.r.to, cc: p.r.cc, subject: p.subject, body: p.body },
     };
   },
-  async execute(client, userId, a) {
+  async execute(client, userId, a, ctx) {
     const u = await mailUser(userId);
     if (!u.ok) return { ok: false, message: u.error };
     const p = await parseMailArgs(client, a);
@@ -477,7 +477,7 @@ const sendMailTool: WriteTool = {
       // 리드 이력: 주소 없이 제목·받는 사람 수만 (Assistant 컨텍스트로 쓰이므로)
       await inSavepoint(client, (c) =>
         recordEvent(c, p.leadId, p.r.company, "email_sent", {
-          subject: p.subject, recipients: p.r.to.length + p.r.cc.length, gmailMessageId: sent.id, ...VIA,
+          subject: p.subject, recipients: p.r.to.length + p.r.cc.length, gmailMessageId: sent.id, ...ctx.meta,
         })
       );
     } catch (e) {
